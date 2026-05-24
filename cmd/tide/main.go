@@ -1,7 +1,7 @@
 // Command tide is the compiler and toolchain for the Tide programming language.
 //
 // Tide is pre-alpha. This entry point is a scaffold: subcommands are wired up
-// but not yet implemented. See TODO.md for the immediate work.
+// but not yet implemented.
 package main
 
 import (
@@ -21,11 +21,11 @@ func main() {
 	case "version", "-v", "--version":
 		fmt.Printf("tide %s\n", version)
 	case "build":
-		notImplemented("build", "TODO.md")
+		notImplemented("build")
 	case "run":
-		notImplemented("run", "TODO.md")
+		notImplemented("run")
 	case "bindgen":
-		notImplemented("bindgen", "backlog.md")
+		notImplemented("bindgen")
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -35,8 +35,8 @@ func main() {
 	}
 }
 
-func notImplemented(cmd, where string) {
-	fmt.Fprintf(os.Stderr, "tide %s: not implemented yet (see %s)\n", cmd, where)
+func notImplemented(cmd string) {
+	fmt.Fprintf(os.Stderr, "tide %s: not implemented yet\n", cmd)
 	os.Exit(1)
 }
 
@@ -53,5 +53,5 @@ Commands:
   version    print the compiler version
   help       print this message
 
-Status: pre-alpha. See TODO.md.`)
+Status: pre-alpha.`)
 }

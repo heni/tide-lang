@@ -1,7 +1,8 @@
 # Architecture
 
-How the Tide compiler is built. Design rationale lives in `AI.md`; this file is
-the concrete "how."
+How the Tide compiler is built. This file is the concrete "how"; the *why*
+behind the architectural commitments (D1, D6, D8, D10, D14, D15, D16, ...)
+lives in [`docs/design-decisions.md`](design-decisions.md).
 
 ## 1. Compiler pipeline
 
@@ -148,4 +149,8 @@ Cheapest checks first; do not spend expensive checks where cheap ones suffice.
 Generated Go must always pass `go build`, `go vet`, and — for concurrent code —
 `go test -race`. Compatibility scoring: anchor the denominator to Go's symbol
 surface, tag depth (smoke / differential / fuzzed), score per
-(package x category). See `AI.md` section 3 for the rationale.
+(package x category). The recurring failure mode is a test plan heavy on
+"does it compile / type-check" and light on "does it *behave* identically" —
+the dangerous binding bugs (wrong nullability, `(T, error)` vs comma-ok
+confusion) pass compilation. Behavioural / differential testing on fuzzed
+inputs is first-class, not an afterthought.

@@ -1,7 +1,8 @@
 # Language Specification (working draft)
 
-> **Draft.** A sketch, not a frozen spec. Surface-syntax questions are tracked
-> as decision D11 in `AI.md`. Expect churn through the early phases.
+> **Draft.** A sketch, not a frozen spec. Several surface-syntax questions are
+> still open — they are being resolved as the example acceptance suite forces
+> them. Expect churn through the early phases.
 
 ## Lexical
 

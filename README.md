@@ -50,3 +50,12 @@ go build ./cmd/tide
 ```
 
 Source files use the `.td` extension.
+
+## Read more
+
+| To understand... | Read |
+|---|---|
+| The architectural commitments and why Tide is the way it is | [`docs/design-decisions.md`](docs/design-decisions.md) |
+| How the compiler is built — pipeline, bindings, concurrency, testing | [`docs/architecture.md`](docs/architecture.md) |
+| The language surface (working draft) | [`docs/language-spec.md`](docs/language-spec.md) |
+| What v1 must be able to do — the acceptance suite | [`examples/README.md`](examples/README.md) |

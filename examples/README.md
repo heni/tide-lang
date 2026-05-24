@@ -1,15 +1,16 @@
 # Examples — the v1 acceptance suite
 
-These programs **define what v1 must be able to express** (decision D12 in
-`AI.md`). Each is chosen to *force* specific language features. An example
-compiling and running is the definition of done for the features it exercises.
+These programs **define what v1 must be able to express** (D12 — see
+`../docs/design-decisions.md`). Each is chosen to *force* specific language
+features. An example compiling and running is the definition of done for the
+features it exercises.
 
-Examples are written feature-first: the program comes before the implementation
-that makes it compile. The **first project task** (see `TODO.md`) is to
-hand-write all of them as complete `.td` programs against the spec — a paper
-validation of `docs/language-spec.md` before any compiler exists (decision
-D13). Files present today are early **target sketches**; their syntax is
-illustrative and will be completed and tightened by that exercise.
+Examples are written feature-first: the program comes before the
+implementation that makes it compile. Before any compiler code exists, every
+example is hand-written as a complete `.td` program against the spec — a
+paper validation of `../docs/language-spec.md`. Files present today are
+early **target sketches**; their syntax is illustrative and will be
+completed and tightened by that exercise.
 
 `★` marks **showcase** examples — the ones that demonstrate Tide's value over
 plain Go (sum types, exhaustive matching, ergonomic errors, uncolored
@@ -71,7 +72,6 @@ actually beats a single-threaded event loop.
 ## How to use this suite
 
 - Implement features against the next example in phase order.
-- When an example compiles and runs, record it (a checkbox here, or in
-  `TODO.md`).
+- When an example compiles and runs, record it as a checkbox in this list.
 - v1 ships when every example above compiles, runs, and produces correct
   output — and the `★` showcases need **no** manual Go shims.
