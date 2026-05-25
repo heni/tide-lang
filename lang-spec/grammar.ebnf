@@ -50,6 +50,13 @@ Ident       = Letter (Letter | Digit)* ;
 // Identifiers are ASCII-only in v1. Allowing the full Unicode letter
 // class (as Go does) is park material; the lexer never produces an
 // Ident token from a non-ASCII first character.
+//
+// RESERVED PREFIX: an Ident whose first six characters are exactly
+// `_tide_` (case-sensitive) is reserved for codegen-synthesised
+// names and is REJECTED by the lexer with E0107 Reserved
+// identifier prefix. This guarantees no collision with the
+// `_tide_NN` fresh names introduced during desugaring; see
+// `lowering-go.md` §Identifier encoding.
 
 // Keyword is not a separate alternative in Token below — the lexer
 // matches Ident first, then reclassifies the lexeme as a Keyword
