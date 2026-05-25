@@ -105,17 +105,31 @@ line:col-line:col  kind  name?  type
 Type strings are in spec-canonical notation (`Map<int, []int>`, not
 `map[int][]int`).
 
-## ERRORS  *(forthcoming — defined by `diagnostics.md`)*
+## ERRORS
 
-One diagnostic per line:
+One diagnostic per line, in the canonical emission format from
+`diagnostics.md` §Diagnostic formatting:
 
 ```
-[ERROR|WARNING] file:line:col  ECODE  message
+<file>:<line>:<col>: <severity-label>[<code>]: <message>
 ```
 
-`ECODE` is a stable identifier from the diagnostics catalog (e.g.
-`E0201`). The `message` text is part of the contract — both Go and
-Tide implementations must emit byte-identical strings.
+`<severity-label>` is `error` (E), `warning` (W), or `internal`
+(I). `<code>` is a stable identifier from the diagnostics
+catalog (e.g. `E0201`). Examples:
+
+```
+src.td:1:1: error[E0103]: Unknown name
+src.td:4:9: warning[E0503]: Soft shadow
+src.td:7:5: error[E0303]: Non-exhaustive match
+```
+
+The `message` text is part of the contract — both Go and Tide
+implementations must emit byte-identical strings matching the
+catalog's `message` column. Optional secondary lines (snippet,
+caret, fix hint) follow the primary line indented by two
+spaces; they're informational and not part of the byte-compare
+contract.
 
 ## GO
 

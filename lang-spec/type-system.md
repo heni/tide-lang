@@ -648,7 +648,7 @@ The right-hand side of `TypeDecl` is a `TypeBody` (per
                                 Γ ⊢ Alias T wf
 
 (WF-Body-Record)        for each field f_i : T_i      Γ ⊢ T_i wf
-                                  field names pairwise distinct
+                                  field names pairwise distinct   (E0105 otherwise)
                         ───────────────────────────────────────────
                                 Γ ⊢ Record { f_1: T_1, ..., f_n: T_n } wf
 
@@ -656,7 +656,7 @@ The right-hand side of `TypeDecl` is a `TypeBody` (per
                         ─────────────────────────────────────────────
                                 Γ ⊢ TupleAlias (T_1, ..., T_n) wf
 
-(WF-Body-Sum)           variant names pairwise distinct
+(WF-Body-Sum)           variant names pairwise distinct          (E0106 otherwise)
                                 for each variant V_j:
                                   - nullary, or
                                   - V_j(f_1: T_{j,1}, ..., f_{m_j}: T_{j,m_j})
@@ -782,7 +782,11 @@ touched by this file:
 - **E0207** — Wrong type arity on a generic instantiation.
 - **E0208** — Cannot infer literal type for a bare-`{}` `BraceLit`
   with no contextual expected type.
-- **E0301** — Type used as value (defined by name-resolution;
+- **E0105** — Duplicate field name in a `Record` body
+  (WF-Body-Record side-condition).
+- **E0106** — Duplicate variant name in a `Sum` body
+  (WF-Body-Sum side-condition).
+- **E0108** — Type used as value (defined by name-resolution;
   also fires from this pass when a `NamedType` identifier
   appears in expression position, e.g., generic-class callee
   without a member access or brace literal).
@@ -804,6 +808,6 @@ touched by this file:
   scope frame providing `E_outer` in T-Spawn).
 - **E0406** — `defer` argument must be a call (T-Defer
   side-condition fails).
-- **E0407** — `scope<T, E>` requires `E = error` in v1 (T-ScopeExpr
+- **E0407** — `scope` error parameter must be `error` in v1 (T-ScopeExpr
   side-condition; relaxed once a typed-error adapter lands —
   see `lowering-go.md` §ScopeIR / SpawnIR).
