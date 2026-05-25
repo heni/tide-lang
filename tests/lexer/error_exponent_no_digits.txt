@@ -1,0 +1,8 @@
+--- TITLE ---
+E0109: bare 1e with no exponent digits is malformed
+
+--- INPUT ---
+let x = 1e
+
+--- ERRORS ---
+src.td:1:10: error[E0109]: Malformed numeric literal

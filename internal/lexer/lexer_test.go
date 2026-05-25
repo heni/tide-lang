@@ -138,6 +138,55 @@ func TestStringNewlineRejected(t *testing.T) {
 	}
 }
 
+func TestLoneCRRejected(t *testing.T) {
+	// grammar.ebnf Newline = "\n" | "\r\n"; a lone \r is not a
+	// recognised line terminator and must fail E0101 (Unexpected
+	// character).
+	_, err := Lex("a\rb")
+	if err == nil || err.Code != "E0101" {
+		t.Fatalf("expected E0101 on lone CR; got %v", err)
+	}
+}
+
+func TestBadEscape(t *testing.T) {
+	_, err := Lex(`"\q"`)
+	if err == nil || err.Code != "E0110" {
+		t.Fatalf("expected E0110 on \\q; got %v", err)
+	}
+}
+
+func TestBadRune(t *testing.T) {
+	_, err := Lex("'ab'")
+	if err == nil || err.Code != "E0111" {
+		t.Fatalf("expected E0111 on multi-char rune; got %v", err)
+	}
+}
+
+func TestHexNoDigits(t *testing.T) {
+	_, err := Lex("0x")
+	if err == nil || err.Code != "E0109" {
+		t.Fatalf("expected E0109 on bare 0x; got %v", err)
+	}
+}
+
+func TestExponentNoDigits(t *testing.T) {
+	_, err := Lex("1e")
+	if err == nil || err.Code != "E0109" {
+		t.Fatalf("expected E0109 on bare 1e; got %v", err)
+	}
+}
+
+func TestLexFilePrefix(t *testing.T) {
+	_, err := LexFile("#", "foo.td")
+	if err == nil {
+		t.Fatalf("expected error on `#`")
+	}
+	want := "foo.td:1:1: error[E0101]: Unexpected character"
+	if err.Error() != want {
+		t.Errorf("got %q\nwant %q", err.Error(), want)
+	}
+}
+
 func TestRuneLiteral(t *testing.T) {
 	got := tokensCanonical(t, "'a' '\\n' '\\x41'")
 	if !strings.Contains(got, "RuneLit<'a'>  1:1") {
@@ -249,9 +298,3 @@ func TestBlockCommentUnterminated(t *testing.T) {
 	}
 }
 
-func TestUnknownChar(t *testing.T) {
-	_, err := Lex("let x = #")
-	if err == nil || err.Code != "E0101" {
-		t.Fatalf("expected E0101 on `#`; got %v", err)
-	}
-}

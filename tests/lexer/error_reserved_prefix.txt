@@ -5,4 +5,4 @@ E0107: _tide_ prefix on user identifier is rejected at lex time
 let _tide_99 = 7
 
 --- ERRORS ---
-1:5: error[E0107]: Reserved identifier prefix
+src.td:1:5: error[E0107]: Reserved identifier prefix

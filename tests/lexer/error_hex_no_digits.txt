@@ -1,0 +1,8 @@
+--- TITLE ---
+E0109: 0x without any hex digit is malformed
+
+--- INPUT ---
+let x = 0x
+
+--- ERRORS ---
+src.td:1:9: error[E0109]: Malformed numeric literal

@@ -1,8 +1,8 @@
 --- TITLE ---
-E0102: unterminated /* block comment */
+E0102: unterminated "string literal" reaches EOF
 
 --- INPUT ---
-/* never closes
+"abc
 
 --- ERRORS ---
 src.td:1:1: error[E0102]: Unterminated literal

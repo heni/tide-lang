@@ -47,14 +47,17 @@ severity column.
 
 | Code | Sev | Message | Authoritative rule | Fix |
 |---|---|---|---|---|
-| E0101 | E | reserved | — | Reserved for future generic "Unexpected token" parser diagnostic. |
-| E0102 | E | reserved | — | Reserved for future generic "Unterminated string literal" lexer diagnostic. |
+| E0101 | E | Unexpected character | `grammar.ebnf` lexical part | The character cannot start any token; remove it or quote it inside a string / rune literal. |
+| E0102 | E | Unterminated literal | `grammar.ebnf` StringLit / RuneLit / BlockComment | Close the literal with the matching delimiter (`"`, `'`, or `*/`). |
 | E0103 | E | Unknown name | `name-resolution.md` §Resolution algorithm | Declare the name, import the package, or fix the typo. |
 | E0104 | E | Ambiguous variant name | `name-resolution.md` §Variant constructors | Use the qualified form `Type.Variant`. |
 | E0105 | E | Duplicate field name | `type-system.md` §WF-Body-Record | Rename one of the colliding fields. |
 | E0106 | E | Duplicate variant name | `type-system.md` §WF-Body-Sum | Rename one of the colliding variants. |
 | E0107 | E | Reserved identifier prefix | `grammar.ebnf` Ident (`_tide_` prefix rejected) / `lowering-go.md` §Identifier encoding | Rename the identifier — `_tide_…` is reserved for codegen. |
 | E0108 | E | Type used as value | `name-resolution.md` §Generic type-argument resolution | Use the type in a type position, or call `.new(...)` on a class, or use a brace literal. |
+| E0109 | E | Malformed numeric literal | `grammar.ebnf` IntLit / FloatLit | A digit is missing or invalid for the radix (e.g. `0o9`, `0x`, bare `1e`). |
+| E0110 | E | Malformed escape sequence | `grammar.ebnf` EscapeChar | Use one of the v1 escapes: `\n \t \r \\ \" \' \0 \xNN \uNNNN`. |
+| E0111 | E | Malformed rune literal | `grammar.ebnf` RuneLit | A rune literal must contain exactly one character or escape sequence between single quotes. |
 
 ### E02xx — Type system
 
@@ -151,6 +154,5 @@ but missing) block the audit.
 The reverse is NOT required: this file may add codes that
 aren't yet referenced anywhere (reserved for future use), as
 long as they're marked **reserved** in the message column.
-The current reserved codes are E0101 and E0102 — generic
-parser / lexer diagnostics whose specific shapes will be
-finalised once the lexer / parser code lands.
+Currently there are no reserved codes — every catalog row is
+live.

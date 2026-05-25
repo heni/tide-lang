@@ -1,7 +1,3 @@
-// Package lexer turns Tide source text into a stream of tokens.
-//
-// Contract: lang-spec/grammar.ebnf lexical part.
-// Canonical token serialization: lang-spec/test-contract.md §TOKENS.
 package lexer
 
 import (
@@ -69,14 +65,25 @@ func (t Token) Canonical() string {
 // Diag is a lexer-level diagnostic. Lexer halts on the first error
 // and returns the tokens accumulated so far together with the error.
 type Diag struct {
+	File    string // source file path; empty if not supplied
 	Code    string // E0xxx; see diagnostics.md
-	Message string
+	Message string // canonical message text from diagnostics.md
 	Line    int
 	Col     int
 }
 
+// Error returns the canonical diagnostic format from
+// lang-spec/test-contract.md §ERRORS:
+//
+//	<file>:<line>:<col>: error[<code>]: <message>
+//
+// When File is empty the prefix is omitted up to and including
+// the first colon, yielding "<line>:<col>: error[…]: …".
 func (d *Diag) Error() string {
-	return fmt.Sprintf("%d:%d: error[%s]: %s", d.Line, d.Col, d.Code, d.Message)
+	if d.File == "" {
+		return fmt.Sprintf("%d:%d: error[%s]: %s", d.Line, d.Col, d.Code, d.Message)
+	}
+	return fmt.Sprintf("%s:%d:%d: error[%s]: %s", d.File, d.Line, d.Col, d.Code, d.Message)
 }
 
 // keywordSet is the closed reclassification table from grammar.ebnf.
@@ -106,10 +113,19 @@ var punctChars = "(){}[].,;:@"
 // singleCharOps maps single-character operators.
 var singleCharOps = "+-*/%=!<>|"
 
-// Lex scans the source text and returns the token stream.
-// The terminating EOF token is always emitted.
+// Lex scans the source text and returns the token stream. The
+// terminating EOF token is always emitted. Diagnostics produced
+// by this overload carry no File field; use LexFile when the
+// caller has a source path and wants canonical
+// "<file>:<line>:<col>: …" diagnostic output.
 func Lex(src string) ([]Token, *Diag) {
-	l := &lexer{src: src, line: 1, col: 1, offset: 0}
+	return LexFile(src, "")
+}
+
+// LexFile scans src and tags any diagnostic with file as its
+// source-path prefix. file may be empty (equivalent to Lex).
+func LexFile(src, file string) ([]Token, *Diag) {
+	l := &lexer{src: src, file: file, line: 1, col: 1, offset: 0}
 	for !l.eof() {
 		if err := l.next(); err != nil {
 			return l.tokens, err
@@ -121,10 +137,16 @@ func Lex(src string) ([]Token, *Diag) {
 
 type lexer struct {
 	src    string
+	file   string
 	offset int // byte offset into src
 	line   int // 1-indexed line of the next char to consume
 	col    int // 1-indexed character column of the next char
 	tokens []Token
+}
+
+// diag builds a *Diag carrying this lexer's file path.
+func (l *lexer) diag(code, msg string, line, col int) *Diag {
+	return &Diag{File: l.file, Code: code, Message: msg, Line: line, Col: col}
 }
 
 func (l *lexer) eof() bool { return l.offset >= len(l.src) }
@@ -194,11 +216,12 @@ func (l *lexer) next() *Diag {
 	}
 	if r == '\r' {
 		startLine, startCol := l.line, l.col
-		if l.peekAtIs(1, '\n') {
-			l.advance(2)
-		} else {
-			l.advance(1)
+		// Per grammar.ebnf Newline = "\n" | "\r\n"; lone CR is
+		// not a recognised line terminator and is rejected.
+		if !l.peekAtIs(1, '\n') {
+			return l.diag("E0101", "Unexpected character", startLine, startCol)
 		}
+		l.advance(2)
 		l.emit(KindNewline, "", startLine, startCol)
 		return nil
 	}
@@ -227,12 +250,7 @@ func (l *lexer) next() *Diag {
 		}
 		lex := l.src[startOffset:l.offset]
 		if strings.HasPrefix(lex, "_tide_") {
-			return &Diag{
-				Code:    "E0107",
-				Message: "Reserved identifier prefix",
-				Line:    startLine,
-				Col:     startCol,
-			}
+			return l.diag("E0107", "Reserved identifier prefix", startLine, startCol)
 		}
 		if keywordSet[lex] {
 			l.emit(KindKeyword, lex, startLine, startCol)
@@ -280,12 +298,7 @@ func (l *lexer) next() *Diag {
 		return nil
 	}
 
-	return &Diag{
-		Code:    "E0101",
-		Message: fmt.Sprintf("Unexpected token: %q", string(r)),
-		Line:    startLine,
-		Col:     startCol,
-	}
+	return l.diag("E0101", "Unexpected character", startLine, startCol)
 }
 
 func (l *lexer) peekAtIs(byteOffset int, want rune) bool {
@@ -316,12 +329,7 @@ func (l *lexer) blockComment() *Diag {
 		_, sz := l.peek()
 		l.advance(sz)
 	}
-	return &Diag{
-		Code:    "E0102",
-		Message: "Unterminated block comment",
-		Line:    startLine,
-		Col:     startCol,
-	}
+	return l.diag("E0102", "Unterminated literal", startLine, startCol)
 }
 
 func (l *lexer) numberLit(startLine, startCol, startOffset int) *Diag {
@@ -394,12 +402,7 @@ func (l *lexer) consumeExponent() *Diag {
 		l.advance(1)
 	}
 	if r, _ := l.peek(); !isDigit(r) {
-		return &Diag{
-			Code:    "E0101",
-			Message: "Exponent has no digits",
-			Line:    startLine,
-			Col:     startCol,
-		}
+		return l.diag("E0109", "Malformed numeric literal", startLine, startCol)
 	}
 	for {
 		r, sz := l.peek()
@@ -418,8 +421,14 @@ func (l *lexer) intLitRadix(
 	hasDigit := false
 	for {
 		r, sz := l.peek()
-		if !digitOK(r) && r != '_' {
+		// Stop at anything that's not a valid digit for this
+		// radix, an underscore, or another decimal digit (which
+		// would be a malformed token like `0o9`).
+		if !digitOK(r) && r != '_' && !isDigit(r) && !isLetter(r) {
 			break
+		}
+		if !digitOK(r) && r != '_' {
+			return l.diag("E0109", "Malformed numeric literal", startLine, startCol)
 		}
 		if r != '_' {
 			hasDigit = true
@@ -427,12 +436,7 @@ func (l *lexer) intLitRadix(
 		l.advance(sz)
 	}
 	if !hasDigit {
-		return &Diag{
-			Code:    "E0101",
-			Message: "Integer literal has no digits after radix prefix",
-			Line:    startLine,
-			Col:     startCol,
-		}
+		return l.diag("E0109", "Malformed numeric literal", startLine, startCol)
 	}
 	l.emit(KindIntLit, l.src[startOffset:l.offset], startLine, startCol)
 	return nil
@@ -442,11 +446,11 @@ func (l *lexer) stringLit(startLine, startCol, startOffset int) *Diag {
 	l.advance(1) // consume opening '"'
 	for {
 		if l.eof() {
-			return &Diag{Code: "E0102", Message: "Unterminated string literal", Line: startLine, Col: startCol}
+			return l.diag("E0102", "Unterminated literal", startLine, startCol)
 		}
 		r, sz := l.peek()
 		if r == '\n' || r == '\r' {
-			return &Diag{Code: "E0102", Message: "Unterminated string literal (newline in string)", Line: startLine, Col: startCol}
+			return l.diag("E0102", "Unterminated literal", startLine, startCol)
 		}
 		if r == '"' {
 			l.advance(sz)
@@ -466,11 +470,11 @@ func (l *lexer) stringLit(startLine, startCol, startOffset int) *Diag {
 func (l *lexer) runeLit(startLine, startCol, startOffset int) *Diag {
 	l.advance(1) // consume opening '\''
 	if l.eof() {
-		return &Diag{Code: "E0102", Message: "Unterminated rune literal", Line: startLine, Col: startCol}
+		return l.diag("E0102", "Unterminated literal", startLine, startCol)
 	}
 	r, sz := l.peek()
 	if r == '\n' || r == '\r' || r == '\'' {
-		return &Diag{Code: "E0101", Message: "Empty or malformed rune literal", Line: startLine, Col: startCol}
+		return l.diag("E0111", "Malformed rune literal", startLine, startCol)
 	}
 	if r == '\\' {
 		if d := l.consumeEscape(); d != nil {
@@ -480,7 +484,7 @@ func (l *lexer) runeLit(startLine, startCol, startOffset int) *Diag {
 		l.advance(sz)
 	}
 	if r2, _ := l.peek(); r2 != '\'' {
-		return &Diag{Code: "E0101", Message: "Rune literal must contain exactly one character", Line: startLine, Col: startCol}
+		return l.diag("E0111", "Malformed rune literal", startLine, startCol)
 	}
 	l.advance(1) // consume closing '\''
 	l.emit(KindRuneLit, l.src[startOffset:l.offset], startLine, startCol)
@@ -493,7 +497,7 @@ func (l *lexer) consumeEscape() *Diag {
 	startLine, startCol := l.line, l.col
 	l.advance(1) // consume '\\'
 	if l.eof() {
-		return &Diag{Code: "E0102", Message: "Trailing backslash in string/rune literal", Line: startLine, Col: startCol}
+		return l.diag("E0102", "Unterminated literal", startLine, startCol)
 	}
 	r, sz := l.peek()
 	switch r {
@@ -507,12 +511,7 @@ func (l *lexer) consumeEscape() *Diag {
 		l.advance(sz)
 		return l.consumeHexDigits(4, startLine, startCol)
 	default:
-		return &Diag{
-			Code:    "E0101",
-			Message: fmt.Sprintf("Unknown escape sequence \\%s", string(r)),
-			Line:    startLine,
-			Col:     startCol,
-		}
+		return l.diag("E0110", "Malformed escape sequence", startLine, startCol)
 	}
 }
 
@@ -520,12 +519,7 @@ func (l *lexer) consumeHexDigits(n, startLine, startCol int) *Diag {
 	for i := 0; i < n; i++ {
 		r, sz := l.peek()
 		if !isHexDigit(r) {
-			return &Diag{
-				Code:    "E0101",
-				Message: fmt.Sprintf("Escape sequence expects %d hex digits", n),
-				Line:    startLine,
-				Col:     startCol,
-			}
+			return l.diag("E0110", "Malformed escape sequence", startLine, startCol)
 		}
 		l.advance(sz)
 	}

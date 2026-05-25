@@ -122,26 +122,29 @@ recognised). Write `x = x + 1` explicitly.
 |---|---|
 | `<-ch` | channel receive — **only** legal inside a `select` case |
 
-## Punctuation
+## Punctuation and structural symbols
+
+The table below describes the *role* of each symbol; the **token
+kind** (`Punct` vs `Op`) is fixed by `grammar.ebnf` — punctuation
+brackets and separators are `Punct`; the arrows (`->`, `=>`),
+ranges (`..`, `..=`), and variadic (`...`) are `Op` tokens. On
+disagreement, `grammar.ebnf` wins (D17).
 
 ```
-(  )       parens — grouping, parameter list, call args
-[  ]       brackets — slice literal, slice indexing/slicing
-{  }       braces — block, record literal, class body, scope body
-<  >       angle brackets — generic type / function arguments
-.          field access, method call, tuple-position access (t.0)
-,          separator in lists / args / tuples
-;          statement terminator (optional — newline normally suffices)
-:          type annotation (`x: int`), record / map literal field (`k: v`),
-           variant payload field (`name: T`), slice slicing (`s[a:b]`)
-->         return-type arrow — **not used in v1** (function return is `:`).
-           Reserved for future use.
-=>         arm separator in `match` and in short-closure literals
-           (`(a, b) => a < b`)
-..         half-open range (`a..b`)
-..=        inclusive range (`a..=b`)
-...        variadic parameter and variadic spread (e.g. `args: ...Any`)
-@          reserved for future use (annotations / attributes — not in v1)
+(  )       Punct — parens; grouping, parameter list, call args
+[  ]       Punct — brackets; slice literal, slice indexing/slicing
+{  }       Punct — braces; block, record literal, class body, scope body
+<  >       Op    — angle brackets / comparison; generic args resolved by parser
+.          Punct — field access, method call, tuple-position access (t.0)
+,          Punct — separator in lists / args / tuples
+;          Punct — statement terminator (optional — newline normally suffices)
+:          Punct — type annotation, record / map field, slice slicing
+->         Op    — return-type arrow — **reserved**; not produced in v1
+=>         Op    — arm separator in `match` and short-closure literals
+..         Op    — half-open range (`a..b`)
+..=        Op    — inclusive range (`a..=b`)
+...        Op    — variadic parameter / spread (e.g. `args: ...Any`)
+@          Punct — reserved for future use (annotations / attributes); not in v1
 ```
 
 ## Lexical conflict resolution

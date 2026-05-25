@@ -1,0 +1,8 @@
+--- TITLE ---
+E0111: rune literal with more than one character is malformed
+
+--- INPUT ---
+'ab'
+
+--- ERRORS ---
+src.td:1:1: error[E0111]: Malformed rune literal

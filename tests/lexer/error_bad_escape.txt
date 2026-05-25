@@ -1,0 +1,8 @@
+--- TITLE ---
+E0110: \q is not a recognised escape sequence
+
+--- INPUT ---
+"hello\q"
+
+--- ERRORS ---
+src.td:1:7: error[E0110]: Malformed escape sequence
