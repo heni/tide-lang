@@ -2,8 +2,10 @@ package codegen
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -56,6 +58,51 @@ func TestFixtures(t *testing.T) {
 			if strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
 				t.Errorf("%s: GO mismatch\n--- got ---\n%s\n--- want ---\n%s",
 					name, got, want)
+			}
+
+			// STDOUT / EXIT execution (optional sections). Only
+			// runs when both are present; skips silently when the
+			// `go` toolchain is missing.
+			wantOut, hasOut := sections["STDOUT"]
+			wantExit, hasExit := sections["EXIT"]
+			if !hasOut && !hasExit {
+				return
+			}
+			if _, err := exec.LookPath("go"); err != nil {
+				t.Skip("go toolchain not available; skip exec check")
+			}
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(got), 0o644); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "go.mod"),
+				[]byte("module tide-fixture-exec\n\ngo 1.22\n"), 0o644); err != nil {
+				t.Fatalf("write go.mod: %v", err)
+			}
+			cmd := exec.Command("go", "run", "./...")
+			cmd.Dir = dir
+			gotOutBytes, runErr := cmd.Output()
+			gotOut := string(gotOutBytes)
+			gotExit := 0
+			if ee, ok := runErr.(*exec.ExitError); ok {
+				gotExit = ee.ExitCode()
+			} else if runErr != nil {
+				t.Fatalf("%s: go run failed unexpectedly: %v", name, runErr)
+			}
+			if hasOut {
+				if strings.TrimRight(gotOut, "\n") != strings.TrimRight(wantOut, "\n") {
+					t.Errorf("%s: STDOUT mismatch\n got: %q\nwant: %q",
+						name, gotOut, wantOut)
+				}
+			}
+			if hasExit {
+				wantExitInt, err := strconv.Atoi(strings.TrimSpace(wantExit))
+				if err != nil {
+					t.Fatalf("%s: malformed EXIT section %q: %v", name, wantExit, err)
+				}
+				if gotExit != wantExitInt {
+					t.Errorf("%s: exit code = %d; want %d", name, gotExit, wantExitInt)
+				}
 			}
 		})
 	}
