@@ -15,6 +15,8 @@ gap, it lands as a new G-entry in the spec audit log.
 | d02 | bad-ID predicates over comma-separated ranges | `(string) => bool` first-class function value, `type Range = (int, int)` tuple alias, `sort.sorted` over `[]string`, `continue` (G46) |
 | d03 | monotonic-stack DP for largest L-digit subsequence | `for (idx, d) in line` (G25), slice slicing `xs[a:b]`, `&&` short-circuit (G47), `continue` (G46) |
 | d05 | merge sorted intervals, two-section parser | tuple `(int, int)` (G24), `t.0`/`t.1` field access, sort by comparator, `&&` short-circuit (G47), `continue` (G46) |
+| d07 | 1-D wavefront with splitters and timelines | `Set<int>` (G48), slice index-assignment `s[i] = v` (G45 extension), byte-indexed string access `s[i]` |
+| d11 | path-count DFS with memoisation | `Map<string, []string>` adjacency, `Map<string, int>` cache, `Set<string>` (G48) for cycle detection, recursive `Result`-returning DFS with `try` |
 
 ## Pending
 
@@ -22,8 +24,6 @@ Days deferred to later batches:
 
 - **d04, d09** — `itertools`-flavoured combinatorics; expressible in Tide
   but want a binding sketch first.
-- **d07, d11** — require `Set<T>` (not yet in `docs/language-spec.md`;
-  small extension expected).
 - **d08** — DSU + `math.sqrt`; expressible after the `math` binding lands.
 - **d12** — needs `regexp` binding.
 - **d10** — `numpy`/`pulp`/`tqdm`; out of scope.

@@ -116,6 +116,10 @@ shadow each other.
 - Slicing: `s[a:b]: []T` — half-open view into the same backing array.
   `s[a:]` and `s[:b]` are shorthand for `s[a:s.len()]` and `s[0:b]`.
   Out-of-bounds panics.
+- Index assignment: `s[i] = v` — write at index `i`; out-of-bounds
+  panics. Legal when `s` is a `var` binding or a `var` field on a
+  class. Strings are immutable — index assignment on a string is a
+  compile error.
 - Iteration: `for v in s` (value), `for (i, v) in s` (index and value).
 
 ### Maps: `Map<K, V>`
@@ -129,6 +133,25 @@ shadow each other.
 - `m.set(k, v)`, `m.has(k): bool`, `m.delete(k)`, `m.len(): int`.
 - Iteration: `for k in m` (keys, order unspecified — matches Go) and
   `for (k, v) in m` (entries).
+
+### Sets: `Set<T>`
+
+A built-in class (reference type), the obvious sibling of `Map<K, V>`
+and `Stack<T>`. Two examples in the AoC port (`d07`, `d11`) use a set
+for membership tests; re-implementing one per example wastes pages.
+
+- Construct empty: `Set<T>{}`.
+- Literal with members: `Set<int>{ 1, 2, 3 }` — comma-separated values
+  without `:`, distinguishing it from a map literal.
+- `s.add(v): unit` — insert; idempotent.
+- `s.has(v): bool`.
+- `s.delete(v)`.
+- `s.len(): int`.
+- Iteration: `for v in s` — order unspecified (matches Go's
+  map-backed set idiom).
+
+Set operations (`union`, `intersect`, `difference`) are park material;
+v1 needs only the four core ops.
 
 ### Stacks: `Stack<T>`
 
