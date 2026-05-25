@@ -4,10 +4,16 @@ Canonical shape of every node in the Tide abstract syntax tree.
 One entry per node kind, with fields (typed), required vs optional,
 and invariants. Source span is mandatory on every node.
 
+**Authority.** This file is the contract. Prose mirror in
+`../docs/language-spec.md` may lag; on disagreement this file
+wins. The grammar in `grammar.ebnf` produces these nodes 1:1 — any
+divergence between grammar productions and AST kinds here is a
+bug in one of the two files.
+
 This file is the **data-model contract** between the parser and
 everything downstream (sema, codegen). Re-implementations (Tide-in-
 Tide self-host) must produce nodes with the same fields and field
-names, so that AST-serialisation fixtures (`tests/parser/*.txt`
+names, so that AST-serialisation fixtures (`tests/grammar/*.txt`
 TOKENS+AST sections per `test-contract.md`) remain stable.
 
 ## Conventions
@@ -16,15 +22,28 @@ TOKENS+AST sections per `test-contract.md`) remain stable.
   counted positions: `start: Pos`, `end: Pos`; `Pos` is `line: int`,
   `col: int`, 1-indexed. The span covers the node from its first
   to its last source character, inclusive on the start, exclusive
-  on the end (half-open).
-- Field types use spec terminology — `[]Stmt`, `Option<TypeExpr>`,
-  `Map<string, Field>`. Not Go types.
+  on the end (half-open). **Nullary variants of a sum (e.g.
+  `WildcardPat`, `Break`, `Continue`, `UnitLit`) carry only their
+  `span`** — no other fields.
+- Field types use spec terminology — `[]Stmt`, `Option<TypeExpr>`.
+  Not Go types.
 - Fields are **required** unless explicitly marked `Option<...>`
   (one slot may be absent) or `[]T` (zero or more — empty list is
-  the absence).
+  the absence; no `Option<[]T>` anywhere — empty list *is* "no
+  items").
+- `_` (discard) is a regular `string` value in `name` fields — no
+  sum-typed marker. The discard convention is enforced by sema
+  (only some positions accept `"_"`).
 - Identifier-token nodes carry only the lexeme string, not the
   raw `Token` — the lexer's bookkeeping does not propagate into
   the AST.
+
+## Span on auxiliary record-shapes
+
+`MatchArm`, `Param`, `Variant`, `FieldDecl`, `ClassField`,
+`Method`, `InterfaceMethodSig`, `RecordPatField`, and every
+`BraceEntry` / `SelectCase` variant all carry `span`. Anything
+that the source file produces as a contiguous chunk has a span.
 
 ## Top level
 
@@ -173,13 +192,24 @@ implementation should preserve that order.
 
 ```
 TypeExpr =
-  | PrimitiveType    { name: string }                   // "bool", "int", "string", "unit", ...
+  | PrimitiveType    { name: PrimitiveName }
   | NamedType        { qname: []string, args: []TypeExpr }
   | TupleType        { components: []TypeExpr }         // components.len() >= 2
   | SliceType        { elem: TypeExpr }
   | FuncType         { params: []TypeExpr, return_type: Option<TypeExpr> }
   | InlineInterface  { methods: []InterfaceMethodSig }
+
+PrimitiveName =
+  | "bool" | "int" | "int8" | "int16" | "int32" | "int64"
+  | "uint" | "uint8" | "uint16" | "uint32" | "uint64"
+  | "float32" | "float64" | "byte" | "rune" | "string"
+  | "unit"
 ```
+
+`PrimitiveName` is a closed enum — the parser only constructs
+`PrimitiveType` when the source token is one of these exact
+identifiers. Any other identifier becomes a `NamedType` with
+`args.len() == 0`.
 
 `NamedType.qname.len() == 1` for unqualified, `>= 2` for
 `Pkg.Type` chains.
@@ -214,38 +244,84 @@ Stmt =
 
 ```
 Expr =
-  | Literal         { kind: LiteralKind, value: ... }
+  | IntLitExpr      { value: int64 }
+  | FloatLitExpr    { value: float64 }
+  | StringLitExpr   { value: string }                   // decoded (escapes resolved)
+  | RuneLitExpr     { value: int32 }                    // Unicode code point
+  | BoolLitExpr     { value: bool }
   | ThisExpr
   | ScopeRef
   | Ident           { name: string }
   | ParenExpr       { inner: Expr }
-  | TupleLit        { components: []Expr }            // arity >= 2
+  | TupleLit        { components: []Expr }              // components.len() >= 2
   | SliceLit        { elem_type: Option<TypeExpr>, items: []Expr }
-  | RecordLit       { type_name: NamedType, fields: []FieldInit }
-  | MapLit          { type_name: NamedType, entries: []MapEntry }
-  | SetLit          { type_name: NamedType, items: []Expr }
-  | StackLit        { type_name: NamedType }                       // always empty
-  | Block           ... see below
+  | BraceLit        { type_name: NamedType, kind: BraceKind, entries: []BraceEntry }
+  | Block           // see Block subsection below
   | IfExpr          { cond: Expr, then_block: Block, else_branch: IfExpr | Block }
-  | MatchExpr       { subject: Expr, arms: []MatchArm }
-  | ScopeExpr       { type_args: Option<[]TypeExpr>, parent: Option<Expr>, body: Block }
+  | MatchExpr       { subject: Expr, arms: []MatchArm }     // arms.len() >= 1
+  | ScopeExpr       { type_args: []TypeExpr, parent: Option<Expr>, body: Block }
   | TryExpr         { inner: Expr }
   | SpawnExpr       { body: Block }
-  | ClosureLit      { params: []Param, return_type: Option<TypeExpr>, body: Block | Expr }
+  | ClosureLit      { params: []Param, return_type: Option<TypeExpr>, body: Block }
   | UnitLit
   | Call            { callee: Expr, type_args: []TypeExpr, args: []Expr }
   | Index           { receiver: Expr, index: Expr }
   | Slice           { receiver: Expr, low: Option<Expr>, high: Option<Expr> }
   | Field           { receiver: Expr, name: string }
-  | TupleField      { receiver: Expr, position: int }
-  | Unary           { op: string, operand: Expr }              // "!" or "-"
-  | Binary          { op: string, left: Expr, right: Expr }    // "+", "-", "*", ..., "&&", "||"
+  | TupleField      { receiver: Expr, position: int }       // position >= 0
+  | Unary           { op: UnaryOp, operand: Expr }
+  | Binary          { op: BinaryOp, left: Expr, right: Expr }
   | Return          { value: Option<Expr> }
   | Break
   | Continue
+
+UnaryOp  = "!" | "-"
+BinaryOp = "+" | "-" | "*" | "/" | "%"
+         | "==" | "!=" | "<" | "<=" | ">" | ">="
+         | "&&" | "||"
 ```
 
-`LiteralKind` enumerates `Int | Float | String | Rune | Bool`.
+Notes:
+
+- The five literal kinds are **separate AST variants**, not one
+  `Literal { kind, value: ... }` — value types differ per kind and
+  the data-model is cleaner with one variant per shape.
+- `ClosureLit.body` is always `Block`. The short closure form
+  `(a, b) => expr` is parsed as a `Block` whose `stmts` is empty
+  and `trailing` is the expression — no `Block | Expr` sum in one
+  field.
+- `Return` `Break` `Continue` are **diverging expressions** (Never-
+  typed; unify with any expected position) — they replace the
+  earlier `ReturnStmt`/`BreakStmt`/`ContinueStmt` and appear at
+  statement position as `ExprStmt` wrapping them.
+
+### `BraceLit` — unified record / map / set / stack literal
+
+All four `NamedType "{" ... "}"` literal shapes share one AST
+node. The parser commits to a `BraceKind` based on the first
+entry's shape; an empty literal stays `Unknown` and is resolved
+by sema from `type_name`.
+
+```
+BraceKind  = Record | Map | Set | Stack | Unknown
+BraceEntry =
+  | RecordEntry { span: Span, name: string, value: Expr }
+  | MapEntry    { span: Span, key: Expr,    value: Expr }
+  | SetEntry    { span: Span, value: Expr }
+```
+
+Invariants:
+
+- `kind == Record`  ⇒ every `entries[i]` is a `RecordEntry`.
+- `kind == Map`     ⇒ every `entries[i]` is a `MapEntry`.
+- `kind == Set`     ⇒ every `entries[i]` is a `SetEntry`.
+- `kind == Stack`   ⇒ `entries.len() == 0` (`Stack<T>{}` is
+  always empty; non-empty stacks come from `push`).
+- `kind == Unknown` ⇒ `entries.len() == 0`; sema lowers to one
+  of the four based on the resolved type of `type_name`.
+
+Mixing entry shapes in one literal is a parse error: the parser
+commits after the first entry and rejects deviation.
 
 ### `Block`
 
@@ -263,43 +339,35 @@ Expr =
 | `pattern` | `Pattern` | yes | |
 | `body` | `Expr` | yes | |
 
-### `FieldInit`
+### `SelectCase` — sum, not Option-soup
 
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `name` | `string` | yes | record field name |
-| `value` | `Expr` | yes | |
+```
+SelectCase =
+  | SelectRecv    { span: Span, bind: Option<string>, channel: Expr, body: Block }
+  | SelectSend    { span: Span, channel: Expr, value: Expr, body: Block }
+  | SelectDefault { span: Span, body: Block }
+```
 
-### `MapEntry`
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `key` | `Expr` | yes | non-Ident expression — parser-side discriminator |
-| `value` | `Expr` | yes | |
-
-### `SelectCase`
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `span` | `Span` | yes | |
-| `kind` | `SelectKind` | yes | `Recv` / `Send` / `Default` |
-| `bind` | `Option<string>` | optional | for `case x = <-ch =>` |
-| `channel` | `Option<Expr>` | optional | absent only on `Default` |
-| `send_value` | `Option<Expr>` | optional | present only on `Send` |
-| `body` | `Block` | yes | |
+The cross-field invariants from the earlier Option-typed shape
+("`channel` absent iff `Default`", "`send_value` present iff
+`Send`") become impossible-by-construction.
 
 ## Patterns — `Pattern` is a sum
 
 ```
 Pattern =
   | WildcardPat                                      // _
-  | LiteralPat   { kind: LiteralKind, value: ... }
+  | IntLitPat    { value: int64 }
+  | StringLitPat { value: string }
+  | RuneLitPat   { value: int32 }
+  | BoolLitPat   { value: bool }
+  | FloatLitPat  { value: float64 }                  // grammar-legal; sema rejects (float == on patterns is unsafe)
   | UnitPat
   | IdentPat     { name: string }                    // binding
   | TuplePat     { components: []Pattern }
   | VariantPat   { qname: []string, payload: []Pattern }
   | RecordPat    { type_name: NamedType, fields: []RecordPatField }
-  | AltPat       { atoms: []Pattern }                // each atom is LiteralPat or VariantPat
+  | AltPat       { atoms: []Pattern }                // atoms.len() >= 2; each atom is a literal-pattern variant or a VariantPat
 ```
 
 ### `RecordPatField`
@@ -319,11 +387,10 @@ Mutability = Let | Var
 
 Used on `ClassField` and `VarStmt` (`Var`) / `LetStmt` (`Let`).
 
-### `SelectKind`
+### `SelectKind` (removed — see `SelectCase` sum above)
 
-```
-SelectKind = Recv | Send | Default
-```
+`SelectCase` is now itself a sum (`SelectRecv` / `SelectSend` /
+`SelectDefault`); no separate `SelectKind` enum is needed.
 
 ## Invariants checked at sema (not at the AST level)
 
