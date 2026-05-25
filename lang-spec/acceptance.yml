@@ -203,10 +203,12 @@ examples:
     - channel-close
     - for-channel
     - for-range
-    - select-block
     - record-construction
     - record-field-access
     - type-decl-record
+    - slice-empty-literal
+    - slice-push
+    - var-binding
     - binding-fmt
 
   concurrency/pubsub.td:
@@ -387,7 +389,9 @@ examples:
   leetcode/merge_intervals.td:
     - top-level-func
     - tuple-construction
-    - tuple-field-access
+    - record-construction
+    - record-field-access
+    - type-decl-record
     - slice-push
     - slice-len
     - for-slice
@@ -398,27 +402,25 @@ examples:
 
   leetcode/invert_binary_tree.td:
     - type-decl-sum
-    - class-decl
+    - generics-func
     - match-expr
     - match-variant-pattern
-    - option-type
     - binding-fmt
+    - binding-strconv
 
   # ── Interview ──────────────────────────────────────────────
   interview/vending_machine.td:
-    - class-decl
-    - class-method-instance
-    - class-method-static
-    - class-field-var
-    - implicit-receiver
+    - top-level-func
     - type-decl-sum
+    - var-binding
     - match-expr
     - match-variant-pattern
-    - result-type
-    - try-result
-    - return-unit
-    - record-construction
+    - match-tuple-pattern
+    - tuple-construction
+    - slice-literal
+    - for-slice
     - binding-fmt
+    - binding-strconv
 
   interview/lru_cache.td:
     - class-decl
@@ -494,7 +496,7 @@ examples:
     - top-level-func
     - for-slice
     - tuple-construction
-    - tuple-field-access
+    - match-tuple-pattern
     - type-decl-tuple-alias
     - closure-short
     - continue-stmt
@@ -505,13 +507,17 @@ examples:
   aoc/2025/d03.td:
     - top-level-func
     - for-string
-    - stack-literal
-    - stack-push
-    - stack-pop
-    - match-expr
-    - match-literal-pattern
+    - for-slice
+    - for-indexed-slice
+    - slice-empty-literal
+    - slice-push
+    - slice-len
+    - slice-slicing
+    - var-binding
+    - if-stmt
     - if-expr
     - while-loop
+    - continue-stmt
     - binding-strings
     - binding-fmt
 
@@ -539,22 +545,31 @@ examples:
     - for-set
     - for-string
     - conversion
+    - return-unit
     - binding-bufio
     - binding-fmt
 
   aoc/2025/d08.td:
     - top-level-func
+    - type-decl-alias
+    - tuple-construction
+    - tuple-field-access
     - map-literal
     - map-set
     - map-get
     - while-loop
+    - if-expr
+    - closure-short
     - binding-bufio
     - binding-fmt
 
   aoc/2025/d09.td:
     - top-level-func
+    - type-decl-alias
     - for-slice
     - tuple-construction
+    - tuple-field-access
+    - if-stmt
     - binding-bufio
     - binding-fmt
 
@@ -574,6 +589,8 @@ examples:
     - top-level-func
     - top-level-let
     - type-decl-sum
+    - tuple-construction
+    - tuple-field-access
     - map-literal
     - map-set
     - slice-push
@@ -666,7 +683,7 @@ examples:
     - channel-make
     - channel-send
     - channel-recv
-    - select-block
+    - var-binding
     - binding-fmt
     - binding-time
 
@@ -676,11 +693,14 @@ examples:
     - binding-fmt
 
   borgo/errors_as_types.td:
-    - type-decl-sum
+    - class-decl
+    - implements-clause
+    - class-method-instance
     - result-type
     - try-result
     - match-expr
     - match-variant-pattern
+    - unit-type
     - binding-fmt
 
   borgo/interfaces.td:
@@ -688,8 +708,9 @@ examples:
     - implements-clause
     - class-decl
     - class-method-instance
-    - class-field-var
+    - class-field-let
     - implicit-receiver
+    - record-construction
     - binding-fmt
 
   borgo/match_on_tuples.td:
@@ -749,14 +770,15 @@ examples:
     - channel-send
     - channel-recv
     - channel-close
-    - select-block
     - for-channel
     - class-decl
     - class-method-instance
-    - class-field-var
+    - class-method-static
+    - class-field-let
     - implicit-receiver
     - type-decl-sum
     - type-decl-record
+    - top-level-let
     - match-expr
     - match-variant-pattern
     - match-wildcard
@@ -764,13 +786,22 @@ examples:
     - result-type
     - try-result
     - try-option
+    - implements-clause
+    - interface-decl
+    - defer-call
+    - var-binding
+    - while-loop
+    - if-stmt
     - map-literal
     - map-get
     - map-set
     - slice-push
     - slice-len
+    - slice-index
     - binding-bufio
     - binding-json
     - binding-fmt
     - binding-os
     - binding-net
+    - binding-strings
+    - binding-strconv
