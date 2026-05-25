@@ -98,6 +98,15 @@ of the v1 ship gate, but every construct they use must still be in
 honest pressure on the spec. See [`aoc/README.md`](aoc/README.md) for the
 per-day breakdown.
 
+## `timus/` — selected Timus problems
+
+A second breadth pass: classical competitive-programming problems from
+the [Timus archive](http://acm.timus.ru/), chosen to exercise territory
+AoC misses — stdin scan-style input, `uint64` / `int64` arithmetic,
+byte-level string manipulation, floating-point math via `math.log10`.
+Files are self-contained: stdin → compute → stdout. See
+[`timus/README.md`](timus/README.md).
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.
