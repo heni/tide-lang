@@ -226,18 +226,25 @@ Token = Newline
 // order a recursive-descent parser would consume it.
 //
 // "Newline" below means the Newline token from the lexical
-// part. Inside any open-bracket region (`(...)`, `[...]`,
-// `{...}`, `<...>`), Newline tokens are silently dropped before
-// the parser sees them — this is the bracket-aware
-// newline-suppression rule (§Lexical conventions / G32). Outside
-// brackets, Newline is a statement terminator. Within a single
-// statement, an explicit `;` may also terminate.
+// part. Inside `(...)`, `[...]`, and `<...>` regions, Newline
+// tokens are silently dropped before the parser sees them — this
+// is the bracket-aware newline-suppression rule for argument
+// lists, tuples, slice literals, and generic type-argument lists.
+// **`{...}` blocks are NOT in the suppression set** — inside a
+// block, Newline is the statement terminator; without it the
+// parser cannot tell where one statement ends and the next
+// begins. Inside record / map / set / stack literals (which also
+// use `{ ... }`), Newline IS suppressed between entries — those
+// productions list explicit `Newline?` markers where they are
+// permitted. Outside any bracketed region, Newline is a statement
+// terminator. Within a single statement, an explicit `;` may also
+// terminate.
 
 // =============================================================
 // Top level
 // =============================================================
 
-File         = Newline* Import* Newline* Decl ( Newline+ Decl )* Newline* ;
+File         = Newline* ( Import Stmtterm )* Decl ( Stmtterm Decl )* Newline* ;
 
 Import       = "import" PackagePath ;
 PackagePath  = Ident ( "/" Ident )* ;
@@ -323,8 +330,11 @@ TypeExpr     = PrimitiveType
 PrimitiveType = "bool" | "int" | "int8" | "int16" | "int32" | "int64"
               | "uint" | "uint8" | "uint16" | "uint32" | "uint64"
               | "float32" | "float64" | "byte" | "rune" | "string"
-              | "Any" | "unit" | "error"
+              | "unit"                              // value-type with one inhabitant `()`
               ;
+// `Any` and `error` are predeclared identifiers, not lexical
+// primitives — they match `NamedType` (Ident lookup). Listed in
+// `builtins.md` (forthcoming).
 NamedType    = QualifiedIdent ( TypeArgs )? ;
 QualifiedIdent = Ident ( "." Ident )* ;
 TypeArgs     = "<" TypeExpr ( "," TypeExpr )* ">" ;
@@ -337,37 +347,43 @@ InlineInterface = "interface" "{" Newline? InterfaceMember* "}" ;
 // Statements
 // =============================================================
 
-Block        = "{" Newline? Stmt* TrailingExpr? "}" ;
+Block        = "{" Newline? ( Stmt Stmtterm )* TrailingExpr? Newline? "}" ;
 Stmt         = LetStmt
              | VarStmt
              | AssignStmt
-             | IfStmt                      // if-without-else used at stmt position
+             | IfStmt
              | ForStmt
              | WhileStmt
-             | MatchStmt
              | SelectStmt
-             | ReturnStmt
              | DeferStmt
-             | BreakStmt
-             | ContinueStmt
-             | ExprStmt
+             | ExprStmt                      // wraps MatchExpr / ScopeExpr / CallExpr / ReturnExpr / BreakExpr / ContinueExpr / TryExpr etc.
              ;
-TrailingExpr = Expr ;                      // last expression of a block — its value
+TrailingExpr = Expr ;                        // last expression of a block — its value (no Stmtterm)
 
-LetStmt      = "let" Pattern ( ":" TypeExpr )? "=" Expr Stmtterm ;
-VarStmt      = "var" ( Ident | "_" ) ( ":" TypeExpr )? ( "=" Expr )? Stmtterm ;
-AssignStmt   = LValue "=" Expr Stmtterm ;
-LValue       = PostfixExpr ;               // restricted by sema to writable shapes
-IfStmt       = "if" Expr Block ( "else" ( IfStmt | Block ) )? Stmtterm ;
-ForStmt      = "for" Pattern "in" Expr Block Stmtterm ;
-WhileStmt    = "while" Expr Block Stmtterm ;
-MatchStmt    = MatchExpr Stmtterm ;
-SelectStmt   = "select" "{" Newline? SelectCase* "}" Stmtterm ;
-ReturnStmt   = "return" Expr? Stmtterm ;
-DeferStmt    = "defer" Expr Stmtterm ;
-BreakStmt    = "break" Stmtterm ;
-ContinueStmt = "continue" Stmtterm ;
-ExprStmt     = Expr Stmtterm ;
+LetStmt      = "let" Pattern ( ":" TypeExpr )? "=" Expr ;
+VarStmt      = "var" ( Ident | "_" ) ( ":" TypeExpr )? ( "=" Expr )? ;
+AssignStmt   = LValue "=" Expr ;
+LValue       = PostfixExpr ;                 // restricted by sema to writable shapes
+IfStmt       = "if" Expr Block ( "else" ( IfStmt | Block ) )? ;
+ForStmt      = "for" Pattern "in" Iterable Block ;
+WhileStmt    = "while" Expr Block ;
+SelectStmt   = "select" "{" Newline? ( SelectCase ( SelectCaseSep SelectCase )* SelectCaseSep? )? "}" ;
+SelectCaseSep = "," Newline* | Newline+ ;
+DeferStmt    = "defer" Expr ;
+ExprStmt     = Expr ;
+
+// `return` / `break` / `continue` are *diverging expressions* in
+// PrimaryExpr (see DivergingExpr below); they appear at statement
+// position as ExprStmt-wrapped DivergingExpr. Similarly `panic(msg)`
+// and `os.exit(code)` are ordinary calls whose Never-typed result
+// unifies with any expected type.
+
+Iterable     = RangeExpr | Expr ;
+RangeExpr    = AddExpr ( ".." | "..=" ) AddExpr ;
+// RangeExpr is admitted only in `for ... in` headers and inside
+// slice slicing (where its operands appear as `Expr? ":" Expr?` —
+// the `..`/`..=` form is for-loop-only). General expressions cannot
+// produce a range value in v1.
 
 Stmtterm     = Newline+ | ";" Newline* ;
 
@@ -412,15 +428,13 @@ TupleFieldSuffix = "." IntLit ;
 ArgList          = Expr ( "," Newline? Expr )* ;
 
 PrimaryExpr  = Literal
+             | ThisExpr                              // explicit class receiver
+             | ScopeRef                              // `scope` as a value, supports `.context` etc.
              | Ident
              | "(" Expr ")"
              | TupleLit
              | SliceLit
-             | RecordLit
-             | MapLit
-             | SetLit
-             | StackLit                              // `Stack<T>{}`
-             | ChannelLit                            // `makeChannel<T>(...)` is a call, not a literal — but `Channel<T>{}` etc. are literals only via PrimaryExpr ⊆ NamedType-pattern
+             | BraceLit                              // RecordLit / MapLit / SetLit / StackLit — disambiguated by content (see below)
              | Block                                 // block-as-expression
              | IfExpr
              | MatchExpr
@@ -429,29 +443,67 @@ PrimaryExpr  = Literal
              | SpawnExpr
              | ClosureLit
              | UnitLit
+             | DivergingExpr                         // return / break / continue
              ;
 
 Literal      = IntLit | FloatLit | StringLit | RuneLit | "true" | "false" ;
 UnitLit      = "(" ")" ;
+ThisExpr     = "this" ;                              // legal only inside instance-method bodies (sema check)
 
-TupleLit     = "(" Expr ( "," Newline? Expr )+ ")" ;        // arity ≥ 2
-SliceLit     = "[" ( Expr ( "," Newline? Expr )* )? "]"
-             | SliceType "{" ( Expr ( "," Newline? Expr )* )? "}"
+// `scope` used in expression position (not heading a ScopeExpr block).
+// Disambiguation against ScopeExpr: the parser commits to ScopeExpr
+// when the token *after* `scope` is `<` (TypeArgs), `(` (parent ctx),
+// or `{` (body); otherwise it parses ScopeRef and lets subsequent
+// suffix operators (typically `.context`) attach.
+ScopeRef     = "scope" ;
+
+DivergingExpr = ReturnExpr | BreakExpr | ContinueExpr ;
+ReturnExpr   = "return" Expr? ;
+BreakExpr    = "break" ;
+ContinueExpr = "continue" ;
+
+// `panic(...)` and `os.exit(...)` are diverging by virtue of their
+// signatures (built-in / binding returns Never), not via dedicated
+// productions — they parse as ordinary calls.
+
+TupleLit     = "(" Expr ( "," Newline? Expr )+ ","? Newline? ")" ;     // arity ≥ 2
+SliceLit     = "[" Newline? ( Expr ( "," Newline? Expr )* ","? Newline? )? "]"
+             | SliceType "{" Newline? ( Expr ( "," Newline? Expr )* ","? Newline? )? "}"
              ;
-RecordLit    = NamedType "{" Newline? RecordField ( "," Newline? RecordField )* ","? Newline? "}" ;
-RecordField  = Ident ":" Expr ;
-MapLit       = NamedType "{" ( MapEntry ( "," Newline? MapEntry )* )? "}" ;
-MapEntry     = Expr ":" Expr ;
-SetLit       = NamedType "{" ( Expr ( "," Newline? Expr )* )? "}" ;
-StackLit     = NamedType "{" "}" ;                          // Stack<T>{} only
+
+// BraceLit covers RecordLit / MapLit / SetLit / StackLit — all share
+// the `NamedType "{" ... "}"` prefix, so the production must accept
+// any of the entry shapes and let the parser commit on the first
+// entry.
+BraceLit      = NamedType "{" Newline? BraceLitBody? "}" ;
+BraceLitBody  = RecordEntry ( "," Newline? RecordEntry )* ","? Newline?
+              | MapEntry    ( "," Newline? MapEntry    )* ","? Newline?
+              | SetEntry    ( "," Newline? SetEntry    )* ","? Newline?
+              ;
+RecordEntry   = Ident ":" Expr ;                     // key is a bare Ident — record
+MapEntry      = MapKey ":" Expr ;                    // key is non-Ident expression — map
+MapKey        = StringLit | IntLit | RuneLit | "true" | "false"
+              | "(" Expr ")"                         // parenthesised key for general expr
+              ;
+SetEntry      = Expr ;                               // no `:` after — set element
+
+// Parser-side disambiguation: with the first entry's first token,
+//   - `Ident ":"`                   → RecordEntry mode (continue with RecordEntry list).
+//   - `MapKey ":"`                  → MapEntry mode.
+//   - Anything else followed by `,`/`}` → SetEntry mode.
+//   - Empty `{}`                    → ambiguous at parse; type info from NamedType decides
+//                                       (RecordLit if all fields are `Option<_>`, StackLit
+//                                       for Stack<T>, empty Map / Set / etc. otherwise).
 
 ClosureLit   = "func" "(" ParamList? ")" ReturnAnnot? Block
-             | "(" ParamList? ")" "=>" Expr                  // short closure
+             | "(" ShortParamList? ")" "=>" Expr        // short closure — type annotations optional
              ;
+ShortParamList = ShortParam ( "," ShortParam )* ;
+ShortParam     = ( Ident | "_" ) ( ":" TypeExpr )? ;
 
 IfExpr       = "if" Expr Block "else" ( IfExpr | Block ) ;   // both arms required for value
 MatchExpr    = "match" Expr "{" Newline? MatchArm ( "," Newline? MatchArm )* ","? Newline? "}" ;
-MatchArm     = Pattern "=>" ( Expr | Block ) ;
+MatchArm     = Pattern "=>" Expr ;                   // Expr covers inline expressions, Blocks (via PrimaryExpr→Block), and divergences (return/break/continue) via DivergingExpr
 
 ScopeExpr    = "scope" TypeArgs? ( "(" Expr ")" )? Block ;   // optional parent ctx
 TryExpr      = "try" Expr ;
@@ -461,33 +513,52 @@ SpawnExpr    = "spawn" Block ;
 // Patterns
 // =============================================================
 
-Pattern      = WildcardPat
+Pattern      = AltPat                                // try alternatives first; falls through to single-pat
+             | SinglePat
+             ;
+SinglePat    = WildcardPat
              | LiteralPat
              | UnitPat
+             | VariantPat                            // VariantPat before IdentPat — nullary `Some`/`None`/`Up`
+                                                     //   match here, not as a fresh identifier binding.
+                                                     //   The resolver decides "known variant" vs "new
+                                                     //   binding" at sema time, but at grammar level
+                                                     //   we commit to VariantPat when the head
+                                                     //   QualifiedIdent's first component is a known
+                                                     //   variant-name; otherwise IdentPat.
              | IdentPat
              | TuplePat
-             | VariantPat
              | RecordPat
-             | AltPat
              ;
 WildcardPat  = "_" ;
 LiteralPat   = IntLit | StringLit | RuneLit | "true" | "false" ;
 UnitPat      = "(" ")" ;
-IdentPat     = Ident ;                              // binding
-TuplePat     = "(" Pattern ( "," Pattern )+ ")" ;
-VariantPat   = QualifiedIdent ( "(" Pattern ( "," Pattern )* ")" )? ;
-RecordPat    = NamedType "{" RecordPatField ( "," RecordPatField )* "}" ;
+IdentPat     = Ident ;                               // binding
+TuplePat     = "(" Pattern ( "," Pattern )+ ","? ")" ;
+VariantPat   = QualifiedIdent ( "(" Pattern ( "," Pattern )* ","? ")" )? ;
+RecordPat    = NamedType "{" Newline? RecordPatField ( "," Newline? RecordPatField )* ","? Newline? "}" ;
 RecordPatField = Ident ":" Pattern ;
-AltPat       = LiteralPat ( "|" LiteralPat )+ ;     // alternatives — literal only in v1
+
+// Alternatives — literal patterns OR nullary variants (corpus uses
+// both: `'(' | '[' | '{'` in valid_parentheses.td and
+// `Up | Left` in p1033.td). Mixing literal and variant in one
+// AltPat is legal at the grammar level; sema enforces the union
+// makes sense.
+AltPat       = AltAtom ( "|" AltAtom )+ ;
+AltAtom      = LiteralPat | VariantPat ;
 
 // =============================================================
 // Select cases (only inside SelectStmt)
 // =============================================================
 
 SelectCase   = SelectRecv | SelectSend | SelectDefault ;
-SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" Block Newline* ;
-SelectSend   = "case" PostfixExpr "." "send" "(" Expr ")" "=>" Block Newline* ;
-SelectDefault = "default" "=>" Block Newline* ;
+SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" Block ;
+// `send` is recognised as a method-call shape (PostfixExpr ending in
+// CallSuffix). The parser admits `case <PostfixExpr> "=>" Block` and
+// sema enforces that the PostfixExpr is exactly `Expr "." "send"
+// "(" Expr ")"` — a method call on a channel.
+SelectSend   = "case" PostfixExpr "=>" Block ;
+SelectDefault = "default" "=>" Block ;
 
 // =============================================================
 // Generic-argument disambiguation (resolves `<` from comparison)
@@ -499,9 +570,14 @@ SelectDefault = "default" "=>" Block Newline* ;
 // validation:
 //
 //   1. Speculatively parse `< TypeExpr ( "," TypeExpr )* >`.
-//   2. If the next token after the speculative `>` is `(`
-//      (function call) or `{` (record / map / set / stack
-//      literal), commit to TypeArgs.
+//   2. If the next token after the speculative `>` is one of:
+//        `(`   — function call (e.g. `f<int>(x)`)
+//        `{`   — generic literal (e.g. `Set<int>{ 1, 2 }`,
+//                `Envelope<HelloPayload>{ ... }`)
+//        `.`   — generic static-method call
+//                (`LRU<string, int>.new(2)`,
+//                `Broker<int>.new()`)
+//      commit to TypeArgs.
 //   3. Otherwise, rewind and treat the `<` as comparison.
 //
 // This is the same rule Go uses for the analogous case in its
