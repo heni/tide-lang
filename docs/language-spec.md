@@ -368,6 +368,20 @@ For inspection rather than propagation, use `match`. Mapping Go's
 `errors.Is`/`errors.As`/`%w` wrapping onto Tide error values is a later
 design item.
 
+**Diverging built-ins.** Two built-ins never return — they unify with
+any expected type at the call site, so they can occupy a `match` arm
+or any other typed position:
+
+- `panic(msg: string)` — abort the program with an unrecoverable
+  error. The Go runtime's panic stack walks via the D8 source map,
+  so the trace points at the originating `.td` site. Use for
+  invariant violations and "obviously unreachable" arms.
+- `os.exit(code: int)` — terminate the process with the given code.
+
+Both compile down to Go's `panic` and `os.Exit` respectively; neither
+returns, and the checker treats them as type-compatible with whatever
+context they appear in.
+
 ## Control flow
 
 ```td

@@ -119,6 +119,14 @@ those patterns back to the source project.
 |---|---|
 | [`agents/counterstack`](agents/counterstack/README.md) — Pentix arena agent | sum-typed wire protocol, TCP + JSON Lines transport via the new `net` + `bufio` bindings, structured-concurrent reader/writer/decision-loop, `interface Strategy` |
 
+## `borgo/` — Tide ports of Borgo snapshot tests
+
+Apples-to-apples comparison with Tide's closest existing competitor.
+[Borgo](https://github.com/borgo-lang/borgo) is a small statically
+typed language that compiles to Go (Rust-flavoured syntax, ML-family
+types). Five of its snapshot programs ported to Tide, with
+side-by-side notes. See [`borgo/README.md`](borgo/README.md).
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.
