@@ -40,6 +40,10 @@ func fetch(parent: context.Context, url: string, timeout: time.Duration):
 // trailing expression drains.
 func fetchAll(urls: []string, timeout: time.Duration): Result<[]Page, error> {
   return scope<[]Page, error> {
+    // Buffer size = number of spawns so a successful sibling never
+    // blocks on `collect.send(p)` even if the scope short-circuits on
+    // another spawn's Err and the trailing-expression drain never
+    // runs. Don't shrink without revisiting deadlock.
     let collect = makeChannel<Page>(urls.len())
     for u in urls {
       spawn {

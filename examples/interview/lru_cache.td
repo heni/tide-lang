@@ -1,8 +1,10 @@
 // Showcase: a generic class with methods, combining a map (for O(1) lookup)
 // with a doubly-linked list (for O(1) eviction-order maintenance).
-// Demonstrates static factory methods, instance methods, mutation through
-// `this.field`, and that classes are reference types (G16) — the list
-// nodes referenced from the map are the same objects mutated by `touch`.
+// Demonstrates static factory methods, instance methods under the
+// implicit-receiver rule (bare field/method names; `this.field` reserved
+// for the shadowed case, which this class avoids by construction), and
+// that classes are reference types (G16) — the list nodes referenced
+// from the map are the same objects mutated by `touch`.
 
 import fmt
 

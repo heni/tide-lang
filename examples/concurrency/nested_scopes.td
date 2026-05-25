@@ -47,6 +47,8 @@ func fetch(ctx: context.Context, region: string, item: string):
 func fetchRegion(ctx: context.Context, region: Region):
     Result<[]string, error> {
   return scope<[]string, error>(ctx) {
+    // Buffer sized to the spawn count — see parallel_fetcher.td for why
+    // shrinking the buffer reintroduces deadlock on Err short-circuit.
     let collect = makeChannel<string>(region.items.len())
     for item in region.items {
       spawn {
@@ -80,9 +82,9 @@ func main() {
       }
     }
     collect.close()
-    var out: [][]string = [][]string{}
-    for items in collect { out = out.push(items) }
-    out
+    var byRegion: [][]string = [][]string{}
+    for items in collect { byRegion = byRegion.push(items) }
+    byRegion
   }
 
   match result {

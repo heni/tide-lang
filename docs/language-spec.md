@@ -462,7 +462,10 @@ receiver distinction is a codegen concern, not a surface concern.
 method bodies clean but creates a silent-bug class around the
 field / parameter / local name overlap. Tide treats this strictly,
 but only on the **write** side — that is where the silent-bug class
-actually bites:
+actually bites. The rule applies to **instance methods** only;
+`static` methods have no receiver in scope, so the diagnostic does
+not fire on their bodies even when a local happens to share a field
+name.
 
 - **Error.** When a method parameter or a method-body `let`/`var`
   introduces a name that already names a field of the enclosing
@@ -471,17 +474,16 @@ actually bites:
   to rename the parameter / local, or to use the explicit
   `this.field` form for the write.
 
-  ```td
-  class Counter {
-    var n: int
+  Reusing the `Counter` shape from above (with `var n: int`) to
+  show the three options at the call site:
 
-    // ERROR: writing to a bare `n` while param `n` shadows the field.
-    set(n: int) { n = 0 }
-    // OK: rename the parameter so the bare write targets the field.
-    setRenamed(v: int) { n = v }
-    // OK: keep the name and qualify the write.
-    setExplicit(n: int) { this.n = n }
-  }
+  ```td
+  // ERROR: writing to a bare `n` while param `n` shadows the field.
+  set(n: int) { n = 0 }
+  // OK: rename the parameter so the bare write targets the field.
+  setRenamed(v: int) { n = v }
+  // OK: keep the name and qualify the write.
+  setExplicit(n: int) { this.n = n }
   ```
 
   A **read** of bare `n` in the same shadow region is fine — the
@@ -500,8 +502,7 @@ actually bites:
   - A method-body local shadows a free function in scope.
 
   These are usually deliberate but worth a flag; the checker emits a
-  warning, not an error. Promote any to error if the example
-  acceptance suite later finds one to be a real footgun.
+  warning, not an error.
 
 The asymmetry is deliberate. Field/local write-shadow is the case
 where the silent-bug cost is high — an intended field-write becomes
@@ -696,10 +697,18 @@ A `scope<T, E> { ... }` is an **expression** of type `Result<T, E>`.
 
 **Shorthand forms.** When the scope produces no useful value:
 
-- `scope<E> { ... }: Result<unit, E>` — single type parameter; the
-  block needs no trailing expression. `Ok(())` if all spawns succeed.
+- `scope<unit, E> { ... }` — the general form, made concrete with
+  `T = unit`. The block's trailing expression may be omitted; a
+  block without a trailing expression has type `unit` (per the
+  blocks-are-expressions rule above), so `Ok(())` is the implicit
+  result.
+- `scope<E> { ... }: Result<unit, E>` — the one-type-parameter
+  shorthand, identical to the form above.
 - `scope { ... }: Result<unit, error>` — the shortest form, default
   error type.
+
+All three are interchangeable for the fire-and-forget case; pick by
+how much error-type ceremony the call site can tolerate.
 
 Spawned blocks return `Result<unit, E>`. They are **fire-and-forget**
 with respect to value collection — a spawn that wants to produce a
