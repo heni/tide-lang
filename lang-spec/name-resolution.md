@@ -28,10 +28,14 @@ them inside-out — the closest match wins.
    `TypeDecl`, `ClassDecl`, `InterfaceDecl`, and imported
    package aliases from `Import` declarations in the same file.
 5. **Predeclared (built-in) scope.** Identifiers shipped by the
-   language itself — `int`, `string`, `bool`, `Option`,
-   `Result`, `Ok`, `Err`, `Some`, `None`, `error`, `Any`,
-   `panic`, `refEq`, `makeChannel`, `makeSlice`, conversions
-   (`int`, `float64`, …). Full list in `builtins.md`.
+   language itself — the primitive type names, the generic
+   containers (`Option`, `Result`, `Map`, `Set`, `Stack`,
+   `Channel`, `SendChan`, `RecvChan`), variant constructors
+   (`Ok`, `Err`, `Some`, `None`), the `error` interface, the
+   `Any` escape type, free functions (`panic`, `refEq`,
+   `makeChannel`, `makeSlice`), and the conversion functions
+   (`int(.)`, `float64(.)`, `byte(.)`, `rune(.)`, `string(.)`).
+   See `builtins.md` for the full list with signatures.
 
 ## Resolution algorithm
 
@@ -39,6 +43,9 @@ For each unqualified `Ident` AST node, lookup proceeds:
 
 ```
 for scope in (local, function/method, class, file, predeclared):
+    # class scope is only present when resolving inside an
+    # instance method body; skipped in functions, static
+    # methods, and at the top level.
     if scope contains a binding named ident.name:
         bind ident → that declaration
         return
@@ -74,11 +81,28 @@ without needing `this.count`.
 current instance. It carries the receiver's type. `ThisExpr`
 nodes are legal only inside instance-method bodies; the resolver
 emits **E0501 `this` outside an instance method** otherwise.
+(`grammar.ebnf` admits the form lexically — `ThisExpr = "this"`
+in `PrimaryExpr` — and defers the position check to the
+resolver, which is here.)
 
 Static methods have **no** class scope — they cannot reference
 `this`, fields, or instance methods without an explicit
 receiver expression (`Counter.new(0)` etc.). Inside a static
 method body, `this` triggers E0501.
+
+**Class scope outranks predeclared, by design.** When an
+instance method has the same name as a predeclared identifier
+— most notably `error(): string` on a `class X implements
+error` — class scope wins. Bare `error(...)` inside such a
+method body resolves to the method on `this`, not to the
+free-function constructor `error(msg: string): error`. This
+is intentional and not diagnosed: the implements-relation
+*requires* the method name to match the interface's, and the
+free constructor is reached either before the class declaration
+or through an explicit unqualified call from outside the class
+body. Users who need both inside a method body would have to
+qualify the free constructor via a top-level wrapper — the
+corpus does not.
 
 ## Shadowing — diagnostics
 
@@ -109,7 +133,7 @@ A **read** of bare `n` in the same shadow region is fine — the
 closest binding (param / local) wins, which is almost always
 what the developer wants.
 
-### Soft shadows — **W0503 (warning)**
+### Soft shadows — **E0503 (warning)**
 
 Three cases of less-dangerous overlap emit a warning, not an
 error:
@@ -134,16 +158,23 @@ should rename or annotate.
   current scope handle. `scope.context` is the cancellable
   context. Outside a scope block, `scope` *as a value* triggers
   **E0601 `scope` outside a scope block**.
-  
+
+  **Walks outward through `spawn` and closures.** A `spawn`
+  block is an ordinary lexical sub-block of the enclosing
+  `scope`; it does not break the search. The resolver finds the
+  **nearest enclosing `scope` block** — through any number of
+  intermediate `spawn`s, closures, or plain `Block`s — and binds
+  `scope` to it. Nested `scope` blocks shadow the outer with the
+  innermost.
+
   Disambiguation: `scope` followed by `<` / `(` / `{` parses as
   `ScopeExpr` (the value-block construct); `scope` followed by
   `.` parses as `ScopeRef` (an identifier-shape primary
   expression).
-- **`_`** — discard. Resolves to nothing (cannot be read). Use
-  in patterns, parameter positions, `let _ = expr` for side
-  effects, `for _ in xs`. Multiple `_`s in the same scope do
-  **not** shadow each other (each is a distinct anonymous
-  binding).
+- **`_`** — discard. Introduces no binding at all; multiple
+  `_`s do not collide and cannot be read. Legal positions: in
+  patterns, function-parameter slots, `let _ = expr` for
+  side-effect-only evaluation, `for _ in xs`.
 
 ## Variant constructors
 
@@ -164,8 +195,16 @@ known variant *if* such a variant exists in any in-scope sum
 type — even if a fresh `IdentPat` binding would otherwise be
 valid (`AltPat` cases like `Up | Left` are unambiguous in this
 sense). The grammar admits both `VariantPat` and `IdentPat` for
-the same source shape; the resolver picks `VariantPat` if a
-matching variant is in scope, else `IdentPat`.
+the same source shape; the **resolver** (not the parser)
+decides — even though `grammar.ebnf:524-528` reads as if the
+parser committed early, the canonical algorithm is resolution-
+time.
+
+In an `AltPat`, each `AltAtom` is resolved independently using
+the same rule. Mixed literal-and-variant alternatives (e.g. `'('
+| Up`) are grammar-legal; sema will reject if the union does
+not narrow to a sensible scrutinee type, but the resolver does
+not.
 
 ## Imports and module-level scope
 
@@ -174,21 +213,24 @@ access (`fmt.println`) resolves through the package's
 declaration list. v1 has no `as` alias for imports —
 `fmt.println` always uses the package's natural name.
 
-A `Decl` is visible to **the entire file**, including positions
-before its declaration in source order. (No forward-reference
-errors; the file scope is built in one pass before any body is
-resolved.)
+(Decl visibility across the whole file is covered in
+§Forward references below.)
 
 ## Forward references
 
 - **Top-level declarations:** all visible everywhere in the
-  file — no forward-reference errors.
+  file — no forward-reference errors. (`Decl` order in source
+  does not constrain reference order; the file scope is built
+  in one pass before any body is resolved.)
 - **Block-local `let` / `var`:** visible only from their
   declaration point onward. A reference to an unresolved local
   shadowed by an outer file-scope decl falls back to file scope.
 - **Class fields / methods:** visible to each other regardless
   of order in the class body (the class scope is also built in
-  one pass).
+  one pass). v1 has **no field initializers** — fields are set
+  by `static new(...)` factory methods or by direct brace
+  construction — so the only forward-reference concern is
+  method-to-field and method-to-method, both freely allowed.
 - **Type parameters of a generic decl** (`class LRU<K, V>` or
   `func f<T>(...)`): visible in the entire decl body, including
   the parameter and return type signatures.
@@ -200,6 +242,13 @@ Inside a generic decl, the type parameters are bindings in a
 parameter `T` resolves only when looked up in type position; if
 a value expression refers to `T`, the resolver emits
 **E0301 Type used as value**.
+
+E0301 also fires for any `NamedType`-only identifier in value
+position — referring to `Counter` (a class) as a value, without
+following it by a member access (`Counter.new(...)` ✓) or a
+brace literal (`Counter{...}` ✓), is the error. Type
+parameters are the most common trigger; named types are the
+less-common one.
 
 ## Resolver errors — quick index
 
