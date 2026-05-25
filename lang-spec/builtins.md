@@ -33,7 +33,7 @@ predeclared generic types defined below.
 
 ## Primitive types
 
-The closed set of primitive type names, exactly the same as
+The closed set of primitive type names — exactly mirrors
 `ast.md PrimitiveName`:
 
 ```
@@ -49,8 +49,6 @@ string                                  [UTF-8 byte sequence, indexable
                                          by byte but iterable by rune;
                                          see for-loop iter rules]
 unit                                    [only inhabitant `()`]
-Never                                   [bottom; no values]
-Any                                     [escape; see type-system.md §Notation]
 ```
 
 `byte` aliases `uint8` and `rune` aliases `int32`; the alias is
@@ -59,6 +57,19 @@ positions, but tokens are not rewritten and diagnostics quote
 the source spelling.
 
 ## Special types
+
+`Never` and `Any` are predeclared **non-primitive** types: they
+are not in `ast.md PrimitiveName` but live in the predeclared
+scope as `NamedType` (with no type args).
+
+- **`Never`** — bottom type; no inhabitants. Produced by
+  `DivergingExpr` (`return`/`break`/`continue`/`panic`/`os.exit`).
+  Subtypes every other type per `type-system.md` §Notation
+  (`Never <: T` for all `T`).
+- **`Any`** — escape type used at binding-boundary
+  `...Any` variadic parameters. Does **not** narrow back to a
+  concrete `T`; users may not introduce `Any`-typed parameters
+  in their own code (D11 / G23, enforced by the resolver).
 
 ### `error`
 
@@ -119,6 +130,38 @@ conversion).
 
 `Ok` / `Err` are predeclared variants, unqualified usable.
 
+## Slice methods (`[]T`)
+
+`[]T` is a built-in type (per `ast.md SliceType`); the
+predeclared scope attaches the following total methods to every
+slice value:
+
+```
+[]T:
+  len(): int
+  push(e: T): []T                    [returns a NEW slice; the original is
+                                       unchanged at the header level. Idiomatic
+                                       use: `xs = xs.push(e)` (G45)]
+  copy(): []T                        [shallow header-copy with fresh backing
+                                       array; used when callers must isolate
+                                       mutations]
+```
+
+`push` does not mutate the receiver's header — it produces a new
+slice with the element appended. The backing array may be
+shared with the original if capacity allowed; callers that need
+isolation should `copy()` first. This matches the corpus
+convention (`xs = xs.push(v)` everywhere).
+
+Slices also support:
+- index read `s[i]: T` (T-Index-Slice, `type-system.md`),
+- index write `s[i] = v` (slice index-write mutates the backing
+  array, not the header — see `type-system.md` §Bindings and
+  assignment),
+- slicing `s[low:high]: []T` (T-Slice),
+- iteration: `for x in s { ... }` (`T`), or
+  `for (i, x) in s { ... }` (`(int, T)`) — see `IterElem` below.
+
 ## Map
 
 ```
@@ -144,11 +187,11 @@ panics at runtime on miss — the **total**-API path is `m.get(k)
 : Option<V>` followed by a `match`.
 
 Iteration: `for (k, v) in m { ... }` (`IterElem(Map<K, V>) =
-(K, V)`). Order is **insertion order**; insertion order is the
-order in which `m.set(k, ...)` was first called for each `k`.
-(This is stronger than Go's randomised iteration order — Tide
-preserves order for predictable golden tests; lowering keeps a
-parallel `[]K` for ordering.)
+(K, V)`). Order is **insertion order**: the order in which
+`m.set(k, ...)` was first called for each `k`. This is stronger
+than Go's randomised iteration order — Tide preserves order for
+predictable golden tests (see the Lowering pointers section
+below for the implementation strategy).
 
 ## Set
 
@@ -180,18 +223,28 @@ class Stack<T> {
 
   len(): int
   push(e: T): unit
-  pop(): Option<T>                 [total — None on empty]
-  peek(): Option<T>                [total — None on empty]
+  pop(): Result<T, error>          [total — Err("empty stack") on empty,
+                                     so `try stack.pop()` propagates inside
+                                     a Result-returning function]
+  peek(): Option<T>                [total — None on empty; does not consume]
 }
 ```
 
 LIFO. Brace literal `Stack<T>{ e1, e2, ..., en }` (`T-Stack-Lit`)
 pushes in left-to-right order, so `e_n` is on top after construction.
 
-Iteration: `for e in s { ... }` consumes the stack **in pop
-order** (`IterElem(Stack<T>) = T`). To iterate without
-consuming, copy via `s.toSlice()` (forthcoming as soon as the
-corpus needs it; not in v1 if unused).
+`pop()` returns `Result<T, error>` because corpus usage (e.g.
+`examples/interview/rpn_calculator.td`,
+`examples/leetcode/valid_parentheses.td`) consumes it with
+`try` inside `Result`-returning functions and with `match Ok/Err`
+arms. The asymmetric `peek(): Option<T>` choice reflects intent:
+`peek` is "look without committing", `pop` is "consume; propagate
+emptiness as an error".
+
+Stack values are **not iterable** in v1 — there is no
+`for x in stack` form (no corpus site uses it). If a consumer
+needs ordered iteration, drain by popping in a loop until
+`len() == 0`.
 
 ## Channel
 
@@ -206,6 +259,9 @@ class Channel<T> {
 
 class SendChan<T> {                [send-only widening of Channel<T>]
   send(v: T): unit
+  close(): unit                    [producer closes the channel to signal EOF
+                                     to consumers; idiomatic pipeline-stage
+                                     pattern across the corpus]
 }
 
 class RecvChan<T> {                [recv-only widening of Channel<T>]
@@ -222,8 +278,9 @@ The reverse is not allowed.
 `recv()` blocks; `tryRecv()` does not. `recv()` on a closed
 channel returns the zero value for `T` (Go semantics) — but
 Tide's recommended idiom is `for v in ch { ... }` which exits on
-close. Closing a `SendChan<T>` is illegal — only the owning
-`Channel<T>` may close.
+close. `close()` is exposed on `Channel<T>` and `SendChan<T>`
+but NOT on `RecvChan<T>` — only the owner / producer side may
+close. Closing a closed channel panics at runtime.
 
 Iteration: `for v in ch { ... }` over a `RecvChan<T>` —
 terminates cleanly when the channel closes (`IterElem(RecvChan<T>)
@@ -261,7 +318,14 @@ fn makeSlice<T>(n: int): []T           [n >= 0; runtime panic if n < 0]
 fn error(msg: string): error          [free constructor for the error
                                         interface, equivalent to a tiny
                                         anonymous-class instance with
-                                        error() => msg]
+                                        error() => msg. NOTE: inside the body
+                                        of a method on a `class X implements
+                                        error`, bare `error(...)` resolves to
+                                        the method `this.error()`, not to this
+                                        free constructor — class scope outranks
+                                        predeclared per name-resolution.md
+                                        §Implicit receiver. Use a top-level
+                                        wrapper to disambiguate if needed.]
 ```
 
 `panic` aborts with `msg` on stderr and exit code 2 (matching Go
@@ -296,9 +360,9 @@ fn string(x: T): string            [T ∈ []byte, rune (UTF-8 single-codepoint),
 ```
 
 `string(x)` with `x : int` encodes the codepoint as UTF-8 (Go
-semantics). `string(s : []byte)` interprets the bytes as UTF-8
-without copying invariants — the result shares the byte
-sequence semantically but is immutable.
+semantics). `string(s : []byte)` matches Go's `string([]byte)`:
+the runtime makes a defensive copy; the result is immutable and
+independent of subsequent mutations to `s`.
 
 Out-of-set conversions fire **E0205 Illegal type conversion**.
 
@@ -310,48 +374,63 @@ extensibility — user types cannot opt in in v1.
 
 ```
 IterElem : Type → Type
-  []T            → T                              [or (int, T) if pat is 2-tuple]
-  Map<K, V>      → (K, V)
-  Set<T>         → T
-  Stack<T>       → T                              [pop order; consumes the stack]
-  RangeExpr      → int                            [a..b or a..=b]
-  RecvChan<T>    → T                              [terminates on close]
+  []T              → T                            [or (int, T) if pat is 2-tuple]
+  string           → rune                         [UTF-8 codepoint iteration; matches
+                                                    Go's `for _, r := range s`]
+  Map<K, V>        → (K, V)                       [insertion order]
+  Set<T>           → T                            [insertion order]
+  Iterable<int>    → int                          [a RangeExpr `a..b` / `a..=b`]
+  RecvChan<T>      → T                            [terminates on close]
 ```
+
+Notable absence: `Stack<T>` is not iterable in v1 (see §Stack).
 
 See `type-system.md` §Control-flow expressions, T-For.
 
-## Comparable
+## Comparable / Ord
 
-Used by `T-Cmp` / `T-Ord`. The set is closed:
+Two closed sets used by `T-Cmp` (`==` / `!=`) and `T-Ord`
+(`<` / `<=` / `>` / `>=`) respectively.
 
 ```
-Comparable :=
+Comparable (T-Cmp, for == / !=):
   | numeric primitives (int, int8..int64, uint..uint64, byte, rune,
                         float32, float64)
   | string
-  | bool                                          [Cmp only; not Ord per T-Ord]
+  | bool
+  | rune                                          [as integer codepoint]
   | tuple T1 × T2 × ... iff each Ti Comparable
   | record { f1: T1; ... } iff each Ti Comparable
+
+Ord (T-Ord, for < / <= / > / >=):
+  | numeric primitives
+  | string                                        [lexicographic byte-wise]
+  | rune                                          [codepoint order]
+  | bool                                          [false < true, mirroring Go]
 ```
 
-Notably excluded: function values, channels, maps, sets, stacks,
-slices, class instances (use `refEq` for class identity, manual
-field-wise comparison otherwise).
+Notably excluded from **both**: function values, channels, maps,
+sets, stacks, slices, class instances. Use `refEq` for class
+identity; manual field-wise comparison otherwise. `Ord` excludes
+tuples and records — there is no v1 lexicographic comparison
+for composite types (corpus does not need one; D11 parks bounded
+generics that would enable it).
 
 ## Lowering pointers
 
 Each built-in maps onto a Go construct at codegen time. The full
-table lives in `lowering-go.md` (forthcoming); a sketch:
+table is forthcoming in `lowering-go.md` (Formalization-I);
+sketch below for reviewers' orientation:
 
 | Tide built-in | Go lowering |
 |---|---|
 | `int`, `string`, ... | identical Go primitives |
-| `[]T` | `[]T` |
+| `[]T` | `[]T`; `xs.push(e)` lowers to `append(xs, e)`; `xs.len()` to `len(xs)`; `xs.copy()` to a fresh `make` + `copy(dst, src)` |
 | `Option<T>` | tagged struct `{tag uint8; v T}` (zero-cost for `None`) |
 | `Result<T, E>` | tagged struct `{tag uint8; v T; e E}` |
 | `Map<K, V>` | wrapper around `map[K]V` plus `[]K` for insertion-order |
 | `Set<T>` | wrapper around `map[T]struct{}` plus `[]T` for order |
-| `Stack<T>` | `[]T` with `len`-based push/pop |
+| `Stack<T>` | wrapper around `[]T` with `len`-based push/pop; `pop()` checks length and returns `Err` on empty |
 | `Channel<T>` | `chan T` |
 | `SendChan<T>` | `chan<- T` |
 | `RecvChan<T>` | `<-chan T` |

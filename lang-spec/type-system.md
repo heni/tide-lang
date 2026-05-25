@@ -164,9 +164,13 @@ Truncation / rounding semantics follow Go's rules at runtime.
                ────────────────────────────────────────────────────────────────
                                   Γ ⊢ a op b : bool
 
-(T-Ord)        Γ ⊢ a : T   Γ ⊢ b : T   T ∈ {numeric, string, rune, bool}
+(T-Ord)        Γ ⊢ a : T   Γ ⊢ b : T   T ∈ Ord
                ──────────────────────────────────────────────────────────
                             Γ ⊢ a op b : bool                  op ∈ {<, <=, >, >=}
+
+               where Ord = {numeric primitives, string, rune, bool}
+               — closed; see builtins.md §Comparable / Ord. Tuples
+               and records are NOT in Ord (use field-wise comparison).
 
 (T-Logical)    Γ ⊢ a : bool   Γ ⊢ b : bool       op ∈ {&&, ||}
                ───────────────────────────────────────────────
@@ -473,11 +477,14 @@ their per-step element type, defined in `builtins.md` under
 | Source type `I` | `IterElem(I)` |
 |---|---|
 | `[]T` | `T` (or `(int, T)` if `pat` is a 2-tuple pattern — indexed iteration) |
-| `Map<K, V>` | `(K, V)` |
-| `Set<T>` | `T` |
-| `Stack<T>` | `T` (pop order) |
+| `string` | `rune` (UTF-8 codepoint iteration) |
+| `Map<K, V>` | `(K, V)` (insertion order) |
+| `Set<T>` | `T` (insertion order) |
 | `Iterable<int>` (a `RangeExpr`) | `int` |
 | `RecvChan<T>` | `T` (loop ends on channel close) |
+
+`Stack<T>` is **not** iterable in v1 — drain via `pop()` in a
+loop. See `builtins.md` §Stack.
 
 `Iterable<T>` itself is **not** an open user-extensible
 interface in v1 — it is the closed set above. D11 parks the
