@@ -18,7 +18,7 @@ On disagreement these files win, per D17.
 | `type-system.md` | Inference rules in sequent notation | ✓ |
 | `builtins.md` | Predeclared identifiers with full signatures | ✓ |
 | `desugaring.md` | Tide AST → simpler IR (match arms, scope+spawn, try) | ✓ |
-| `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | forthcoming |
+| `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | ✓ |
 | `diagnostics.md` | Numbered error-code catalog (`E0103 Unknown name`, …) | forthcoming |
 | `acceptance.yml` | Per-example feature manifest (label → covered constructs) | forthcoming |
 
