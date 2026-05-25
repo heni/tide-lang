@@ -424,6 +424,25 @@ No positional form (rejected: short records' "obvious" order is exactly
 the case people get wrong). Anonymous record literals — `{ x: 1, y: 2 }`
 — are accepted only when the target type is inferable from context.
 
+**Generic records** are declared the same way as generic classes:
+
+```td
+type Envelope<P> = {
+  t: string
+  q: Option<string>
+  p: P
+}
+```
+
+Constructed with explicit type arguments at the call site:
+`Envelope<HelloPayload>{ t: "hello", q: None, p: ... }`.
+
+**Top-level `let`** declares a module-scope constant: `let
+protocolVersion = 5`. Type is inferred from the right-hand side or
+written explicitly: `let port: int = 9017`. `var` is not legal at the
+top level — module-scope mutable state requires an explicit
+class-with-instance pattern.
+
 ## Classes
 
 Classes are **reference types** (D14, G16): assignment copies the

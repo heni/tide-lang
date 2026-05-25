@@ -245,6 +245,41 @@ json.serializeTo<W: io.Writer>(w: W, v: Any): Result<unit, error>
 json.serializeIndent(v: Any, prefix: string, indent: string): Result<[]byte, error>
 ```
 
+## net
+
+```td
+interface net.Conn extends io.Reader, io.Writer, io.Closer {
+  // ... addresses, deadlines as added when needed
+}
+
+net.dial(network: string, address: string): Result<net.Conn, error>
+// Convenience for TCP — equivalent to `net.dial("tcp", addr)`.
+net.dialTCP(address: string): Result<net.Conn, error>
+```
+
+## bufio
+
+```td
+// Line-by-line reader over an io.Reader.
+class bufio.Scanner {
+  scan(): bool                                     // false on EOF or error
+  text(): string                                   // most recent line, no trailing \n
+  bytes(): []byte
+  err(): Option<error>
+}
+
+bufio.newScanner(r: io.Reader): bufio.Scanner
+
+// Buffered writer over an io.Writer.
+class bufio.Writer {
+  write(p: []byte): Result<int, error>
+  writeString(s: string): Result<int, error>
+  flush(): Result<unit, error>
+}
+
+bufio.newWriter(w: io.Writer): bufio.Writer
+```
+
 ## net/url
 
 ```td

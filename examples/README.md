@@ -107,6 +107,18 @@ byte-level string manipulation, floating-point math via `math.log10`.
 Files are self-contained: stdin → compute → stdout. See
 [`timus/README.md`](timus/README.md).
 
+## `agents/` — real-project architectural sketches
+
+Single-file Tide ports of real-project architectures, chosen to test
+how the language scales to a non-toy shape. Each subfolder targets
+one Python or Go project the user has built and distills its load-
+bearing patterns into a single `.td` file plus a `README.md` mapping
+those patterns back to the source project.
+
+| Project | Forces |
+|---|---|
+| [`agents/counterstack`](agents/counterstack/README.md) — Pentix arena agent | sum-typed wire protocol, TCP + JSON Lines transport via the new `net` + `bufio` bindings, structured-concurrent reader/writer/decision-loop, `interface Strategy` |
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.
