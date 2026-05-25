@@ -48,9 +48,12 @@ func bounding(c0: Corner, c1: Corner): Rect {
   return ((x0, y0), (x1, y1))
 }
 
-func area(c0: Corner, c1: Corner): int {
-  let r = bounding(c0, c1)
+func rectArea(r: Rect): int {
   return (r.1.0 - r.0.0 + 1) * (r.1.1 - r.0.1 + 1)
+}
+
+func area(c0: Corner, c1: Corner): int {
+  return rectArea(bounding(c0, c1))
 }
 
 // Does an axis-aligned segment cross the *interior* of `rect`? "On the
@@ -103,8 +106,10 @@ func solveHard(corners: []Corner): int {
         }
       }
       // Python's `for/else` equivalent: only score if no break fired.
+      // Reuse `rect` from the bounding() call above — no redundant
+      // bounding-recompute.
       if !crossed {
-        let a = area(corners[i], corners[j])
+        let a = rectArea(rect)
         if a > best { best = a }
       }
     }

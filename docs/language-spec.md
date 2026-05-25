@@ -136,8 +136,17 @@ shadow each other.
   `s[a:]` and `s[:b]` are shorthand for `s[a:s.len()]` and `s[0:b]`.
   Out-of-bounds panics.
 - Index assignment: `s[i] = v` — write at index `i`; out-of-bounds
-  panics. Legal when `s` is a `var` binding or a `var` field on a
-  class. Strings are immutable — index assignment on a string is a
+  panics. **The binding mode of `s` itself does not matter.** A
+  slice header (the `(ptr, len, cap)` triple) and the backing array
+  are separate values; index-assignment mutates the backing array,
+  not the header. So `s[i] = v` is legal even when `s` is a `let`
+  binding, a function parameter, or a `let` field — the header
+  cannot be reassigned (`s = otherSlice` is illegal under `let`),
+  but element writes are unaffected. The same applies to nested
+  index-writes: `m[i][j] = v` reads the inner slice header from
+  `m[i]` and writes to that slice's backing array; legal whenever
+  `m` is a slice of slices, regardless of `m`'s binding mode.
+  Strings are immutable — index assignment on a string is a
   compile error.
 - Copy: `s.copy(): []T` — returns a new slice with the same elements,
   independent backing storage. Useful when you want to mutate without
@@ -371,8 +380,10 @@ return                     // unit return
 return value
 ```
 
-Range forms: `a..b` half-open `[a, b)`; `a..=b` inclusive `[a, b]`. No
-stepped ranges in v1.
+Range forms: `a..b` half-open `[a, b)`; `a..=b` inclusive `[a, b]`. The
+bounds `a` and `b` may be any `int` expression, including negative
+(`for dr in -1..=1` iterates `-1, 0, 1`). If `a > b` the range is
+empty; the loop body does not run. No stepped ranges in v1.
 
 The discard pattern `_` is valid in any `for` binder position:
 `for _ in 1..=n` (iterate n times, ignore the index), `for (_, v) in s`
