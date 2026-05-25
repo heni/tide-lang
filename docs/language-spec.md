@@ -7,14 +7,14 @@
 > truth — anything the suite uses must be specified here.
 >
 > **Authority.** This document is the **prose** view of Tide. The
-> companion formal docs — [`keywords.md`](keywords.md),
-> [`grammar.md`](grammar.md) (lexical + syntactic),
-> [`operators.md`](operators.md),
-> [`builtins.md`](builtins.md), [`types.md`](types.md) — are
-> machine-precise. On disagreement the formal docs win; the prose is
-> a mirror. Updates require a paired edit. Every formal artifact must
-> carry ≥ 1 atomic fixture in `tests/{lexer,grammar,sema}/` — see
-> `docs/test-contract.md`.
+> companion formal docs are machine-precise; on disagreement they
+> win, and the prose is a mirror. Updates require a paired edit.
+> Currently shipped: [`keywords.md`](keywords.md). Forthcoming as
+> the formalization series lands: `grammar.md` (lexical + syntactic),
+> `operators.md`, `ast.md` (node schema), `builtins.md`, `types.md`
+> (inference rules), `diagnostics.md` (error catalog), `features.md`
+> + acceptance manifests, `lowering.md` (Go IR contract),
+> `test-contract.md` (canonical fixture serialization).
 
 ## Lexical
 

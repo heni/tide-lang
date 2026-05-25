@@ -18,13 +18,18 @@ names.
 ### Declaration and control flow
 
 ```
-import    type      newtype    class      interface
+import    type      class      interface
 implements          extends    static
 func      let       var        if         else
 for       in        while      return
-match     try       defer      spawn      scope
+match     try       defer      spawn      scope      select
 break     continue
 ```
+
+`newtype` is reserved-in-principle for nominal newtypes (D11 open
+issue — the v1 working placeholder is `newtype X = T`), but does not
+appear in the corpus yet. It returns to this list with the PR that
+ships its concrete syntax.
 
 ### Type literals
 
@@ -91,6 +96,7 @@ them but doing so is bad style. Full signatures live in
 | `>=` | greater-than-or-equal |
 | `&&` | logical AND, short-circuit |
 | `\|\|` | logical OR, short-circuit |
+| `\|` | sum-type variant separator (`type X = \| A \| B(...)`) and pattern alternative inside `match` (`'(' \| '[' \| '{' => ...`). Not an expression-level operator |
 
 ### Unary
 
@@ -103,7 +109,7 @@ them but doing so is bad style. Full signatures live in
 
 | Operator | Meaning |
 |---|---|
-| `=`  | assignment (`var` binding, `var` field), or value in a key-value pair |
+| `=`  | initialiser in a `let` / `var` declaration; assignment to a `var` binding or `var` field; right-hand side of a record / map literal field (`k: v` form). Not a comparison operator |
 | `let` / `var` | binding declaration (keywords above; not operators) |
 
 There is no compound assignment in v1 (`+=`, `-=`, ... are not
@@ -126,9 +132,7 @@ recognised). Write `x = x + 1` explicitly.
 ,          separator in lists / args / tuples
 ;          statement terminator (optional — newline normally suffices)
 :          type annotation (`x: int`), record / map literal field (`k: v`),
-           variant payload field (`name: T`),
-           arm separator in `match` (`pat => expr` — see `=>`),
-           slice slicing (`s[a:b]`)
+           variant payload field (`name: T`), slice slicing (`s[a:b]`)
 ->         return-type arrow — **not used in v1** (function return is `:`).
            Reserved for future use.
 =>         arm separator in `match` and in short-closure literals
