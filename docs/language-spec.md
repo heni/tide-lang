@@ -5,6 +5,16 @@
 > forces them. Expect churn through the early phases. The acceptance suite
 > in [`../examples/README.md`](../examples/README.md) is the working ground
 > truth — anything the suite uses must be specified here.
+>
+> **Authority.** This document is the **prose** view of Tide. The
+> companion formal docs are machine-precise; on disagreement they
+> win, and the prose is a mirror. Updates require a paired edit.
+> Currently shipped: [`keywords.md`](keywords.md). Forthcoming as
+> the formalization series lands: `grammar.md` (lexical + syntactic),
+> `operators.md`, `ast.md` (node schema), `builtins.md`, `types.md`
+> (inference rules), `diagnostics.md` (error catalog), `features.md`
+> + acceptance manifests, `lowering.md` (Go IR contract),
+> `test-contract.md` (canonical fixture serialization).
 
 ## Lexical
 
