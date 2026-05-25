@@ -33,19 +33,28 @@
 # the corpus is non-empty. This avoids forcing every example to
 # tag every line — saves churn without weakening the contract.
 
+#
+# Bump policy: minor bump (1 → 2 → 3 …) on any vocabulary
+# rename, feature removal, or schema-structure change. Tag
+# additions are NOT a bump (purely additive). The L-audit
+# is keyed on `version`; an audit run against a different
+# version refuses to compare.
+
 version: 1
 
 # Features assumed covered by the corpus as a whole. Audit
 # passes them if `examples:` is non-empty.
+#
+# Only features that **every Tide program of meaningful size**
+# uses go here. Anything narrower belongs in the per-example
+# tag list — false positives in `ubiquitous:` defeat the audit
+# (it can't detect that nothing exercises the feature).
 ubiquitous:
   - imports
   - top-level-func
   - let-binding
   - return-value
   - assignment
-  - slice-literal
-  - slice-index
-  - slice-slicing
   - binding-fmt
 
 features:
@@ -103,6 +112,8 @@ features:
   record-field-access:         "obj.field"
   refEq:                       "refEq(a, b) class identity check"
   panic:                       "panic(msg) call"
+  any-type:                    "Any escape type (variadic binding boundary)"
+  unit-type:                   "unit type / `()` literal"
 
   # ── Containers (literal + key methods) ───────────────────
   slice-literal:               "[e_1, ..., e_n] (T-Slice-Lit-Nonempty)"
@@ -115,6 +126,7 @@ features:
   map-get:                     "m.get(k): Option<V>"
   map-set:                     "m.set(k, v): unit"
   map-has:                     "m.has(k): bool"
+  map-delete:                  "m.delete(k): unit"
   set-literal:                 "Set<T>{ e, ... } or Set.new()"
   set-add:                     "s.add(e): unit"
   set-has:                     "s.has(e): bool"
@@ -148,6 +160,9 @@ features:
   # ── Stdlib bindings (representative pkgs) ────────────────
   binding-fmt:                 "fmt.println / fmt.printf"
   binding-os:                  "os.args / os.exit / os.stdin"
+  binding-io:                  "io.readAll / io.copy"
+  binding-log:                 "log.println / log.fatal"
+  binding-net:                 "net.dialTCP / net.listen"
   binding-strings:             "strings.fields / strings.split / strings.count"
   binding-strconv:             "strconv.atoi / strconv.itoa / strconv.parseFloat"
   binding-bufio:               "bufio.NewScanner / Scan / Text"
@@ -176,6 +191,7 @@ examples:
     - channel-widening
     - for-channel
     - top-level-func
+    - unit-type
     - binding-fmt
 
   concurrency/worker_pool.td:
@@ -216,6 +232,7 @@ examples:
     - channel-make
     - channel-send
     - channel-recv
+    - channel-tryRecv
     - select-block
     - binding-time
     - binding-fmt
@@ -255,19 +272,34 @@ examples:
     - top-level-func
     - class-decl
     - class-method-instance
+    - class-method-static
     - class-field-var
     - implicit-receiver
     - map-literal
     - map-get
     - map-set
     - map-has
+    - map-delete
     - match-expr
     - match-variant-pattern
+    - match-wildcard
     - option-type
     - result-type
     - try-result
+    - try-option
+    - defer-call
+    - slice-literal
+    - slice-empty-literal
+    - slice-push
+    - any-type
+    - if-stmt
+    - record-construction
+    - type-decl-record
     - binding-net-http
     - binding-json
+    - binding-io
+    - binding-log
+    - binding-sync
     - binding-fmt
 
   services/parallel_fetcher.td:
@@ -288,6 +320,7 @@ examples:
     - closure-full
     - generics-func
     - binding-net-http
+    - binding-io
     - binding-fmt
 
   services/graceful_server.td:
@@ -300,6 +333,7 @@ examples:
     - closure-full
     - binding-net-http
     - binding-context
+    - binding-log
     - binding-sync
     - binding-fmt
 
@@ -309,6 +343,7 @@ examples:
     - type-decl-record
     - binding-net-http
     - binding-json
+    - binding-log
     - binding-fmt
 
   # ── LeetCode ───────────────────────────────────────────────
@@ -448,6 +483,7 @@ examples:
     - if-stmt
     - slice-push
     - slice-len
+    - slice-slicing
     - binding-strings
     - binding-strconv
     - binding-bufio
@@ -546,11 +582,8 @@ examples:
     - match-variant-pattern
     - result-type
     - try-result
-    - return-unit
-    - binding-bufio
-    - binding-strings
-    - binding-strconv
     - binding-fmt
+    - binding-os
 
   timus/p1133.td:
     - top-level-func
@@ -595,6 +628,7 @@ examples:
     - for-slice
     - var-binding
     - if-stmt
+    - slice-index
     - binding-strings
     - binding-strconv
     - binding-fmt
@@ -665,6 +699,8 @@ examples:
     - match-tuple-pattern
     - match-literal-pattern
     - match-alt-pattern
+    - match-wildcard
+    - panic
     - binding-fmt
 
   # ── Raku stress tests ──────────────────────────────────────
@@ -680,18 +716,19 @@ examples:
     - binding-fmt
 
   raku/error_chain.td:
-    - interface-decl
     - implements-clause
     - class-decl
     - class-method-instance
-    - class-field-var
+    - class-field-let
     - implicit-receiver
-    - type-decl-sum
     - result-type
     - try-result
     - match-expr
     - match-variant-pattern
+    - if-expr
     - binding-fmt
+    - binding-strings
+    - binding-strconv
 
   raku/set_algebra.td:
     - top-level-func
@@ -711,7 +748,6 @@ examples:
     - channel-make
     - channel-send
     - channel-recv
-    - channel-tryRecv
     - channel-close
     - select-block
     - for-channel
@@ -723,16 +759,18 @@ examples:
     - type-decl-record
     - match-expr
     - match-variant-pattern
+    - match-wildcard
     - option-type
     - result-type
     - try-result
+    - try-option
     - map-literal
     - map-get
     - map-set
     - slice-push
     - slice-len
-    - panic
     - binding-bufio
     - binding-json
     - binding-fmt
     - binding-os
+    - binding-net
