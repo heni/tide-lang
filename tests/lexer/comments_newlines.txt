@@ -1,0 +1,24 @@
+--- TITLE ---
+line / block comments skipped; interior newlines emitted as tokens
+
+--- INPUT ---
+let x = 1 // trailing
+let y = 2
+/* block */ let z = 3
+
+--- TOKENS ---
+Keyword<let>  1:1
+Ident<x>  1:5
+Op<=>  1:7
+IntLit<1>  1:9
+Newline<>  1:22
+Keyword<let>  2:1
+Ident<y>  2:5
+Op<=>  2:7
+IntLit<2>  2:9
+Newline<>  2:10
+Keyword<let>  3:13
+Ident<z>  3:17
+Op<=>  3:19
+IntLit<3>  3:21
+EOF<>  3:22

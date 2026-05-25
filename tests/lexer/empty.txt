@@ -1,0 +1,7 @@
+--- TITLE ---
+empty input — only an EOF token
+
+--- INPUT ---
+
+--- TOKENS ---
+EOF<>  1:1

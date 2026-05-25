@@ -1,0 +1,13 @@
+--- TITLE ---
+integer literal forms — decimal, hex, octal, binary, underscores
+
+--- INPUT ---
+42 1_000_000 0x1F 0o77 0b1010
+
+--- TOKENS ---
+IntLit<42>  1:1
+IntLit<1_000_000>  1:4
+IntLit<0x1F>  1:14
+IntLit<0o77>  1:19
+IntLit<0b1010>  1:24
+EOF<>  1:30

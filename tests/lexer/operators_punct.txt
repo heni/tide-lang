@@ -1,0 +1,53 @@
+--- TITLE ---
+operator longest-match + punctuation coverage
+
+--- INPUT ---
+a..=b a..b a==b a!=b a<=b a>=b a&&b a||b x=>y x<-c -> | + - ( ) { } [ ] . , ; : @
+
+--- TOKENS ---
+Ident<a>  1:1
+Op<..=>  1:2
+Ident<b>  1:5
+Ident<a>  1:7
+Op<..>  1:8
+Ident<b>  1:10
+Ident<a>  1:12
+Op<==>  1:13
+Ident<b>  1:15
+Ident<a>  1:17
+Op<!=>  1:18
+Ident<b>  1:20
+Ident<a>  1:22
+Op<<=>  1:23
+Ident<b>  1:25
+Ident<a>  1:27
+Op<>=>  1:28
+Ident<b>  1:30
+Ident<a>  1:32
+Op<&&>  1:33
+Ident<b>  1:35
+Ident<a>  1:37
+Op<||>  1:38
+Ident<b>  1:40
+Ident<x>  1:42
+Op<=>>  1:43
+Ident<y>  1:45
+Ident<x>  1:47
+Op<<->  1:48
+Ident<c>  1:50
+Op<->>  1:52
+Op<|>  1:55
+Op<+>  1:57
+Op<->  1:59
+Punct<(>  1:61
+Punct<)>  1:63
+Punct<{>  1:65
+Punct<}>  1:67
+Punct<[>  1:69
+Punct<]>  1:71
+Punct<.>  1:73
+Punct<,>  1:75
+Punct<;>  1:77
+Punct<:>  1:79
+Punct<@>  1:81
+EOF<>  1:82

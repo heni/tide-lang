@@ -1,0 +1,37 @@
+--- TITLE ---
+all hard keywords get reclassified — intx stays Ident
+
+--- INPUT ---
+import type class interface implements extends static func let var if else for in while return match try defer spawn scope select break continue true false unit this intx
+
+--- TOKENS ---
+Keyword<import>  1:1
+Keyword<type>  1:8
+Keyword<class>  1:13
+Keyword<interface>  1:19
+Keyword<implements>  1:29
+Keyword<extends>  1:40
+Keyword<static>  1:48
+Keyword<func>  1:55
+Keyword<let>  1:60
+Keyword<var>  1:64
+Keyword<if>  1:68
+Keyword<else>  1:71
+Keyword<for>  1:76
+Keyword<in>  1:80
+Keyword<while>  1:83
+Keyword<return>  1:89
+Keyword<match>  1:96
+Keyword<try>  1:102
+Keyword<defer>  1:106
+Keyword<spawn>  1:112
+Keyword<scope>  1:118
+Keyword<select>  1:124
+Keyword<break>  1:131
+Keyword<continue>  1:137
+Keyword<true>  1:146
+Keyword<false>  1:151
+Keyword<unit>  1:157
+Keyword<this>  1:162
+Ident<intx>  1:167
+EOF<>  1:171

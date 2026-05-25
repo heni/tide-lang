@@ -1,0 +1,8 @@
+--- TITLE ---
+E0102: unterminated /* block comment */
+
+--- INPUT ---
+/* never closes
+
+--- ERRORS ---
+1:1: error[E0102]: Unterminated block comment

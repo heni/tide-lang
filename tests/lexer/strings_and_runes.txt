@@ -1,0 +1,11 @@
+--- TITLE ---
+string and rune literals — escape sequences
+
+--- INPUT ---
+"hi\n" 'a' '\x41'
+
+--- TOKENS ---
+StringLit<"hi\n">  1:1
+RuneLit<'a'>  1:8
+RuneLit<'\x41'>  1:12
+EOF<>  1:18

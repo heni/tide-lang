@@ -1,0 +1,12 @@
+--- TITLE ---
+float literal forms — fractional, exponent, signed exponent
+
+--- INPUT ---
+1.0 3.14 1e3 1.5e-2
+
+--- TOKENS ---
+FloatLit<1.0>  1:1
+FloatLit<3.14>  1:5
+FloatLit<1e3>  1:10
+FloatLit<1.5e-2>  1:14
+EOF<>  1:20

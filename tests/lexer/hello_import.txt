@@ -1,0 +1,14 @@
+--- TITLE ---
+two-line import block — keyword reclassification + inter-line Newline
+
+--- INPUT ---
+import fmt
+import os
+
+--- TOKENS ---
+Keyword<import>  1:1
+Ident<fmt>  1:8
+Newline<>  1:11
+Keyword<import>  2:1
+Ident<os>  2:8
+EOF<>  2:10
