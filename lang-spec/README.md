@@ -15,7 +15,7 @@ On disagreement these files win, per D17.
 | `test-contract.md` | Canonical fixture serialization (TOKENS / AST / TYPES / ERRORS / GO / STDOUT) | ✓ TOKENS; deeper sections forthcoming |
 | `ast.md` | Canonical AST node schema (fields, invariants, source spans) | ✓ |
 | `name-resolution.md` | Scoping, implicit receiver, shadow rules | ✓ |
-| `type-system.md` | Inference rules in sequent notation | forthcoming |
+| `type-system.md` | Inference rules in sequent notation | ✓ |
 | `builtins.md` | Predeclared identifiers with full signatures | forthcoming |
 | `desugaring.md` | Tide AST → simpler IR (match arms, scope+spawn, try) | forthcoming |
 | `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | forthcoming |
