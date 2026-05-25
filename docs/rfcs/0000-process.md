@@ -101,23 +101,26 @@ flagged, on the understanding that the questions are resolved
 before `implemented`.
 ```
 
+All template sections (Summary, Motivation, Design,
+Alternatives, Paired edits, Transition, Open questions) are
+**required**, but the body may be `None` or `Not applicable`
+where genuinely so — declarative or purely-additive RFCs
+will have `None` paired edits and `Not applicable`
+transition sections, and that is fine.
+
 Optional sections (rationale, performance notes, security
 implications) are welcome but never required.
 
 ## Lifecycle
 
 ```
-  ┌──── draft ─────┐
-  │                │
-  ▼                ▼
-accepted ◄──► open-questions resolved
-  │
-  ▼
-implemented
-  │
-  ▼ (only when replaced)
-superseded
+draft ──► accepted ──► implemented ──► superseded
 ```
+
+The four states are linear; an RFC may carry open questions
+through `accepted` and `implemented` (flagged in §"Open
+questions"); `superseded` is reached only when a later RFC
+sets its `Supersedes:` field to this one.
 
 - **`draft`** — under discussion. RFC PR is open, review may
   request structural changes. Implementation has not started.
@@ -125,8 +128,8 @@ superseded
   any, are flagged in the doc but not blockers. Implementation
   may begin.
 - **`implemented`** — the paired edits in `lang-spec/` have
-  landed and (per CLAUDE.md "Every spec artifact carries
-  coverage") at least one atomic fixture exists in
+  landed and (per the project's atomic-coverage rule) at least
+  one atomic fixture exists in
   `tests/{lexer,grammar,sema,codegen}/`. The RFC is now a
   historical artefact, kept for the paper trail.
 - **`superseded`** — a later RFC replaced this one. The
@@ -140,9 +143,10 @@ trailing "## History" subsection.
 ## Review
 
 Each RFC PR runs the standard review-subagent pass. The
-subagent's prompt should begin with the project's required
-preamble (see CLAUDE.md §Review). For RFC PRs specifically the
-subagent checks:
+subagent's prompt begins with the project's required preamble
+(the same boilerplate every PR review uses — it primes the
+reviewer on the project's conventions). For RFC PRs
+specifically the subagent checks:
 
 - Document follows the structure above.
 - `Target:` field lists realistic file targets.
@@ -157,14 +161,17 @@ the status flips on the implementing PR.
 
 ## Relationship to other decision records
 
-- **D1–D17 decisions** (in the project's internal decision log)
-  capture the *historical* foundations of the current baseline.
-  They are authoritative for "why is the language like this" but
-  not for "what changed since". Future decisions go through this
-  RFC process, not by appending to the D-series.
-- **`AI.md` / `CLAUDE.md`** are pipeline files (gitignored);
-  they record working notes and contributor rules. RFCs are
-  the **public**, committed paper trail.
+- **D-prefix identifiers** (`D1`…`D17`) reference foundational
+  architectural decisions made during the project's
+  formalization phase; they are short stable labels that may
+  surface in RFC text and code comments. They capture the
+  *historical* foundations of the current baseline — the
+  "why is the language like this" answer — but not "what
+  changed since". Future decisions go through this RFC process,
+  not by appending to the D-series.
+- **Internal pipeline notes** (working drafts, decision logs,
+  contributor process) are gitignored. RFCs are the
+  **public**, committed paper trail.
 - **`lang-spec/`** is the contract. RFCs propose changes to it;
   accepted RFCs trigger paired edits there.
 

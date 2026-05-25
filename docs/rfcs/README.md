@@ -9,7 +9,7 @@ This directory holds:
 
 - **`0000-process.md`** — the RFC process itself. How RFCs are
   proposed, reviewed, accepted, and superseded.
-- **`0001-v0.1-baseline.md`** — the v0.1 language-surface
+- **`0001-v01-baseline.md`** — the v0.1 language-surface
   baseline (pre-alpha). Every later RFC extends or amends this
   baseline.
 - **`NNNN-<kebab-name>.md`** — individual proposals.
