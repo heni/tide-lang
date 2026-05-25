@@ -127,6 +127,11 @@ func emitGoSource(path string) (string, error) {
 		return "", fmt.Errorf("tide: cannot read %s: %w", path, err)
 	}
 	src := string(srcBytes)
+	// Pass the path verbatim into diagnostics and //line
+	// directives. test-contract.md §File paths requires
+	// repo-relative paths so two files with the same basename
+	// (e.g., examples/aoc/2025/d01.td vs examples/aoc/2026/d01.td)
+	// remain distinguishable in panic traces and diagnostics.
 	file := path
 
 	toks, lerr := lexer.LexFile(src, file)
@@ -145,11 +150,20 @@ func emitGoSource(path string) (string, error) {
 }
 
 func cmdRun(args []string) int {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "tide run: expected <file.td>")
+	fs := flag.NewFlagSet("tide run", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: tide run <file.td>")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	src, err := compileToTempGo(args[0])
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "tide run: expected exactly one <file.td>")
+		return 2
+	}
+	src, err := compileToTempGo(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

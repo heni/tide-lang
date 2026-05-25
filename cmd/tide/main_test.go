@@ -143,7 +143,7 @@ func TestRunMissingArg(t *testing.T) {
 	if exit != 2 {
 		t.Errorf("tide run (no args) exit = %d; want 2", exit)
 	}
-	if !strings.Contains(stderr, "expected <file.td>") {
+	if !strings.Contains(stderr, "expected exactly one <file.td>") {
 		t.Errorf("expected usage hint in stderr; got %q", stderr)
 	}
 }
