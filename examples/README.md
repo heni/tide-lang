@@ -88,6 +88,16 @@ the runtime case directly with one program per canonical pattern.
 See [`concurrency/README.md`](concurrency/README.md) for the per-example
 write-up.
 
+## `aoc/` — broader paper validation via Advent of Code
+
+The v1 acceptance suite above forces the *core* of the language. AoC
+ports drive breadth — input parsing, integer arithmetic, slicing, ad-hoc
+data structures — across many small programs. AoC examples are not part
+of the v1 ship gate, but every construct they use must still be in
+[`../docs/language-spec.md`](../docs/language-spec.md), so they keep
+honest pressure on the spec. See [`aoc/README.md`](aoc/README.md) for the
+per-day breakdown.
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.

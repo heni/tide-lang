@@ -113,6 +113,9 @@ shadow each other.
   storage). Idiomatic re-assignment: `s = s.push(v)` when `s` is `var`.
 - Indexing: `s[i]` — out-of-bounds panics at the `.td` site.
 - Safe access: `s.get(i): Option<T>`.
+- Slicing: `s[a:b]: []T` — half-open view into the same backing array.
+  `s[a:]` and `s[:b]` are shorthand for `s[a:s.len()]` and `s[0:b]`.
+  Out-of-bounds panics.
 - Iteration: `for v in s` (value), `for (i, v) in s` (index and value).
 
 ### Maps: `Map<K, V>`
@@ -158,6 +161,16 @@ otherwise duplicate the same data structure.
 - Concatenation: `+`. No implicit conversion from non-string operands —
   use `strconv.itoa(n)` etc., or rely on `Any`-widening variadic
   formatters like `fmt.println(...)`.
+- **Indexing and slicing are byte-based** (mirrors Go):
+  - `s[i]: byte` — byte at byte index `i`. Out-of-bounds panics.
+  - Safe form: `s.byteAt(i): Option<byte>`.
+  - `s[a:b]: string` — substring from byte indices `[a, b)`. `s[a:]`
+    and `s[:b]` are shorthand for `s[a:s.len()]` and `s[0:b]`. Slicing
+    a multi-byte UTF-8 sequence at a non-boundary is allowed and
+    produces an invalid UTF-8 string; rune-safe slicing goes through
+    `.runes()`.
+- **Equality.** `==` compares strings by content. Reverse slicing
+  (`s[::-1]`) and stepped slicing are not in v1.
 
 ## Sum types
 
@@ -222,6 +235,29 @@ all type to `unit`.
 - **`if` / `else`** is an expression: arms must unify. An `if` without
   `else` has type `unit` and may only appear at statement position.
 - **`match`** is an expression (see above).
+
+**Equality.** `==` and `!=`:
+
+- Strings, primitive numbers, booleans, runes — by content.
+- Tuples, records, sum-type values — by structural / value equality
+  (recursive component-wise).
+- Class instances — by **reference** identity (two distinct instances
+  with identical fields are not `==`). For explicit reference equality,
+  the built-in `refEq<T>(a, b): bool` is the readable spelling (G26).
+
+**Boolean operators.** All three short-circuit; both operands and the
+result must be `bool`. There is no implicit truthiness — `0`, `""`,
+`None`, and empty collections are *not* `false`.
+
+- `a && b` — AND. `b` is not evaluated if `a` is `false`.
+- `a || b` — OR. `b` is not evaluated if `a` is `true`.
+- `!a`    — negation.
+
+Precedence (high → low): `!`, `&&`, `||`. Same as Go and C.
+
+**Numeric and comparison operators.** `+ - * / %` on numeric types;
+`< <= > >=` on comparable primitive types (numbers, strings, runes,
+bools by `false < true`).
 
 ## Functions
 
@@ -295,6 +331,15 @@ stepped ranges in v1.
 The discard pattern `_` is valid in any `for` binder position:
 `for _ in 1..=n` (iterate n times, ignore the index), `for (_, v) in s`
 (value-only over a slice), `for (k, _) in m` (keys-only over a map).
+
+**`break` and `continue`.** Inside any `for` or `while` loop:
+
+- `continue` — skip to the next iteration of the enclosing loop.
+- `break`    — exit the enclosing loop.
+
+There is no labelled / multi-level form in v1. Inside a `select` case
+body, `continue` and `break` refer to the enclosing loop (not the
+select).
 
 `defer expr` queues `expr` (typically a method call) to run when the
 enclosing **function** returns, in LIFO order. Function-scoped, not
