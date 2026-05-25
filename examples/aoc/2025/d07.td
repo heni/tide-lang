@@ -8,8 +8,8 @@
 // the total splits and the surviving total timeline.
 //
 // Forces: `Set<int>` (G48) for the live beam positions, slice
-// index-assignment `s[i] = v` (G45) on the timelines, byte-indexed
-// string access `s[i]` (G45) to read maze cells.
+// index-assignment `s[i] = v` (G45 extension), rune iteration with
+// byte index `for (pos, c) in row` (G25), `.copy()` on slices.
 
 import fmt
 import os
@@ -46,13 +46,12 @@ func run(text: string) {
 
   for ln in lines {
     var nBeams: Set<int> = Set<int>{}
-    var nTimelines: []int = []int{}
-    for v in timelines {
-      nTimelines = nTimelines.push(v)
-    }
-    var pos = 0
-    while pos < ln.len() {
-      let c = ln[pos]
+    var nTimelines = timelines.copy()
+
+    // Maze input is ASCII, so byte indices and column positions
+    // coincide. (Non-ASCII would require .runes() and rune-ordinal
+    // indexing — irrelevant here.)
+    for (pos, c) in ln {
       if c == 'S' {
         nBeams.add(pos)
         nTimelines[pos] = 1
@@ -65,7 +64,6 @@ func run(text: string) {
         splits = splits + 1
         beams.delete(pos)
       }
-      pos = pos + 1
     }
     for b in nBeams {
       beams.add(b)

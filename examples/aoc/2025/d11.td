@@ -28,7 +28,7 @@ func readData(path: string): Result<Graph, error> {
     if !strings.hasSuffix(first, ":") {
       return Err(error("bad line, expected `node:` prefix: " + ln))
     }
-    let node = first[0:first.len() - 1]
+    let node = first[0:(first.len() - 1)]
     var neighbours: []string = []string{}
     for i in 1..items.len() {
       neighbours = neighbours.push(items[i])
@@ -68,6 +68,11 @@ func dfs(adj: Graph, v: string, cache: Map<string, int>, visited: Set<string>):
     total = total + try dfs(adj, u, cache, visited)
   }
   cache.set(v, total)
+  // Roll back `visited` so a node reached again through a different
+  // path isn't mis-flagged as a cycle. Once cached, the `cache.get`
+  // short-circuit above answers without re-entering the `visited`
+  // check at all — so the roll-back is observationally equivalent to
+  // Python's persistent `visited` for any DAG input.
   visited.delete(v)
   return Ok(total)
 }

@@ -120,6 +120,10 @@ shadow each other.
   panics. Legal when `s` is a `var` binding or a `var` field on a
   class. Strings are immutable — index assignment on a string is a
   compile error.
+- Copy: `s.copy(): []T` — returns a new slice with the same elements,
+  independent backing storage. Useful when you want to mutate without
+  aliasing the original (e.g. the per-step working copy in a
+  wavefront).
 - Iteration: `for v in s` (value), `for (i, v) in s` (index and value).
 
 ### Maps: `Map<K, V>`
