@@ -18,11 +18,10 @@ import strings
 func decode(s: string): string {
   let codes = s.bytes()
   let a = byte('a')
-  var out: []byte = []byte{}
-  out = out.push(((codes[0] - a + byte(21)) % byte(26)) + a)
+  let out = makeSlice<byte>(codes.len())
+  out[0] = ((codes[0] - a + byte(21)) % byte(26)) + a
   for i in 1..codes.len() {
-    let d = ((codes[i] - codes[i - 1] + byte(26)) % byte(26)) + a
-    out = out.push(d)
+    out[i] = ((codes[i] - codes[i - 1] + byte(26)) % byte(26)) + a
   }
   return strings.fromBytes(out)
 }

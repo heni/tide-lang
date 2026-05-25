@@ -127,6 +127,11 @@ shadow each other.
 - Literal: `[1, 2, 3]` (element type inferred from context).
 - Empty literal: `[]int{}` (explicit type required when context is
   insufficient).
+- Pre-sized: `makeSlice<T>(n: int): []T` — a length-`n` slice with
+  each element at the type's zero value (`0` for numerics, `""` for
+  string, `None` for `Option`, etc.). Matches Go's `make([]T, n)`.
+  Useful when the length is known up-front and individual elements
+  will be assigned via `s[i] = v`.
 - `s.len(): int`.
 - `s.push(v): []T` — returns a new slice header (may grow underlying
   storage). Idiomatic re-assignment: `s = s.push(v)` when `s` is `var`.

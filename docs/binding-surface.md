@@ -34,12 +34,16 @@ fmt.fprintln(w: io.Writer, args: ...Any): Result<int, error>
 fmt.fprintf(w: io.Writer, format: string, args: ...Any): Result<int, error>
 
 // Stdin reading. Tide wraps Go's `fmt.Scan(&v)` (pointer-mutation
-// style) into typed return form. T is one of int, int64, uint64,
-// float64, string. Tokens are whitespace-separated.
+// style) into typed return form. `T` may be any of the numeric
+// primitives (`int`, `int8..int64`, `uint..uint64`, `float32`,
+// `float64`), `bool`, `byte`, `rune`, or `string` — anything Go's
+// `fmt.Scan` knows how to parse from a single whitespace-separated
+// token.
 fmt.scan<T>(): Result<T, error>
 
-// Two- and three-value forms — return a tuple so the call site can
-// destructure with `let (a, b) = ...`. Generated for arities up to 4.
+// Multi-value forms — return a tuple so the call site can
+// destructure with `let (a, b) = ...`. Provided for arities 2 and 3;
+// for higher arities call `fmt.scan<T>()` repeatedly.
 fmt.scan2<A, B>(): Result<(A, B), error>
 fmt.scan3<A, B, C>(): Result<(A, B, C), error>
 ```

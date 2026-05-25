@@ -17,9 +17,8 @@ func max(a: int64, b: int64): int64 {
 
 func main() {
   match fmt.scan2<int64, int64>() {
-    Err(e) => { fmt.println("read error:", e); os.exit(1) },
-    Ok(pair) => {
-      let (n, k) = pair
+    Err(e)      => { fmt.println("read error:", e); os.exit(1) },
+    Ok((n, k))  => {
       let answer = max(int64(2), (n * int64(2) + k - int64(1)) / k)
       fmt.println(answer)
     },
