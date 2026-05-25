@@ -24,13 +24,18 @@
   unsurprisingly. Trailing commas are permitted (and recommended) in
   multi-line literals.
 - Source files use the `.td` extension.
-- String literals: `"..."`. Standard escapes (`\n`, `\t`, `\\`, `\"`,
-  `\xNN`, `\uNNNN`).
+- String literals: `"..."`. Escapes: `\n`, `\t`, `\r`, `\\`, `\"`,
+  `\'`, `\0`, `\xNN`, `\uNNNN`. No raw CR or LF inside a literal —
+  multi-line strings are not in v1.
 - Rune literals: single-quoted character: `'a'`, `'('`, `'\n'`, `'ÿ'`.
-  A rune literal is of type `rune`.
+  A rune literal is of type `rune`. Same escape set as strings.
 - Integer literals: `42`, `0xFF`, `0o755`, `0b1010`, with `_` separators
   permitted: `1_000_000`.
-- Float literals: `3.14`, `1e9`, `2.5e-3`.
+- Float literals: digits on **both** sides of the dot (`3.14`, not
+  `3.` and not `.5`), or exponent form (`1e9`, `2.5e-3`). The two-
+  sided rule keeps `1..10` unambiguously a range and not two
+  float literals — see `../lang-spec/grammar.ebnf` for the lexical
+  resolution.
 
 ## Imports
 

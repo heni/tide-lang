@@ -67,11 +67,17 @@ Where:
   `Punct`, `Newline`, `EOF`).
 - `<lexeme>` is the source text the token covers, wrapped in angle
   brackets. Empty for `Newline` and `EOF` (write `<>`).
-- `line:col` is the 1-indexed position of the token's first byte
-  in the input file.
+- `line:col` is the 1-indexed character (not byte) position of the
+  token's first character in the input file. UTF-8-aware: a multi-
+  byte rune counts as one column. Matches the span format used by
+  AST / TYPES / ERRORS sections — positions are uniform across the
+  whole contract.
 
-Two spaces separate `<lexeme>` from `line:col`. Tokens are listed
-in source order, one per line. The list ends with an `EOF` token.
+At least two spaces separate `<lexeme>` from `line:col`. The
+canonical writer pads to a stable column for readability;
+implementations may emit any width ≥ 2 — the runner normalises
+whitespace before diffing. Tokens are listed in source order, one
+per line. The list ends with an `EOF` token.
 
 Example for `import fmt\n`:
 
@@ -133,8 +139,9 @@ output is order-unspecified, use the variants:
 
 - File paths in any position are **relative** to the repo root
   (e.g. `examples/hello.td`, not `/home/.../hello.td`).
-- Span format is always `line:col` or `line:col-line:col`,
-  1-indexed, character-counted not byte-counted (UTF-8 aware).
+- Position / span format is always `line:col` or `line:col-line:col`,
+  1-indexed, character-counted not byte-counted (UTF-8 aware) —
+  applies uniformly to TOKENS, AST spans, TYPES rows, ERRORS lines.
 - Type printer is stable: `Map<K, V>` always exactly so; one space
   after `,`. Sum-type variants printed in declaration order.
 - Error messages quote source verbatim with double quotes and

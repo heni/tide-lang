@@ -25,7 +25,12 @@
 Newline        = "\n" | "\r\n" ;
 Whitespace     = ' ' | '\t' ;
 LineComment    = "//" ('any character except newline')* ;
-BlockComment   = "/*" ('any character')* "*/" ;          // not nested
+BlockComment   = "/*" ('any character')* "*/" ;
+// Block comments are **not nested**. The `*/` that closes a
+// `/*` is the **leftmost** occurrence after the `/*`; everything
+// up to (and including) that `*/` is one comment. Code like
+// `/* a /* b */ c */` consumes up to the first `*/`, leaving
+// `c */` to be lexed normally — almost certainly a parse error.
 SkipNonNewline = Whitespace | LineComment | BlockComment ;
 // Newlines are significant tokens at statement-level, suppressed
 // inside open brackets — see SyntaxNewlineSuppression in grammar
@@ -35,25 +40,31 @@ SkipNonNewline = Whitespace | LineComment | BlockComment ;
 // Identifiers and keywords
 // =============================================================
 
-Letter      = 'a'..'z' | 'A'..'Z' | '_' ;
+Letter      = 'a'..'z' | 'A'..'Z' | '_' ;        // ASCII only in v1
 Digit       = '0'..'9' ;
 HexDigit    = Digit | 'a'..'f' | 'A'..'F' ;
 OctDigit    = '0'..'7' ;
 BinDigit    = '0' | '1' ;
 
 Ident       = Letter (Letter | Digit)* ;
-// A token is a Keyword (matched first) iff it appears in the
-// reserved set listed in keywords.md §"Reserved keywords"; otherwise
-// it is an Ident.
-Keyword     = "import"  | "type"      | "class"     | "interface"
+// Identifiers are ASCII-only in v1. Allowing the full Unicode letter
+// class (as Go does) is park material; the lexer never produces an
+// Ident token from a non-ASCII first character.
+
+// Keyword is not a separate alternative in Token below — the lexer
+// matches Ident first, then reclassifies the lexeme as a Keyword
+// iff it appears in the reserved set. This avoids `intx` ambiguously
+// starting to match the `int` family. The exhaustive Keyword set is
+// listed here for the parser's reclassification table:
+KeywordSet  = "import" | "type"   | "class"  | "interface"
             | "implements" | "extends" | "static"
-            | "func"     | "let"      | "var"
-            | "if"       | "else"
-            | "for"      | "in"       | "while"     | "return"
-            | "match"    | "try"      | "defer"
-            | "spawn"    | "scope"    | "select"
-            | "break"    | "continue"
-            | "true"     | "false"    | "unit"
+            | "func"   | "let"    | "var"
+            | "if"     | "else"
+            | "for"    | "in"     | "while"  | "return"
+            | "match"  | "try"    | "defer"
+            | "spawn"  | "scope"  | "select"
+            | "break"  | "continue"
+            | "true"   | "false"  | "unit"
             | "this"
             ;
 
@@ -71,8 +82,14 @@ IntLit      = DecimalLit | HexLit | OctalLit | BinaryLit ;
 // Floating-point literals
 // =============================================================
 
-FloatLit    = Digit+ "." Digit* ExponentPart?
-            | "." Digit+ ExponentPart?
+// FloatLit requires a digit on **both** sides of the dot — `1.0` is
+// legal, bare `1.` and `.5` are not. Reason: without a trailing
+// digit, `1..10` would lex as `FloatLit("1.") FloatLit(".10")`,
+// breaking range literals. The mandatory-trailing-digit form
+// resolves all such ambiguities without needing parser-time
+// lookahead in the lexer. Hex / binary / octal *float* literals are
+// not supported in v1 (no `0x1.8p3`-style forms).
+FloatLit    = Digit+ "." Digit+ ExponentPart?
             | Digit+ ExponentPart
             ;
 ExponentPart = ("e" | "E") ("+" | "-")? Digit+ ;
@@ -81,13 +98,20 @@ ExponentPart = ("e" | "E") ("+" | "-")? Digit+ ;
 // String and rune literals
 // =============================================================
 
+// Escape forms allowed in string and rune literals. Note the
+// absence of Go's `\b`, `\f`, `\v`, `\a` (not in v1; reach for
+// `\xNN` instead). No 8-digit `\U` form either — `\uNNNN` covers
+// the BMP, which is enough for the v1 corpus.
 EscapeChar  = "\\" ( "n" | "t" | "r" | "\\" | '"' | "'" | "0"
                   | "x" HexDigit HexDigit
                   | "u" HexDigit HexDigit HexDigit HexDigit ) ;
-StringChar  = EscapeChar | ('any char except "\\" or "\"" or newline') ;
+
+// String / rune literals may not contain a raw CR or LF —
+// multi-line strings are not in v1.
+StringChar  = EscapeChar | ('any char except "\\", "\"", CR, LF') ;
 StringLit   = '"' StringChar* '"' ;
 
-RuneChar    = EscapeChar | ('any char except "\\" or "'" or newline') ;
+RuneChar    = EscapeChar | ('any char except "\\", "'", CR, LF') ;
 RuneLit     = "'" RuneChar "'" ;
 
 // =============================================================
@@ -120,6 +144,10 @@ Op = "..="        // inclusive range
 
 Punct = "(" | ")" | "[" | "]" | "{" | "}"
       | "."  | ","  | ";"  | ":"
+      | "@"        // reserved for future use (annotations); the
+                   // lexer recognises it as a token but no v1
+                   // grammar production accepts it — the parser
+                   // rejects with a diagnostic.
       ;
 
 // =============================================================
@@ -127,8 +155,7 @@ Punct = "(" | ")" | "[" | "]" | "{" | "}"
 // =============================================================
 
 Token = Newline
-      | Keyword
-      | Ident
+      | Ident                      // reclassified to Keyword if lexeme ∈ KeywordSet
       | FloatLit                   // FloatLit before IntLit (dot disambiguation)
       | IntLit
       | StringLit
@@ -140,6 +167,13 @@ Token = Newline
 // Whitespace and comments are skipped (not produced as tokens).
 // Newline is produced as a Token; the parser later suppresses it
 // inside open brackets per the syntactic part of this grammar.
+
+// Reclassification: after matching an Ident-shape, the lexer looks
+// up the lexeme in `KeywordSet`. On hit, the token's kind becomes
+// `Keyword` (with the matched lexeme). On miss, the token stays
+// `Ident`. This is the standard maximal-munch-then-reclassify
+// algorithm; it avoids partial-keyword false starts like `intx`
+// committing to `int`-the-keyword.
 
 // =============================================================
 // Lexical conflict resolution
@@ -153,26 +187,28 @@ Token = Newline
 //    checks whether the text is in the Keyword set. If yes, it
 //    produces a Keyword token; otherwise an Ident.
 //
-// 3. **FloatLit vs IntLit + Dot.** `1.0` is one FloatLit token (not
-//    IntLit + Op `.` + IntLit). The lexer commits to FloatLit on
-//    seeing `Digit+ "."`.
+// 3. **FloatLit requires digits on both sides.** `1.0` is one
+//    FloatLit; `1.` and `.5` are not. This removes every
+//    `dot-after-digit` ambiguity at the lexical level:
+//      - `1..10` lexes as `IntLit("1") Op("..") IntLit("10")` —
+//        the longest-match rule picks `..` over `.`, and there is
+//        no `FloatLit("1.")` to compete with.
+//      - `1.foo()` lexes as `IntLit("1") Punct(".") Ident("foo")
+//        Punct("(") Punct(")")` — same reasoning.
+//      - Tuple-position access `t.0` lexes as `Ident("t")
+//        Punct(".") IntLit("0")`.
+//    Users who want `1.` write `1.0`; `.5` is `0.5`. The cost is
+//    two characters; the gain is no parser-time lookback in the
+//    lexer.
 //
-// 4. **Tuple-position field access `t.0`.** `t` is Ident, `.` is
-//    Punct, `0` is IntLit — three tokens. The lexer does NOT
-//    produce FloatLit for the trailing `.0` because Ident-then-dot
-//    splits naturally; the FloatLit rule fires only when the
-//    `Digit+ "."` shape appears in expression-position from the
-//    start. (Practical implementation: peek-back; or commit to
-//    IntLit + Punct + IntLit when preceded by an Ident.)
-//
-// 5. **Numeric `_` separator.** `1_000_000` is one IntLit; the `_`
+// 4. **Numeric `_` separator.** `1_000_000` is one IntLit; the `_`
 //    characters are part of the literal and stripped at semantic
 //    layer.
 //
-// 6. **Unary vs binary `-`.** The lexer emits a single `-` Op token
+// 5. **Unary vs binary `-`.** The lexer emits a single `-` Op token
 //    in both cases; the parser disambiguates by context.
 //
-// 7. **`<` and `>` as comparison vs generic brackets.** The lexer
+// 6. **`<` and `>` as comparison vs generic brackets.** The lexer
 //    always emits `<` / `>` as Op tokens. The parser resolves
 //    generic-argument-list positions by lookahead — see
-//    grammar.ebnf §Syntactic (forthcoming).
+//    `grammar.ebnf` §Syntactic (forthcoming).
