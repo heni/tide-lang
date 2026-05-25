@@ -557,6 +557,7 @@ emits **E0201 Type mismatch**.
                  - every `spawn { ... }` inside body satisfies T-Spawn
                    with the same E parameter
                  - parent, if given, has type context.Context
+                 - E = error                                  (v1 restriction; see below)
                ────────────────────────────────────────────────────
                   Γ ⊢ scope<T, E>(parent?) { body } : Result<T, E>
 
@@ -803,3 +804,6 @@ touched by this file:
   scope frame providing `E_outer` in T-Spawn).
 - **E0406** — `defer` argument must be a call (T-Defer
   side-condition fails).
+- **E0407** — `scope<T, E>` requires `E = error` in v1 (T-ScopeExpr
+  side-condition; relaxed once a typed-error adapter lands —
+  see `lowering-go.md` §ScopeIR / SpawnIR).
