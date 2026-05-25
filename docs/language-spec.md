@@ -7,14 +7,12 @@
 > truth — anything the suite uses must be specified here.
 >
 > **Authority.** This document is the **prose** view of Tide. The
-> companion formal docs are machine-precise; on disagreement they
-> win, and the prose is a mirror. Updates require a paired edit.
-> Currently shipped: [`keywords.md`](keywords.md). Forthcoming as
-> the formalization series lands: `grammar.md` (lexical + syntactic),
-> `operators.md`, `ast.md` (node schema), `builtins.md`, `types.md`
-> (inference rules), `diagnostics.md` (error catalog), `features.md`
-> + acceptance manifests, `lowering.md` (Go IR contract),
-> `test-contract.md` (canonical fixture serialization).
+> companion formal docs in [`../lang-spec/`](../lang-spec/) are
+> machine-precise; on disagreement they win, and the prose is a
+> mirror. Updates require a paired edit. See
+> [`../lang-spec/README.md`](../lang-spec/README.md) for the index
+> and reading order; the formalization series is in progress and
+> not every file is shipped yet.
 
 ## Lexical
 

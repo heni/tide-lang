@@ -3,11 +3,12 @@
 This file is the **canonical, exhaustive** list of Tide's reserved
 lexical surface. The lexer is generated from it; if a token does not
 appear here, the lexer does not produce it and the parser does not
-recognise it. Prose in `language-spec.md` mirrors this list; on a
-disagreement, this file wins.
+recognise it. Prose in `../docs/language-spec.md` mirrors this list;
+on a disagreement, this file wins.
 
-Updates require a paired update to the test corpus (`tests/lexer/`),
-the grammar (`docs/grammar.md`), and any affected examples.
+Updates require a paired update to the test corpus
+(`../tests/lexer/`), the grammar (`grammar.ebnf`), and any affected
+examples.
 
 ## Reserved keywords
 
@@ -65,7 +66,7 @@ those positions they are ordinary identifiers.
 
 These are predeclared in the top-level scope; user code may shadow
 them but doing so is bad style. Full signatures live in
-`docs/builtins.md`.
+`builtins.md`.
 
 - Types: `bool`, `int`, `int8`..`int64`, `uint`..`uint64`,
   `float32`, `float64`, `byte`, `rune`, `string`, `Any`,
