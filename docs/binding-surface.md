@@ -160,6 +160,30 @@ log.setPrefix(prefix: string)
 log.setFlags(flags: int)
 ```
 
+## math/big
+
+```td
+// Arbitrary-precision integer. Bound from Go's `*big.Int`; methods are
+// the canonical ones the Timus / algorithmic suite needs. Tide hides
+// Go's pointer-mutation calling convention (`x.Add(a, b)` mutating x)
+// behind a functional surface — every method returns a fresh `BigInt`.
+class big.BigInt {
+  add(other: big.BigInt):   big.BigInt
+  sub(other: big.BigInt):   big.BigInt
+  mul(other: big.BigInt):   big.BigInt
+  div(other: big.BigInt):   big.BigInt        // integer division
+  mod(other: big.BigInt):   big.BigInt
+  neg():                    big.BigInt
+  cmp(other: big.BigInt):   int                // -1 / 0 / 1
+  string():                 string
+  toInt64():                int64              // truncates if out of range
+}
+
+big.fromInt(n: int):       big.BigInt
+big.fromInt64(n: int64):   big.BigInt
+big.fromString(s: string): Result<big.BigInt, error>
+```
+
 ## math
 
 ```td
