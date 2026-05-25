@@ -8,9 +8,11 @@
 //     stars into one component is the answer, returned as the product
 //     of those two points' X coordinates.
 //
-// Forces: a generic-ish `class DSU` with array-backed parent and size
-// tables; `math.sqrt`; `sort.sorted` over a `(int, int, float64)`
-// tuple by `.2` (G24); a triple-`for` with a reset accumulator.
+// Forces: a `class DSU` with array-backed parent and size tables,
+// path-compressing `find` that writes through a `this.field[i] = v`
+// chain; `math.sqrt`; primitive numeric conversion `float64(int)`
+// (G49); `sort.sorted` over a `(int, int, float64)` tuple by `.2`
+// inside `buildPairs` and by `.1` inside `components()` (G24).
 
 import fmt
 import math

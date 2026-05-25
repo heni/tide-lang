@@ -62,8 +62,10 @@ type User = {
 **Tuples** are anonymous product types: `(int, string)`, `(int, int, int)`.
 Construct with `(a, b, ...)`, destructure with `let (a, b) = pair`, match
 with the same pattern, access by position `t.0`, `t.1` (discouraged for
-arity > 2 — prefer a record). Tuples must have arity ≥ 2; `(a)` is just
-a parenthesised expression. Equality is structural.
+arity > 2 — prefer a record). `.N` is a postfix on any tuple-typed
+expression (including chains like `pairs[i].0` or `points[p.0].1`).
+Tuples must have arity ≥ 2; `(a)` is just a parenthesised expression.
+Equality is structural.
 
 Nominal newtypes — distinct types over an underlying type, with their own
 method set. Required because Tide must faithfully represent types like
@@ -75,6 +77,23 @@ Generics use angle brackets: `List<T>`, `Map<string, int>`, `func<T>(...)`,
 (bounded generics — `<T extends Comparable>` — are park material).
 
 There is **no `any`**. Untyped dynamic values do not exist.
+
+**Conversion between primitive types** is explicit and uses the
+function-call form `Type(expr)`:
+
+```td
+let f = float64(n)        // int → float64
+let i = int(f)            // float64 → int (truncates, matches Go)
+let b = byte(r)           // rune → byte (low 8 bits)
+let s = string(r)         // rune → string (UTF-8 encoding of one rune)
+let r = rune(b)           // byte → rune (widens)
+```
+
+Legal between numeric primitives (`int*`, `uint*`, `float*`, `byte`,
+`rune`) wherever Go allows the conversion. Conversions that lose
+information follow Go's truncation/rounding semantics — they never
+raise. Conversions outside these primitives (e.g. `int(record)`) are
+compile errors. There is no implicit numeric widening.
 
 ## Bindings
 

@@ -153,10 +153,9 @@ math.min(a: float64, b: float64): float64
 math.max(a: float64, b: float64): float64
 math.pi: float64
 
-// Integer min/max appear in user code often enough that providing the
-// obvious wrappers avoids `if a < b { a } else { b }` noise.
-math.maxInt(a: int, b: int): int
-math.minInt(a: int, b: int): int
+// Integer min/max have no Go-stdlib referent (Go's math.{Min,Max} are
+// float-typed). User code uses `if a < b { a } else { b }` for now;
+// promoting them to Tide-side built-ins (cf. refEq) is park material.
 ```
 
 ## time
