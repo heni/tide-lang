@@ -143,6 +143,22 @@ log.setPrefix(prefix: string)
 log.setFlags(flags: int)
 ```
 
+## math
+
+```td
+math.sqrt(x: float64): float64
+math.abs(x: float64):  float64
+math.pow(x: float64, y: float64): float64
+math.min(a: float64, b: float64): float64
+math.max(a: float64, b: float64): float64
+math.pi: float64
+
+// Integer min/max appear in user code often enough that providing the
+// obvious wrappers avoids `if a < b { a } else { b }` noise.
+math.maxInt(a: int, b: int): int
+math.minInt(a: int, b: int): int
+```
+
 ## time
 
 ```td

@@ -4,7 +4,8 @@
 //
 // Forces: fan-out (one job channel, many readers), fan-in (one result
 // channel, many writers), explicit close coordination, scope joining all
-// workers, RecvChan/SendChan directionality at the worker signature.
+// workers, `RecvChan<T>` / `SendChan<T>` directionality at the worker
+// signature.
 
 import fmt
 import time
