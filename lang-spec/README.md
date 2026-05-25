@@ -11,7 +11,7 @@ On disagreement these files win, per D17.
 | File | Purpose | Status |
 |---|---|---|
 | `keywords.md` | Reserved words, operators, punctuation, predeclared identifiers as a list | ✓ |
-| `grammar.ebnf` | Lexical + syntactic grammar in standard EBNF | ✓ lexical; syntactic forthcoming |
+| `grammar.ebnf` | Lexical + syntactic grammar in standard EBNF | ✓ |
 | `test-contract.md` | Canonical fixture serialization (TOKENS / AST / TYPES / ERRORS / GO / STDOUT) | ✓ TOKENS; deeper sections forthcoming |
 | `ast.md` | Canonical AST node schema (fields, invariants, source spans) | forthcoming |
 | `name-resolution.md` | Scoping, implicit receiver, shadow rules | forthcoming |

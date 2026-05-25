@@ -211,4 +211,300 @@ Token = Newline
 // 6. **`<` and `>` as comparison vs generic brackets.** The lexer
 //    always emits `<` / `>` as Op tokens. The parser resolves
 //    generic-argument-list positions by lookahead — see
-//    `grammar.ebnf` §Syntactic (forthcoming).
+//    "Generic-argument disambiguation" in the syntactic section
+//    below.
+
+
+// =============================================================
+// =============================================================
+// SYNTACTIC GRAMMAR
+// =============================================================
+// =============================================================
+//
+// Every production names exactly one AST node kind (see
+// `ast.md` — forthcoming). The grammar is presented in the
+// order a recursive-descent parser would consume it.
+//
+// "Newline" below means the Newline token from the lexical
+// part. Inside any open-bracket region (`(...)`, `[...]`,
+// `{...}`, `<...>`), Newline tokens are silently dropped before
+// the parser sees them — this is the bracket-aware
+// newline-suppression rule (§Lexical conventions / G32). Outside
+// brackets, Newline is a statement terminator. Within a single
+// statement, an explicit `;` may also terminate.
+
+// =============================================================
+// Top level
+// =============================================================
+
+File         = Newline* Import* Newline* Decl ( Newline+ Decl )* Newline* ;
+
+Import       = "import" PackagePath ;
+PackagePath  = Ident ( "/" Ident )* ;
+
+Decl         = FuncDecl
+             | TypeDecl
+             | ClassDecl
+             | InterfaceDecl
+             | TopLevelLet
+             ;
+
+TopLevelLet  = "let" Ident ( ":" TypeExpr )? "=" Expr ;
+                          // `var` is intentionally not legal at the
+                          // top level — module-scope mutable state
+                          // requires a class with a singleton
+                          // instance (see language-spec.md §Records).
+
+// =============================================================
+// Type declarations
+// =============================================================
+
+TypeDecl     = "type" Ident TypeParams? "=" TypeBody ;
+TypeBody     = RecordType
+             | TupleTypeAlias
+             | TypeExpr                    // simple alias
+             | SumType
+             ;
+
+TypeParams   = "<" Ident ( "," Ident )* ">" ;
+
+RecordType   = "{" Newline? FieldDecl ( FieldSep FieldDecl )* FieldSep? "}" ;
+FieldDecl    = Ident ":" TypeExpr ;
+FieldSep     = Newline+ | "," | "," Newline+ ;
+
+TupleTypeAlias = "(" TypeExpr ( "," TypeExpr )+ ")" ;       // arity ≥ 2
+
+SumType      = "|" Variant ( "|" Variant )+ ;               // arity ≥ 2
+Variant      = Ident ( "(" Newline? FieldDecl ( "," Newline? FieldDecl )* ")" )? ;
+
+// =============================================================
+// Class and interface declarations
+// =============================================================
+
+ClassDecl    = "class" Ident TypeParams?
+               ( "implements" InterfaceList )?
+               "{" Newline? ClassMember* "}" ;
+InterfaceList = TypeExpr ( "," TypeExpr )* ;
+
+ClassMember  = ClassField
+             | StaticMethod
+             | InstanceMethod
+             ;
+ClassField   = ("let" | "var") Ident ":" TypeExpr Newline+ ;
+StaticMethod = "static" Ident "(" ParamList? ")" ReturnAnnot? Block Newline* ;
+InstanceMethod = Ident "(" ParamList? ")" ReturnAnnot? Block Newline* ;
+
+InterfaceDecl = "interface" Ident TypeParams?
+                ( "extends" InterfaceList )?
+                "{" Newline? InterfaceMember* "}" ;
+InterfaceMember = Ident "(" ParamList? ")" ReturnAnnot? Newline+ ;
+
+// =============================================================
+// Function declarations and shapes
+// =============================================================
+
+FuncDecl     = "func" Ident TypeParams? "(" ParamList? ")" ReturnAnnot? Block ;
+ParamList    = Param ( "," Param )* ;
+Param        = ( Ident | "_" ) ":" TypeExpr ;
+ReturnAnnot  = ":" TypeExpr ;
+
+// =============================================================
+// Type expressions
+// =============================================================
+
+TypeExpr     = PrimitiveType
+             | NamedType
+             | TupleType
+             | SliceType
+             | FuncType
+             | InlineInterface
+             ;
+
+PrimitiveType = "bool" | "int" | "int8" | "int16" | "int32" | "int64"
+              | "uint" | "uint8" | "uint16" | "uint32" | "uint64"
+              | "float32" | "float64" | "byte" | "rune" | "string"
+              | "Any" | "unit" | "error"
+              ;
+NamedType    = QualifiedIdent ( TypeArgs )? ;
+QualifiedIdent = Ident ( "." Ident )* ;
+TypeArgs     = "<" TypeExpr ( "," TypeExpr )* ">" ;
+TupleType    = "(" TypeExpr ( "," TypeExpr )+ ")" ;
+SliceType    = "[" "]" TypeExpr ;
+FuncType     = "func" "(" ( TypeExpr ( "," TypeExpr )* )? ")" ReturnAnnot? ;
+InlineInterface = "interface" "{" Newline? InterfaceMember* "}" ;
+
+// =============================================================
+// Statements
+// =============================================================
+
+Block        = "{" Newline? Stmt* TrailingExpr? "}" ;
+Stmt         = LetStmt
+             | VarStmt
+             | AssignStmt
+             | IfStmt                      // if-without-else used at stmt position
+             | ForStmt
+             | WhileStmt
+             | MatchStmt
+             | SelectStmt
+             | ReturnStmt
+             | DeferStmt
+             | BreakStmt
+             | ContinueStmt
+             | ExprStmt
+             ;
+TrailingExpr = Expr ;                      // last expression of a block — its value
+
+LetStmt      = "let" Pattern ( ":" TypeExpr )? "=" Expr Stmtterm ;
+VarStmt      = "var" ( Ident | "_" ) ( ":" TypeExpr )? ( "=" Expr )? Stmtterm ;
+AssignStmt   = LValue "=" Expr Stmtterm ;
+LValue       = PostfixExpr ;               // restricted by sema to writable shapes
+IfStmt       = "if" Expr Block ( "else" ( IfStmt | Block ) )? Stmtterm ;
+ForStmt      = "for" Pattern "in" Expr Block Stmtterm ;
+WhileStmt    = "while" Expr Block Stmtterm ;
+MatchStmt    = MatchExpr Stmtterm ;
+SelectStmt   = "select" "{" Newline? SelectCase* "}" Stmtterm ;
+ReturnStmt   = "return" Expr? Stmtterm ;
+DeferStmt    = "defer" Expr Stmtterm ;
+BreakStmt    = "break" Stmtterm ;
+ContinueStmt = "continue" Stmtterm ;
+ExprStmt     = Expr Stmtterm ;
+
+Stmtterm     = Newline+ | ";" Newline* ;
+
+// =============================================================
+// Expressions  —  precedence climbing
+// =============================================================
+// Precedence (low → high), all left-associative unless noted:
+//
+//   1   ||
+//   2   &&
+//   3   == != (non-associative)
+//   4   < <= > >= (non-associative)
+//   5   + -
+//   6   * / %
+//   7   prefix ! and unary -
+//   8   postfix . [ ] [ : ] call < > generic-args
+//   9   primary
+//
+// See operators.md (forthcoming — folded into keywords.md for v1)
+// for the formal precedence table.
+
+Expr         = OrExpr ;
+OrExpr       = AndExpr ( "||" AndExpr )* ;
+AndExpr      = EqExpr  ( "&&" EqExpr )* ;
+EqExpr       = CmpExpr ( ( "==" | "!=" ) CmpExpr )? ;
+CmpExpr      = AddExpr ( ( "<" | "<=" | ">" | ">=" ) AddExpr )? ;
+AddExpr      = MulExpr ( ( "+" | "-" ) MulExpr )* ;
+MulExpr      = UnaryExpr ( ( "*" | "/" | "%" ) UnaryExpr )* ;
+UnaryExpr    = ( "!" | "-" )* PostfixExpr ;
+PostfixExpr  = PrimaryExpr ( Suffix )* ;
+Suffix       = CallSuffix
+             | IndexSuffix
+             | SliceSuffix
+             | FieldSuffix
+             | TupleFieldSuffix
+             ;
+CallSuffix       = TypeArgs? "(" ArgList? ")" ;
+IndexSuffix      = "[" Expr "]" ;
+SliceSuffix      = "[" Expr? ":" Expr? "]" ;          // half-open
+FieldSuffix      = "." Ident ;
+TupleFieldSuffix = "." IntLit ;
+ArgList          = Expr ( "," Newline? Expr )* ;
+
+PrimaryExpr  = Literal
+             | Ident
+             | "(" Expr ")"
+             | TupleLit
+             | SliceLit
+             | RecordLit
+             | MapLit
+             | SetLit
+             | StackLit                              // `Stack<T>{}`
+             | ChannelLit                            // `makeChannel<T>(...)` is a call, not a literal — but `Channel<T>{}` etc. are literals only via PrimaryExpr ⊆ NamedType-pattern
+             | Block                                 // block-as-expression
+             | IfExpr
+             | MatchExpr
+             | ScopeExpr
+             | TryExpr
+             | SpawnExpr
+             | ClosureLit
+             | UnitLit
+             ;
+
+Literal      = IntLit | FloatLit | StringLit | RuneLit | "true" | "false" ;
+UnitLit      = "(" ")" ;
+
+TupleLit     = "(" Expr ( "," Newline? Expr )+ ")" ;        // arity ≥ 2
+SliceLit     = "[" ( Expr ( "," Newline? Expr )* )? "]"
+             | SliceType "{" ( Expr ( "," Newline? Expr )* )? "}"
+             ;
+RecordLit    = NamedType "{" Newline? RecordField ( "," Newline? RecordField )* ","? Newline? "}" ;
+RecordField  = Ident ":" Expr ;
+MapLit       = NamedType "{" ( MapEntry ( "," Newline? MapEntry )* )? "}" ;
+MapEntry     = Expr ":" Expr ;
+SetLit       = NamedType "{" ( Expr ( "," Newline? Expr )* )? "}" ;
+StackLit     = NamedType "{" "}" ;                          // Stack<T>{} only
+
+ClosureLit   = "func" "(" ParamList? ")" ReturnAnnot? Block
+             | "(" ParamList? ")" "=>" Expr                  // short closure
+             ;
+
+IfExpr       = "if" Expr Block "else" ( IfExpr | Block ) ;   // both arms required for value
+MatchExpr    = "match" Expr "{" Newline? MatchArm ( "," Newline? MatchArm )* ","? Newline? "}" ;
+MatchArm     = Pattern "=>" ( Expr | Block ) ;
+
+ScopeExpr    = "scope" TypeArgs? ( "(" Expr ")" )? Block ;   // optional parent ctx
+TryExpr      = "try" Expr ;
+SpawnExpr    = "spawn" Block ;
+
+// =============================================================
+// Patterns
+// =============================================================
+
+Pattern      = WildcardPat
+             | LiteralPat
+             | UnitPat
+             | IdentPat
+             | TuplePat
+             | VariantPat
+             | RecordPat
+             | AltPat
+             ;
+WildcardPat  = "_" ;
+LiteralPat   = IntLit | StringLit | RuneLit | "true" | "false" ;
+UnitPat      = "(" ")" ;
+IdentPat     = Ident ;                              // binding
+TuplePat     = "(" Pattern ( "," Pattern )+ ")" ;
+VariantPat   = QualifiedIdent ( "(" Pattern ( "," Pattern )* ")" )? ;
+RecordPat    = NamedType "{" RecordPatField ( "," RecordPatField )* "}" ;
+RecordPatField = Ident ":" Pattern ;
+AltPat       = LiteralPat ( "|" LiteralPat )+ ;     // alternatives — literal only in v1
+
+// =============================================================
+// Select cases (only inside SelectStmt)
+// =============================================================
+
+SelectCase   = SelectRecv | SelectSend | SelectDefault ;
+SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" Block Newline* ;
+SelectSend   = "case" PostfixExpr "." "send" "(" Expr ")" "=>" Block Newline* ;
+SelectDefault = "default" "=>" Block Newline* ;
+
+// =============================================================
+// Generic-argument disambiguation (resolves `<` from comparison)
+// =============================================================
+//
+// At a position where a PostfixExpr suffix could be either
+// `< Expr (comparison)` or `< TypeArgs > ( ... )` (a generic
+// call), the parser uses one-token lookahead **plus** structural
+// validation:
+//
+//   1. Speculatively parse `< TypeExpr ( "," TypeExpr )* >`.
+//   2. If the next token after the speculative `>` is `(`
+//      (function call) or `{` (record / map / set / stack
+//      literal), commit to TypeArgs.
+//   3. Otherwise, rewind and treat the `<` as comparison.
+//
+// This is the same rule Go uses for the analogous case in its
+// `expr.IndexExpr` disambiguation. It is local — a single
+// lookahead — and has no exponential blow-up: speculative parse
+// fails fast on first non-TypeExpr token.
