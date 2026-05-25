@@ -276,12 +276,13 @@ let v = match getUser(id) {
 
 Patterns support:
 
-- Literals (`'('`, `42`, `"key"`).
+- Literals (`'('`, `42`, `"key"`, `()` for the sole `unit` value).
 - Wildcards (`_`).
 - Alternatives (`'(' | '[' | '{'`).
 - Variants with positional payloads (`Some(x)`, `Node(v, l, r)`,
   `Dispensing(_, change)`).
-- Tuples (`(Idle, InsertCoin(n))`, `(s, e)`).
+- Tuples (`(Idle, InsertCoin(n))`, `(s, e)`). Note that `()` is the
+  unit-literal *pattern*, not a tuple — tuples are arity ≥ 2 (G24).
 - Records by name (`User{ id, name }`) — punning omitted in v1.
 
 A `match` used at statement position discards its value; the arms must

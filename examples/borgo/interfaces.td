@@ -21,7 +21,10 @@ class Bar implements Foo {
 }
 
 // Composite interface — Tide spells inheritance with `extends` instead
-// of an `impl Foo` row inside another interface.
+// of Borgo's `impl Foo` row. The empty body is a deliberate mirror of
+// Borgo's snapshot, which uses a single-parent empty composite to test
+// the form; in real Tide code the empty `extends Foo { }` is just a
+// renamed alias and would normally carry additional methods.
 interface Composite extends Foo { }
 
 func baz(f: Foo): int {

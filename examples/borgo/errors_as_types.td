@@ -22,11 +22,15 @@ func foo(): Result<unit, FooErr> {
   return Ok(())
 }
 
-// Borgo `bar` widens FooErr to `error` automatically. In Tide the
-// generic `error` interface and the specific `FooErr` are nominal —
-// a single try-propagate doesn't auto-widen, so an explicit `match`
-// converts on the boundary. The cleaner alternative is to return
-// `Result<unit, FooErr>` all the way up, which we do here.
+// Borgo `bar` returns `Result<(), error>` and lets `?` widen `FooErr`
+// to `error` along the way. Tide's `class FooErr implements error`
+// establishes the *nominal* is-a relation just like Borgo's
+// `impl (f: FooErr) { fn Error() }`, but G11 deliberately keeps v1
+// strict on the `try` boundary: "No implicit error conversion in v1;
+// the error types must match." So `bar` here returns
+// `Result<unit, FooErr>` end to end — when v1's `try` learns to
+// promote via an `implements error` relation, this function could
+// return `Result<unit, error>` and the body wouldn't change.
 func bar(): Result<unit, FooErr> {
   let x = try foo()
   return Ok(x)

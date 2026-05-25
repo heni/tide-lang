@@ -40,6 +40,10 @@ func main() {
     Err(e)  => fmt.println("err:", e),
   }
 
+  // At this point `ch` has been drained dry by the first scope's
+  // trailing expression — every send was matched by a recv before
+  // join. We reuse the same channel for the fan-out below.
+  //
   // Fan-out: N workers each send 1 into `ch`; the body collects N and
   // sums them. The scope's join contract replaces sync.WaitGroup.
   let desired = 5

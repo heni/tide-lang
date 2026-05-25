@@ -54,7 +54,10 @@ fmt.scan3<A, B, C>(): Result<(A, B, C), error>
 // Process arguments. A slice view of os.Args (read-only convention).
 os.args: []string
 
-// Exit with a status code.
+// Exit with a status code. Diverging — never returns; unifies with
+// any expected type at the call site. See `language-spec.md`
+// §Error handling for the rule that lets `os.exit` occupy a `match`
+// arm or any other typed position.
 os.exit(code: int)
 
 // File I/O (suite uses just these two).
