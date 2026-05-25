@@ -127,6 +127,16 @@ typed language that compiles to Go (Rust-flavoured syntax, ML-family
 types). Five of its snapshot programs ported to Tide, with
 side-by-side notes. See [`borgo/README.md`](borgo/README.md).
 
+## `raku/` — Raku-inspired spec stress tests
+
+Three small Tide programs inspired by patterns Raku's
+[`roast`](https://github.com/Raku/roast) tests rigorously: set
+algebra over `Set<T>`, deep pattern destructuring through nested
+sum-records-tuples, and a three-stage `Result` error chain. The
+README walks through what these surface about the Tide spec, and
+catalogues which Raku features are deliberately *not* in the
+cut-list. See [`raku/README.md`](raku/README.md).
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.
