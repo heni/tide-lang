@@ -147,3 +147,56 @@ func TestRunMissingArg(t *testing.T) {
 		t.Errorf("expected usage hint in stderr; got %q", stderr)
 	}
 }
+
+func TestEmitHello(t *testing.T) {
+	stdout, _, exit := runTide(t, "emit", "examples/hello.td")
+	if exit != 0 {
+		t.Fatalf("tide emit hello.td exit = %d", exit)
+	}
+	// Spot-check: the lowered Go contains package main, fmt
+	// import, the Println call, and at least one //line
+	// directive pointing back at the .td source.
+	for _, want := range []string{
+		"package main",
+		`import "fmt"`,
+		`fmt.Println("Tide is rising.")`,
+		"//line examples/hello.td:",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("emit output missing %q. Full output:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestEmitMissingArg(t *testing.T) {
+	_, stderr, exit := runTide(t, "emit")
+	if exit != 2 {
+		t.Errorf("tide emit (no args) exit = %d; want 2", exit)
+	}
+	if !strings.Contains(stderr, "expected exactly one") {
+		t.Errorf("expected usage hint; got %q", stderr)
+	}
+}
+
+func TestBuildOutputFlag(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "hello-bin")
+	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
+	if exit != 0 {
+		t.Fatalf("tide build -o failed: %d (stderr: %s)", exit, stderr)
+	}
+	st, err := os.Stat(outPath)
+	if err != nil {
+		t.Fatalf("expected binary at %s: %v", outPath, err)
+	}
+	if st.Mode()&0o111 == 0 {
+		t.Errorf("expected %s to be executable; mode = %v", outPath, st.Mode())
+	}
+	// Run the resulting binary to make sure it actually works.
+	out, err := exec.Command(outPath).Output()
+	if err != nil {
+		t.Fatalf("run binary: %v", err)
+	}
+	if string(out) != "Tide is rising.\n" {
+		t.Errorf("binary stdout = %q; want %q", string(out), "Tide is rising.\n")
+	}
+}

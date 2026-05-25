@@ -1,17 +1,16 @@
 // Command tide is the compiler and toolchain for the Tide programming language.
 //
-// Tide is pre-alpha. Two subcommands wire the lexer / parser / codegen
+// Tide is pre-alpha. Three subcommands wire the lexer / parser / codegen
 // pipeline:
 //
-//	tide build <file.td>   compile to a Go binary in ./<basename>
-//	tide run   <file.td>   compile and execute (stdout / stderr passed
-//	                       through, exit code propagated)
-//
-// Both subcommands emit Go to a temporary working directory, drop a
-// minimal go.mod beside it, and shell out to the Go toolchain.
+//	tide emit  <file.td>             print the lowered Go source to stdout
+//	tide build [-o out] <file.td>    compile to a Go binary (default: ./<basename>)
+//	tide run   <file.td>             compile and execute (stdio passed through,
+//	                                 exit code propagated)
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +34,8 @@ func main() {
 	switch os.Args[1] {
 	case "version", "-v", "--version":
 		fmt.Printf("tide %s\n", version)
+	case "emit":
+		os.Exit(cmdEmit(os.Args[2:]))
 	case "build":
 		os.Exit(cmdBuild(os.Args[2:]))
 	case "run":
@@ -51,20 +52,57 @@ func main() {
 	}
 }
 
-func cmdBuild(args []string) int {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "tide build: expected <file.td>")
+func cmdEmit(args []string) int {
+	fs := flag.NewFlagSet("tide emit", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: tide emit <file.td>")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	src, err := compileToTempGo(args[0])
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "tide emit: expected exactly one <file.td>")
+		return 2
+	}
+	goSrc, err := emitGoSource(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(goSrc)
+	return 0
+}
+
+func cmdBuild(args []string) int {
+	fs := flag.NewFlagSet("tide build", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	out := fs.String("o", "", "output binary path (default: ./<basename>)")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: tide build [-o <path>] <file.td>")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "tide build: expected exactly one <file.td>")
+		return 2
+	}
+	srcPath := fs.Arg(0)
+	src, err := compileToTempGo(srcPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	defer os.RemoveAll(src.dir)
 
-	out := outputBinaryName(args[0])
-	absOut, err := filepath.Abs(out)
+	outPath := *out
+	if outPath == "" {
+		outPath = outputBinaryName(srcPath)
+	}
+	absOut, err := filepath.Abs(outPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tide build: %v\n", err)
 		return 1
@@ -78,6 +116,32 @@ func cmdBuild(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// emitGoSource lexes / parses / lowers the file and returns the
+// generated Go source string. Used by cmdEmit and (indirectly via
+// compileToTempGo) by build / run.
+func emitGoSource(path string) (string, error) {
+	srcBytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("tide: cannot read %s: %w", path, err)
+	}
+	src := string(srcBytes)
+	file := path
+
+	toks, lerr := lexer.LexFile(src, file)
+	if lerr != nil {
+		return "", lerr
+	}
+	tree, perr := parser.ParseFile(toks, file)
+	if perr != nil {
+		return "", perr
+	}
+	goSrc, err := codegen.Emit(tree, file)
+	if err != nil {
+		return "", fmt.Errorf("tide: %s", err)
+	}
+	return goSrc, nil
 }
 
 func cmdRun(args []string) int {
@@ -117,31 +181,10 @@ type compiledSource struct {
 // writes main.go + go.mod into a fresh temp dir. The caller must
 // RemoveAll the returned dir.
 func compileToTempGo(path string) (*compiledSource, error) {
-	srcBytes, err := os.ReadFile(path)
+	goSrc, err := emitGoSource(path)
 	if err != nil {
-		return nil, fmt.Errorf("tide: cannot read %s: %w", path, err)
+		return nil, err
 	}
-	src := string(srcBytes)
-	// Pass the path verbatim into diagnostics and //line
-	// directives. test-contract.md §File paths requires
-	// repo-relative paths so two files with the same basename
-	// (e.g., examples/aoc/2025/d01.td vs examples/aoc/2026/d01.td)
-	// remain distinguishable in panic traces and diagnostics.
-	file := path
-
-	toks, lerr := lexer.LexFile(src, file)
-	if lerr != nil {
-		return nil, lerr
-	}
-	tree, perr := parser.ParseFile(toks, file)
-	if perr != nil {
-		return nil, perr
-	}
-	goSrc, err := codegen.Emit(tree, file)
-	if err != nil {
-		return nil, fmt.Errorf("tide: %s", err)
-	}
-
 	dir, err := os.MkdirTemp("", "tide-build-*")
 	if err != nil {
 		return nil, fmt.Errorf("tide: mkdir temp: %w", err)
@@ -174,11 +217,12 @@ Usage:
   tide <command> [arguments]
 
 Commands:
-  build  <file.td>   compile a Tide program to a native binary
-  run    <file.td>   compile and execute a Tide program
-  bindgen            generate Tide bindings from a Go package (not implemented)
-  version            print the compiler version
-  help               print this message
+  emit   <file.td>             print the lowered Go source to stdout
+  build  [-o out] <file.td>    compile to a native binary (default: ./<basename>)
+  run    <file.td>             compile and execute (stdio passed through)
+  bindgen                      generate Tide bindings from a Go package (not implemented)
+  version                      print the compiler version
+  help                         print this message
 
 Status: pre-alpha.`)
 }
