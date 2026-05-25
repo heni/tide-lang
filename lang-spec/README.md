@@ -13,7 +13,7 @@ On disagreement these files win, per D17.
 | `keywords.md` | Reserved words, operators, punctuation, predeclared identifiers as a list | ✓ |
 | `grammar.ebnf` | Lexical + syntactic grammar in standard EBNF | ✓ |
 | `test-contract.md` | Canonical fixture serialization (TOKENS / AST / TYPES / ERRORS / GO / STDOUT) | ✓ TOKENS; deeper sections forthcoming |
-| `ast.md` | Canonical AST node schema (fields, invariants, source spans) | forthcoming |
+| `ast.md` | Canonical AST node schema (fields, invariants, source spans) | ✓ |
 | `name-resolution.md` | Scoping, implicit receiver, shadow rules | forthcoming |
 | `type-system.md` | Inference rules in sequent notation | forthcoming |
 | `builtins.md` | Predeclared identifiers with full signatures | forthcoming |
