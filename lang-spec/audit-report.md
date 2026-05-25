@@ -3,10 +3,10 @@
 The closing PR of the formalization series (A–L). This file
 documents the mechanical and manual audit performed on the
 full corpus and the formal specification, and closes out the
-**D17 bootstrap exemption**: from this point onward, every new
-formal artefact MUST carry ≥ 1 atomic fixture in
-`../tests/{lexer,grammar,sema,codegen}/` per CLAUDE.md
-§"Every spec artifact carries coverage".
+**bootstrap exemption** under which the formalization PRs
+were not individually gated by atomic-fixture coverage. From
+this point onward, every new formal artefact MUST carry ≥ 1
+atomic fixture in `../tests/{lexer,grammar,sema,codegen}/`.
 
 ## Series summary
 
@@ -23,7 +23,7 @@ formal artefact MUST carry ≥ 1 atomic fixture in
 | I | `lowering-go.md` — IR → Go encoding | merged |
 | J | `diagnostics.md` — numbered error / warning catalog | merged |
 | K | `acceptance.yml` — per-example feature manifest | merged |
-| L | this report — closing audit | open |
+| L | this report — closing audit | (this PR) |
 
 The eleven formal artefacts in `lang-spec/` (excluding this
 report) constitute the complete contract for the v1 Tide
@@ -63,19 +63,21 @@ ubiquitous). The corpus has 51 `.td` files.
 
 ### 3. Authority discipline
 
-Per CLAUDE.md "Formal docs are authoritative over prose":
+Formal docs in `lang-spec/` are authoritative; prose in
+`docs/` mirrors public-facing decisions:
 
 - `docs/language-spec.md` — prose mirror; informational. May
   lag; `lang-spec/` wins on conflict.
 - `docs/architecture.md` — public engineering view; not
   authoritative on language semantics.
-- `docs/design-decisions.md` — polished decision log. Each
-  public decision is mirrored from `AI.md` (internal).
+- `docs/design-decisions.md` — polished decision log mirroring
+  the publicly important parts of the project's internal
+  decision history.
 
-Cross-checked: no committed file references gitignored
-pipeline files (`TODO.md`, `backlog.md`, `AI.md`,
-`spec-gaps.md`, `CLAUDE.md`). Decision identifiers (D1–D17)
-appear as opaque short labels with no file-name link.
+Cross-checked: no committed file references the project's
+gitignored development-process files. Decision identifiers
+(D1–D17) appear as opaque short labels with no file-name
+link.
 
 ## Manual eyeball pass
 
@@ -156,8 +158,6 @@ close):
    restructuring on purpose. `docs/language-spec.md` remains
    the chronological draft; an RFC-style chapter split is
    future work.
-6. **AoC 2024 Rust port.** Backlog candidate for corpus
-   breadth.
 
 ## Closing
 

@@ -389,7 +389,9 @@ examples:
   leetcode/merge_intervals.td:
     - top-level-func
     - tuple-construction
-    - tuple-field-access
+    - record-construction
+    - record-field-access
+    - type-decl-record
     - slice-push
     - slice-len
     - for-slice
@@ -494,7 +496,7 @@ examples:
     - top-level-func
     - for-slice
     - tuple-construction
-    - tuple-field-access
+    - match-tuple-pattern
     - type-decl-tuple-alias
     - closure-short
     - continue-stmt
@@ -549,17 +551,25 @@ examples:
 
   aoc/2025/d08.td:
     - top-level-func
+    - type-decl-alias
+    - tuple-construction
+    - tuple-field-access
     - map-literal
     - map-set
     - map-get
     - while-loop
+    - if-expr
+    - closure-short
     - binding-bufio
     - binding-fmt
 
   aoc/2025/d09.td:
     - top-level-func
+    - type-decl-alias
     - for-slice
     - tuple-construction
+    - tuple-field-access
+    - if-stmt
     - binding-bufio
     - binding-fmt
 
@@ -579,6 +589,8 @@ examples:
     - top-level-func
     - top-level-let
     - type-decl-sum
+    - tuple-construction
+    - tuple-field-access
     - map-literal
     - map-set
     - slice-push
