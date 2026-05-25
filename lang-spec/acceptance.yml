@@ -1,0 +1,738 @@
+# Per-example feature manifest.
+#
+# This file is the contract for the Formal-L corpus audit: each
+# example in examples/ declares which language features it
+# exercises, and the audit verifies every catalogued feature
+# has ≥ 1 example.
+#
+# Feature names mirror the formal docs:
+#   - lexical / syntactic constructs from grammar.ebnf and keywords.md
+#   - typing rules (T-*) from type-system.md (referenced by shorthand)
+#   - built-in container methods from builtins.md
+#   - IR-level constructs from desugaring.md (only the user-visible ones)
+#   - diagnostic categories from diagnostics.md (only when an example
+#     deliberately demonstrates a working path; negative-test fixtures
+#     are tracked separately in tests/sema/, not here)
+#
+# Schema:
+#   features:           closed vocabulary
+#     <feature-id>:     human-readable description
+#   examples:
+#     <path>:           list of feature-ids the example exercises
+#
+# Coverage invariant (Formal-L):
+#   for f in features: at least one example in examples lists f
+#   no example lists a feature not in features
+#
+# Authority: this file is the contract. Adding a new feature
+# requires (a) a paired rule in a formal doc and (b) at least
+# one example that exercises it.
+#
+# Ubiquitous features (used by nearly every example) are listed
+# under `ubiquitous:` below; the audit treats them as covered if
+# the corpus is non-empty. This avoids forcing every example to
+# tag every line — saves churn without weakening the contract.
+
+version: 1
+
+# Features assumed covered by the corpus as a whole. Audit
+# passes them if `examples:` is non-empty.
+ubiquitous:
+  - imports
+  - top-level-func
+  - let-binding
+  - return-value
+  - assignment
+  - slice-literal
+  - slice-index
+  - slice-slicing
+  - binding-fmt
+
+features:
+  # ── Lexical / declarations ───────────────────────────────
+  imports:                     "import <pkg> from the Go stdlib binding surface"
+  top-level-let:               "TopLevelLet — immutable module-level binding"
+  top-level-func:              "FuncDecl at file scope"
+  type-decl-alias:             "type T = ... (alias)"
+  type-decl-record:            "type T = { f1: T1; ... } (record)"
+  type-decl-tuple-alias:       "type T = (T1, T2, ...)"
+  type-decl-sum:               "type T = | V1 | V2(...) ... (sum type)"
+  class-decl:                  "class C { ... }"
+  class-generic:               "class C<T, ...> { ... }"
+  interface-decl:              "interface I { ... }"
+  implements-clause:           "class C implements I, I2"
+
+  # ── Bindings / control flow ──────────────────────────────
+  let-binding:                 "let x = ... (immutable local)"
+  var-binding:                 "var x = ... (mutable local)"
+  assignment:                  "lvalue = expr"
+  if-expr:                     "if-as-expression (T-If-Expr)"
+  if-stmt:                     "if-as-statement (T-If-Stmt)"
+  match-expr:                  "match scrutinee { arms }"
+  match-wildcard:              "match arm with `_` pattern"
+  match-tuple-pattern:         "tuple-shape pattern in match"
+  match-record-pattern:        "record-shape pattern in match"
+  match-variant-pattern:       "variant-with-payload pattern"
+  match-alt-pattern:           "AltPat — `a | b | c =>`"
+  match-literal-pattern:       "literal value in pattern (int/rune/string/bool)"
+  for-slice:                   "for x in []T"
+  for-indexed-slice:           "for (i, x) in []T"
+  for-map:                     "for (k, v) in Map<K, V>"
+  for-set:                     "for x in Set<T>"
+  for-range:                   "for i in lo..hi or lo..=hi"
+  for-string:                  "for r in str — rune iteration"
+  for-channel:                 "for v in RecvChan<T>"
+  while-loop:                  "while c { ... }"
+  break-stmt:                  "break inside loop"
+  continue-stmt:               "continue inside loop"
+  return-value:                "return <expr>"
+  return-unit:                 "bare `return`"
+  defer-call:                  "defer <call>"
+
+  # ── Type-driven features ─────────────────────────────────
+  option-type:                 "Option<T> with Some/None"
+  result-type:                 "Result<T, E> with Ok/Err"
+  try-result:                  "try e where e: Result<T, E>"
+  try-option:                  "try e where e: Option<T>"
+  generics-func:               "generic function with type parameters"
+  generics-class:              "generic class instantiation"
+  conversion:                  "primitive conversion like int(x), string(b)"
+  tuple-construction:          "(a, b, ...)"
+  tuple-field-access:          "t.0, t.1, ..."
+  record-construction:         "R { f1: v1, ... }"
+  record-field-access:         "obj.field"
+  refEq:                       "refEq(a, b) class identity check"
+  panic:                       "panic(msg) call"
+
+  # ── Containers (literal + key methods) ───────────────────
+  slice-literal:               "[e_1, ..., e_n] (T-Slice-Lit-Nonempty)"
+  slice-empty-literal:         "[]T{} (T-Slice-Lit-Empty / Annot)"
+  slice-index:                 "s[i] / s[i] = v"
+  slice-slicing:               "s[lo:hi]"
+  slice-push:                  "xs.push(e) — functional append"
+  slice-len:                   "xs.len()"
+  map-literal:                 "Map<K, V>{ k: v, ... } or Map.new()"
+  map-get:                     "m.get(k): Option<V>"
+  map-set:                     "m.set(k, v): unit"
+  map-has:                     "m.has(k): bool"
+  set-literal:                 "Set<T>{ e, ... } or Set.new()"
+  set-add:                     "s.add(e): unit"
+  set-has:                     "s.has(e): bool"
+  stack-literal:               "Stack<T>{} or Stack.new()"
+  stack-push:                  "stk.push(e)"
+  stack-pop:                   "stk.pop(): Result<T, error>"
+
+  # ── Concurrency ──────────────────────────────────────────
+  scope-block:                 "scope<T, error> { ... }"
+  spawn-block:                 "spawn { ... } inside a scope"
+  scope-context:               "scope.context — cancellable context.Context"
+  channel-make:                "makeChannel<T>() / makeChannel<T>(cap)"
+  channel-send:                "ch.send(v)"
+  channel-recv:                "ch.recv()"
+  channel-tryRecv:             "ch.tryRecv(): Option<T>"
+  channel-close:               "ch.close()"
+  channel-widening:            "Channel<T> → SendChan<T> / RecvChan<T>"
+  select-block:                "select { case ... default ... }"
+
+  # ── Class internals ──────────────────────────────────────
+  class-field-var:             "var field in class body"
+  class-field-let:             "let field in class body"
+  class-method-instance:       "instance method on a class"
+  class-method-static:         "static method on a class"
+  implicit-receiver:           "bare field/method use inside instance method"
+
+  # ── Closures ─────────────────────────────────────────────
+  closure-short:               "(x, y) => expr — short closure form"
+  closure-full:                "(x: T) => { Block }"
+
+  # ── Stdlib bindings (representative pkgs) ────────────────
+  binding-fmt:                 "fmt.println / fmt.printf"
+  binding-os:                  "os.args / os.exit / os.stdin"
+  binding-strings:             "strings.fields / strings.split / strings.count"
+  binding-strconv:             "strconv.atoi / strconv.itoa / strconv.parseFloat"
+  binding-bufio:               "bufio.NewScanner / Scan / Text"
+  binding-time:                "time.sleep / time.after / time.now"
+  binding-context:             "context.Context arg / context.Background"
+  binding-net-http:            "net/http.Handler / ListenAndServe"
+  binding-json:                "encoding/json.Marshal / Unmarshal"
+  binding-sync:                "sync.Mutex / lock / unlock"
+  binding-mathbig:             "math/big BigInt operations"
+
+examples:
+
+  hello.td:
+    - top-level-func
+    - binding-fmt
+
+  # ── Concurrency canon ──────────────────────────────────────
+  concurrency/pipeline.td:
+    - scope-block
+    - spawn-block
+    - scope-context
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-close
+    - channel-widening
+    - for-channel
+    - top-level-func
+    - binding-fmt
+
+  concurrency/worker_pool.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-close
+    - for-channel
+    - for-range
+    - select-block
+    - record-construction
+    - record-field-access
+    - type-decl-record
+    - binding-fmt
+
+  concurrency/pubsub.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-close
+    - select-block
+    - for-channel
+    - map-literal
+    - map-set
+    - map-has
+    - for-map
+    - class-decl
+    - class-method-instance
+    - binding-fmt
+
+  concurrency/rate_limited.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - channel-send
+    - channel-recv
+    - select-block
+    - binding-time
+    - binding-fmt
+
+  concurrency/nested_scopes.td:
+    - scope-block
+    - spawn-block
+    - scope-context
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-close
+    - for-channel
+    - binding-fmt
+
+  concurrency/select_showcase.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - select-block
+    - channel-send
+    - channel-recv
+    - binding-fmt
+    - binding-time
+
+  # ── Services ───────────────────────────────────────────────
+  services/wc.td:
+    - top-level-func
+    - record-construction
+    - type-decl-record
+    - binding-bufio
+    - binding-os
+    - binding-fmt
+    - binding-strings
+
+  services/todo_api.td:
+    - top-level-func
+    - class-decl
+    - class-method-instance
+    - class-field-var
+    - implicit-receiver
+    - map-literal
+    - map-get
+    - map-set
+    - map-has
+    - match-expr
+    - match-variant-pattern
+    - option-type
+    - result-type
+    - try-result
+    - binding-net-http
+    - binding-json
+    - binding-fmt
+
+  services/parallel_fetcher.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-close
+    - for-channel
+    - slice-push
+    - slice-len
+    - slice-empty-literal
+    - result-type
+    - try-option
+    - match-expr
+    - match-variant-pattern
+    - closure-full
+    - generics-func
+    - binding-net-http
+    - binding-fmt
+
+  services/graceful_server.td:
+    - scope-block
+    - spawn-block
+    - scope-context
+    - select-block
+    - channel-make
+    - channel-recv
+    - closure-full
+    - binding-net-http
+    - binding-context
+    - binding-sync
+    - binding-fmt
+
+  services/healthcheck_server.td:
+    - top-level-func
+    - record-construction
+    - type-decl-record
+    - binding-net-http
+    - binding-json
+    - binding-fmt
+
+  # ── LeetCode ───────────────────────────────────────────────
+  leetcode/two_sum.td:
+    - top-level-func
+    - for-indexed-slice
+    - map-literal
+    - map-get
+    - map-set
+    - match-expr
+    - match-variant-pattern
+    - option-type
+    - tuple-construction
+    - binding-fmt
+
+  leetcode/valid_parentheses.td:
+    - top-level-func
+    - for-string
+    - stack-literal
+    - stack-push
+    - stack-pop
+    - match-expr
+    - match-variant-pattern
+    - match-literal-pattern
+    - option-type
+    - result-type
+    - slice-len
+    - binding-fmt
+
+  leetcode/reverse_linked_list.td:
+    - class-decl
+    - class-method-instance
+    - class-field-var
+    - var-binding
+    - option-type
+    - match-expr
+    - match-variant-pattern
+    - while-loop
+    - binding-fmt
+
+  leetcode/merge_intervals.td:
+    - top-level-func
+    - tuple-construction
+    - tuple-field-access
+    - slice-push
+    - slice-len
+    - for-slice
+    - if-stmt
+    - if-expr
+    - closure-short
+    - binding-fmt
+
+  leetcode/invert_binary_tree.td:
+    - type-decl-sum
+    - class-decl
+    - match-expr
+    - match-variant-pattern
+    - option-type
+    - binding-fmt
+
+  # ── Interview ──────────────────────────────────────────────
+  interview/vending_machine.td:
+    - class-decl
+    - class-method-instance
+    - class-method-static
+    - class-field-var
+    - implicit-receiver
+    - type-decl-sum
+    - match-expr
+    - match-variant-pattern
+    - result-type
+    - try-result
+    - return-unit
+    - record-construction
+    - binding-fmt
+
+  interview/lru_cache.td:
+    - class-decl
+    - class-generic
+    - generics-class
+    - generics-func
+    - class-method-instance
+    - class-method-static
+    - class-field-var
+    - class-field-let
+    - implicit-receiver
+    - closure-full
+    - map-literal
+    - map-get
+    - map-set
+    - option-type
+    - match-expr
+    - match-variant-pattern
+    - refEq
+    - binding-fmt
+
+  interview/config_loader.td:
+    - top-level-func
+    - type-decl-record
+    - record-construction
+    - result-type
+    - try-result
+    - match-expr
+    - match-variant-pattern
+    - binding-os
+    - binding-json
+    - binding-fmt
+
+  interview/rpn_calculator.td:
+    - top-level-func
+    - type-decl-sum
+    - stack-literal
+    - stack-push
+    - stack-pop
+    - match-expr
+    - match-variant-pattern
+    - option-type
+    - result-type
+    - try-result
+    - for-slice
+    - binding-strings
+    - binding-strconv
+    - binding-fmt
+    - binding-os
+
+  interview/fizzbuzz.td:
+    - top-level-func
+    - for-range
+    - if-stmt
+    - binding-fmt
+
+  # ── AoC 2025 ───────────────────────────────────────────────
+  aoc/2025/d01.td:
+    - top-level-func
+    - for-slice
+    - for-indexed-slice
+    - if-stmt
+    - slice-push
+    - slice-len
+    - binding-strings
+    - binding-strconv
+    - binding-bufio
+    - binding-os
+    - binding-fmt
+
+  aoc/2025/d02.td:
+    - top-level-func
+    - for-slice
+    - tuple-construction
+    - tuple-field-access
+    - type-decl-tuple-alias
+    - closure-short
+    - continue-stmt
+    - binding-strings
+    - binding-bufio
+    - binding-fmt
+
+  aoc/2025/d03.td:
+    - top-level-func
+    - for-string
+    - stack-literal
+    - stack-push
+    - stack-pop
+    - match-expr
+    - match-literal-pattern
+    - if-expr
+    - while-loop
+    - binding-strings
+    - binding-fmt
+
+  aoc/2025/d04.td:
+    - top-level-func
+    - for-slice
+    - var-binding
+    - if-stmt
+    - continue-stmt
+    - binding-strings
+    - binding-fmt
+
+  aoc/2025/d05.td:
+    - top-level-func
+    - for-slice
+    - if-stmt
+    - binding-strings
+    - binding-fmt
+
+  aoc/2025/d07.td:
+    - top-level-func
+    - set-literal
+    - set-add
+    - set-has
+    - for-set
+    - for-string
+    - conversion
+    - binding-bufio
+    - binding-fmt
+
+  aoc/2025/d08.td:
+    - top-level-func
+    - map-literal
+    - map-set
+    - map-get
+    - while-loop
+    - binding-bufio
+    - binding-fmt
+
+  aoc/2025/d09.td:
+    - top-level-func
+    - for-slice
+    - tuple-construction
+    - binding-bufio
+    - binding-fmt
+
+  aoc/2025/d11.td:
+    - top-level-func
+    - type-decl-alias
+    - set-literal
+    - set-add
+    - set-has
+    - for-set
+    - tuple-construction
+    - binding-bufio
+    - binding-fmt
+
+  # ── Timus ──────────────────────────────────────────────────
+  timus/p1033.td:
+    - top-level-func
+    - top-level-let
+    - type-decl-sum
+    - map-literal
+    - map-set
+    - slice-push
+    - while-loop
+    - match-expr
+    - match-variant-pattern
+    - result-type
+    - try-result
+    - return-unit
+    - binding-bufio
+    - binding-strings
+    - binding-strconv
+    - binding-fmt
+
+  timus/p1133.td:
+    - top-level-func
+    - tuple-construction
+    - binding-mathbig
+    - binding-strconv
+    - binding-fmt
+
+  timus/p1242.td:
+    - top-level-func
+    - map-literal
+    - map-set
+    - map-get
+    - slice-push
+    - slice-len
+    - while-loop
+    - break-stmt
+    - closure-short
+    - binding-bufio
+    - binding-fmt
+
+  timus/p1335.td:
+    - top-level-func
+    - tuple-construction
+    - binding-fmt
+
+  timus/p1349.td:
+    - top-level-func
+    - var-binding
+    - if-stmt
+    - binding-fmt
+
+  timus/p1404.td:
+    - top-level-func
+    - for-string
+    - var-binding
+    - binding-strings
+    - binding-fmt
+
+  timus/p1423.td:
+    - top-level-func
+    - for-slice
+    - var-binding
+    - if-stmt
+    - binding-strings
+    - binding-strconv
+    - binding-fmt
+
+  timus/p1605.td:
+    - top-level-func
+    - for-string
+    - var-binding
+    - binding-strings
+    - binding-fmt
+
+  timus/p1683.td:
+    - top-level-func
+    - for-range
+    - var-binding
+    - if-stmt
+    - binding-fmt
+
+  timus/p1786.td:
+    - top-level-func
+    - var-binding
+    - if-stmt
+    - binding-fmt
+
+  timus/p1820.td:
+    - top-level-func
+    - var-binding
+    - if-stmt
+    - binding-fmt
+
+  # ── Borgo ports ────────────────────────────────────────────
+  borgo/concurrency.td:
+    - scope-block
+    - spawn-block
+    - channel-make
+    - channel-send
+    - channel-recv
+    - select-block
+    - binding-fmt
+    - binding-time
+
+  borgo/defer_demo.td:
+    - top-level-func
+    - defer-call
+    - binding-fmt
+
+  borgo/errors_as_types.td:
+    - type-decl-sum
+    - result-type
+    - try-result
+    - match-expr
+    - match-variant-pattern
+    - binding-fmt
+
+  borgo/interfaces.td:
+    - interface-decl
+    - implements-clause
+    - class-decl
+    - class-method-instance
+    - class-field-var
+    - implicit-receiver
+    - binding-fmt
+
+  borgo/match_on_tuples.td:
+    - top-level-func
+    - tuple-construction
+    - match-expr
+    - match-tuple-pattern
+    - match-literal-pattern
+    - match-alt-pattern
+    - binding-fmt
+
+  # ── Raku stress tests ──────────────────────────────────────
+  raku/deep_destructure.td:
+    - type-decl-sum
+    - type-decl-record
+    - match-expr
+    - match-variant-pattern
+    - match-record-pattern
+    - match-tuple-pattern
+    - match-wildcard
+    - option-type
+    - binding-fmt
+
+  raku/error_chain.td:
+    - interface-decl
+    - implements-clause
+    - class-decl
+    - class-method-instance
+    - class-field-var
+    - implicit-receiver
+    - type-decl-sum
+    - result-type
+    - try-result
+    - match-expr
+    - match-variant-pattern
+    - binding-fmt
+
+  raku/set_algebra.td:
+    - top-level-func
+    - set-literal
+    - set-add
+    - set-has
+    - for-set
+    - refEq
+    - closure-short
+    - binding-fmt
+
+  # ── Counterstack Pentix agent ──────────────────────────────
+  agents/counterstack/pentix_agent.td:
+    - scope-block
+    - spawn-block
+    - scope-context
+    - channel-make
+    - channel-send
+    - channel-recv
+    - channel-tryRecv
+    - channel-close
+    - select-block
+    - for-channel
+    - class-decl
+    - class-method-instance
+    - class-field-var
+    - implicit-receiver
+    - type-decl-sum
+    - type-decl-record
+    - match-expr
+    - match-variant-pattern
+    - option-type
+    - result-type
+    - try-result
+    - map-literal
+    - map-get
+    - map-set
+    - slice-push
+    - slice-len
+    - panic
+    - binding-bufio
+    - binding-json
+    - binding-fmt
+    - binding-os
