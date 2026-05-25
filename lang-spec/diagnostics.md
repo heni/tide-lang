@@ -34,10 +34,12 @@ severity column.
 ## Severity legend
 
 - **E** — Error. Halts compilation; fixture `EXIT` is non-zero.
-- **W** — Warning. Reported on stderr; compilation continues.
+- **W** — Warning. Reported on stderr; compilation continues
+  (fixture `EXIT` is zero).
 - **I** — Internal compiler error. Should never reach the user
   under correct input; if it does, it's a compiler bug. Halts
-  compilation; the message includes "internal:" prefix.
+  compilation; the message includes "internal:" prefix; fixture
+  `EXIT` is non-zero.
 
 ## Catalog
 
@@ -45,13 +47,14 @@ severity column.
 
 | Code | Sev | Message | Authoritative rule | Fix |
 |---|---|---|---|---|
-| E0101 | E | Unexpected token | `grammar.ebnf` parser | Match the production listed in the message. |
-| E0102 | E | Unterminated string literal | `grammar.ebnf` StringLit | Close the string with `"`. |
+| E0101 | E | reserved | — | Reserved for future generic "Unexpected token" parser diagnostic. |
+| E0102 | E | reserved | — | Reserved for future generic "Unterminated string literal" lexer diagnostic. |
 | E0103 | E | Unknown name | `name-resolution.md` §Resolution algorithm | Declare the name, import the package, or fix the typo. |
 | E0104 | E | Ambiguous variant name | `name-resolution.md` §Variant constructors | Use the qualified form `Type.Variant`. |
 | E0105 | E | Duplicate field name | `type-system.md` §WF-Body-Record | Rename one of the colliding fields. |
 | E0106 | E | Duplicate variant name | `type-system.md` §WF-Body-Sum | Rename one of the colliding variants. |
 | E0107 | E | Reserved identifier prefix | `grammar.ebnf` Ident (`_tide_` prefix rejected) / `lowering-go.md` §Identifier encoding | Rename the identifier — `_tide_…` is reserved for codegen. |
+| E0108 | E | Type used as value | `name-resolution.md` §Generic type-argument resolution | Use the type in a type position, or call `.new(...)` on a class, or use a brace literal. |
 
 ### E02xx — Type system
 
@@ -61,7 +64,7 @@ severity column.
 | E0202 | E | Wrong arity | `type-system.md` T-Call, T-Variant-Payload, T-Tuple, P-Tuple | Supply the expected number of arguments / fields. |
 | E0203 | E | Wrong return type | `type-system.md` T-Func-Decl | Match the function's declared return type or change the annotation. |
 | E0204 | E | Integer literal out of range | `type-system.md` §Literals (narrowing) | Use a wider integer type or a literal within range. |
-| E0205 | E | Illegal type conversion | `type-system.md` T-Conv (`ConvOK`) / `builtins.md` §Conversion functions | Use a different conversion or go through an intermediate type. |
+| E0205 | E | Illegal type conversion | `type-system.md` T-Conv (`ConvOK`) / `builtins.md` §Conversion functions | The pair isn't in `ConvOK`; for string ↔ int parse with `strconv.atoi` / format with `strconv.itoa`. |
 | E0206 | E | `refEq` requires class operands of the same class | `type-system.md` T-RefEq / `builtins.md` §Free functions | Compare two values of the same class type; for cross-class comparison there is no v1 equivalent (rewrite the logic). |
 | E0207 | E | Wrong type arity on generic instantiation | `type-system.md` WF-Named | Provide the expected number of type arguments. |
 | E0208 | E | Cannot infer literal type | `type-system.md` §Slices, maps, sets, stacks (BraceKind=Unknown) | Add an explicit type annotation at the use site. |
@@ -70,7 +73,6 @@ severity column.
 
 | Code | Sev | Message | Authoritative rule | Fix |
 |---|---|---|---|---|
-| E0301 | E | Type used as value | `name-resolution.md` §Generic type-argument resolution | Use the type in a type position, or call `.new(...)` on a class, or use a brace literal. |
 | E0303 | E | Non-exhaustive match | `type-system.md` §match (exhaustive) | Add the missing arm(s) shown in the witness. |
 | E0304 | E | Unreachable arm | `type-system.md` §match (Maranget) | Remove the dead arm; an earlier pattern already covers it. |
 | E0305 | E | Float-literal patterns are not allowed | `type-system.md` §patterns | Replace with a wildcard + guard condition (`if x == 3.14`). |
@@ -81,11 +83,11 @@ severity column.
 |---|---|---|---|---|
 | E0401 | E | `==`/`!=` on non-comparable type | `type-system.md` T-Cmp / `builtins.md` §Comparable | Compare a field-wise; for class identity use `refEq`. |
 | E0402 | E | `try` outside Result/Option-returning function | `type-system.md` T-Try-Result / T-Try-Option | Change the function return type, or replace `try` with explicit `match`. |
-| E0403 | E | Error type of `try`'s sub-expression doesn't match enclosing function's error type | `type-system.md` T-Try-Result (G11) | Make the error types equal, or wrap explicitly with `match`. |
+| E0403 | E | Error type of `try`'s sub-expression does not match the enclosing function's error type | `type-system.md` T-Try-Result (G11) | Make the error types equal, or wrap explicitly with `match`. |
 | E0404 | E | `break`/`continue` outside a loop | `type-system.md` T-Break / T-Continue | Move the statement inside `for` / `while`. |
 | E0405 | E | `spawn` outside a `scope` block | `type-system.md` T-Spawn | Wrap the call in `scope<T, error> { ... }`. |
 | E0406 | E | `defer` argument must be a call | `type-system.md` T-Defer | Use a call expression, optionally wrapping in a closure: `defer (() => { ... })()`. |
-| E0407 | E | `scope<T, E>` requires `E = error` in v1 | `type-system.md` T-ScopeExpr | Use `scope<T, error>`; v2 will lift this restriction (typed-error adapter). |
+| E0407 | E | `scope` error parameter must be `error` in v1 | `type-system.md` T-ScopeExpr / `lowering-go.md` §ScopeIR / SpawnIR | Use `scope<T, error>`; v2 will lift this restriction (typed-error adapter). |
 
 ### E05xx — Class scope and shadowing
 
@@ -149,5 +151,6 @@ but missing) block the audit.
 The reverse is NOT required: this file may add codes that
 aren't yet referenced anywhere (reserved for future use), as
 long as they're marked **reserved** in the message column.
-Currently there are no reserved codes — every code in the
-catalog has a live reference.
+The current reserved codes are E0101 and E0102 — generic
+parser / lexer diagnostics whose specific shapes will be
+finalised once the lexer / parser code lands.

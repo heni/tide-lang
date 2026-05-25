@@ -241,9 +241,9 @@ Inside a generic decl, the type parameters are bindings in a
 **type-only sub-scope** of class / function scope. A type
 parameter `T` resolves only when looked up in type position; if
 a value expression refers to `T`, the resolver emits
-**E0301 Type used as value**.
+**E0108 Type used as value**.
 
-E0301 also fires for any `NamedType`-only identifier in value
+E0108 also fires for any `NamedType`-only identifier in value
 position — referring to `Counter` (a class) as a value, without
 following it by a member access (`Counter.new(...)` ✓) or a
 brace literal (`Counter{...}` ✓), is the error. Type
@@ -258,7 +258,7 @@ ones above:
 - **E0103** — Unknown name. Identifier resolves nowhere.
 - **E0104** — Ambiguous variant name. Unqualified variant
   collides across two in-scope sum types.
-- **E0301** — Type used as value. A type-parameter or named
+- **E0108** — Type used as value. A type-parameter or named
   type appears where an expression is required.
 - **E0501** — `this` outside an instance-method body.
 - **E0502** — Write-shadow of a field by a method param or
