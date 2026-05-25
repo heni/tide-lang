@@ -32,22 +32,72 @@ the call site and has no inhabitants. `unit` has exactly one
 inhabitant `()`.
 
 `Any` is the binding-boundary escape type. Concrete types widen
-to `Any` implicitly at call sites that expect `...Any`. `Any`
-does not unify with other types narrowing; the resolver and sema
+to `Any` implicitly at call sites that expect `...Any` (variadic
+formatting parameters on bound stdlib functions like
+`fmt.println`). `Any` does **not** narrow back to a concrete
+type — a value of type `Any` cannot be used where a concrete `T`
+is expected, with no implicit cast. The resolver and sema
 together enforce that user-authored Tide code never introduces
 an `Any`-typed parameter (per D11/G23).
+
+`Never` is a subtype of every type: `Never <: T` for all `T`. A
+`DivergingExpr` (return/break/continue/panic/`os.exit`) has type
+`Never`, so it unifies with whatever the surrounding expression
+expects. This is what lets `let x = if c { 5 } else { return };`
+type-check (`return : Never <: int`).
+
+## Type formation (WF-T)
+
+Before any expression rule can mention a `TypeExpr`, the type
+expression itself must be **well-formed**. The judgement is
+`Γ ⊢ T wf` ("`T` is a well-formed type under environment Γ");
+expression rules implicitly require each type appearing in their
+conclusion to be well-formed.
+
+```
+(WF-Prim)      P ∈ PrimitiveName               (per ast.md PrimitiveName enum)
+               ─────────────────────────────────
+                       Γ ⊢ P wf
+
+(WF-Named)     N resolves to a TypeDecl, ClassDecl, InterfaceDecl,
+               or built-in generic; arity matches type args
+                          for each i: Γ ⊢ τ_i wf
+               ──────────────────────────────────────────────────
+                       Γ ⊢ N<τ_1, ..., τ_k> wf
+
+(WF-Tuple)     n >= 2     for each i: Γ ⊢ T_i wf
+               ──────────────────────────────────
+                       Γ ⊢ (T_1, ..., T_n) wf
+
+(WF-Slice)     Γ ⊢ T wf
+               ────────────────
+                       Γ ⊢ []T wf
+
+(WF-Func)      for each i: Γ ⊢ T_i wf      Γ ⊢ R wf
+               ──────────────────────────────────────
+                       Γ ⊢ func(T_1, ..., T_n): R wf
+
+(WF-Inline-Itf)
+               each method m_j has signature sig_j with all
+               argument and return types well-formed in Γ
+               ──────────────────────────────────────────────
+                       Γ ⊢ interface { m_1 sig_1; ... } wf
+```
+
+Arity mismatch on a generic instantiation → **E0207 Wrong type
+arity**. Unknown type name → E0103 (from name resolution).
 
 ## Type judgements — expressions
 
 ### Literals
 
 ```
-(T-Int)        Γ ⊢ IntLitExpr     : int
-(T-Float)      Γ ⊢ FloatLitExpr   : float64
-(T-String)     Γ ⊢ StringLitExpr  : string
-(T-Rune)       Γ ⊢ RuneLitExpr    : rune
-(T-Bool)       Γ ⊢ BoolLitExpr    : bool
-(T-Unit)       Γ ⊢ UnitLit        : unit
+(T-IntLit)     Γ ⊢ IntLitExpr     : int
+(T-FloatLit)   Γ ⊢ FloatLitExpr   : float64
+(T-StringLit)  Γ ⊢ StringLitExpr  : string
+(T-RuneLit)    Γ ⊢ RuneLitExpr    : rune
+(T-BoolLit)    Γ ⊢ BoolLitExpr    : bool
+(T-UnitLit)    Γ ⊢ UnitLit        : unit
 ```
 
 Integer literals default to `int`; a literal in a context that
@@ -61,8 +111,12 @@ when in range, error E0204 if out of range.
 
 (T-This)       Γ, this : C ⊢ this : C    [inside class C instance method]
 
-(T-Scope)      [scope-block context provides scope : Scope]
-               Γ ⊢ scope : Scope
+(T-ScopeRef)   [scope-block context provides scope : Scope]
+               Γ ⊢ scope : Scope                   [ScopeRef AST node]
+
+(T-Paren)      Γ ⊢ e : T
+               ──────────────────
+                       Γ ⊢ (e) : T               [ParenExpr — pure wrapper]
 ```
 
 `Scope` is a built-in type with one method `.context :
@@ -71,15 +125,25 @@ context.Context`.
 ### Conversions
 
 ```
-(T-Conv)       Γ ⊢ e : T1    T2 is a primitive numeric or byte/rune/string
-               ──────────────────────────────────────────────────────
-                            Γ ⊢ T2(e) : T2
+(T-Conv)       Γ ⊢ e : T1    (T1, T2) ∈ ConvOK
+               ─────────────────────────────────
+                       Γ ⊢ T2(e) : T2
 ```
 
-Legal conversions follow Go's rules (truncation/rounding, byte ↔
-rune ↔ int*; `string(r)` for a single rune to its UTF-8
-encoding; `byte(c)` for narrowing). E0205 if the source type
-isn't admissible.
+`ConvOK` is the closed set of legal source→target conversions in
+v1:
+
+| `T2` (target) | Legal `T1` (sources) |
+|---|---|
+| `int`, `int8`, `int16`, `int32`, `int64` | any numeric primitive, `byte`, `rune` |
+| `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `byte` | any numeric primitive, `byte`, `rune` |
+| `rune` | any integer primitive, `byte` |
+| `float32`, `float64` | any numeric primitive |
+| `string` | `[]byte`, `rune` (UTF-8 encoding), any integer (codepoint) |
+
+Any other pair fails as **E0205 Illegal type conversion**. Notably
+`string → int` is **not** in `ConvOK` (use `strconv.atoi`).
+Truncation / rounding semantics follow Go's rules at runtime.
 
 ### Arithmetic and logical operators
 
@@ -104,7 +168,7 @@ isn't admissible.
                ──────────────────────────────────────────────────────────
                             Γ ⊢ a op b : bool                  op ∈ {<, <=, >, >=}
 
-(T-Bool)       Γ ⊢ a : bool   Γ ⊢ b : bool       op ∈ {&&, ||}
+(T-Logical)    Γ ⊢ a : bool   Γ ⊢ b : bool       op ∈ {&&, ||}
                ───────────────────────────────────────────────
                               Γ ⊢ a op b : bool
 
@@ -130,9 +194,10 @@ component is.
                ─────────────────────────────────────────────────────────
                       Γ, x : T ⊢ var x : T' = e : unit
 
-(T-Var-Decl)   T' explicitly annotated
-               ──────────────────────────────────────────────
-                      Γ, x : T' ⊢ var x : T' : unit
+[ Bare `var x : T` with no initialiser is rejected at the AST
+  / sema-stage level per G1 — v1 requires every `var` binding to
+  carry an explicit initial value (e.g. `var n: int = 0`). No
+  zero-value defaulting. ]
 
 (T-Assign)     Γ ⊢ lv : T    lv is writable     Γ ⊢ e : T
                ──────────────────────────────────────────
@@ -173,12 +238,19 @@ the header — see `../docs/language-spec.md` §Collections.)
 
 ```
 (T-Slice-Lit-Empty)
-               annotation T explicit
+               annotation T explicit                              [SliceLit form `[]T{}`]
                ─────────────────────────
                   Γ ⊢ []T{} : []T
 
+(T-Slice-Lit-Annot)
+               Γ ⊢ e_i : T  for each i ∈ 1..n   n >= 0           [SliceLit form `[]T{e_1, ..., e_n}`]
+               ─────────────────────────────────────────
+                       Γ ⊢ []T{e_1, ..., e_n} : []T
+
 (T-Slice-Lit-Nonempty)
-               Γ ⊢ e_i : T  for each i ∈ 1..n   n >= 1
+               Γ ⊢ e_i : T  for each i ∈ 1..n   n >= 1           [SliceLit form `[e_1, ..., e_n]` —
+                                                                  T inferred from elements; all e_i
+                                                                  must agree]
                ─────────────────────────────────────────
                        Γ ⊢ [e_1, ..., e_n] : []T
 
@@ -186,24 +258,50 @@ the header — see `../docs/language-spec.md` §Collections.)
                ────────────────────────────────────
                   Γ ⊢ makeSlice<T>(n) : []T
 
-(T-Index)      Γ ⊢ s : []T    Γ ⊢ i : int
+(T-Index-Slice)
+               Γ ⊢ s : []T    Γ ⊢ i : int
                ──────────────────────────
                        Γ ⊢ s[i] : T
 
 (T-Index-Map)  Γ ⊢ m : Map<K, V>    Γ ⊢ k : K
                ──────────────────────────────
-                  Γ ⊢ m.get(k) : Option<V>
-                  Γ ⊢ m.set(k, v) : unit     [v : V]
-                  Γ ⊢ m.has(k) : bool
-                  Γ ⊢ m.delete(k) : unit
+                       Γ ⊢ m[k] : V                  [primary `IndexExpr` — runtime panic on miss;
+                                                      total-API via `m.get` / `m.has` in builtins.md]
 
 (T-Slice)      Γ ⊢ s : []T   low/high : int (or absent)
                ──────────────────────────────────────────
                        Γ ⊢ s[low:high] : []T
+
+(T-Map-Lit)    BraceKind = Map<K, V>    n >= 0
+               for each entry (k_i, v_i): Γ ⊢ k_i : K   Γ ⊢ v_i : V
+               ─────────────────────────────────────────────────────
+                       Γ ⊢ Map<K, V>{ k_1: v_1, ..., k_n: v_n } : Map<K, V>
+
+(T-Set-Lit)    BraceKind = Set<T>    n >= 0
+               for each entry e_i: Γ ⊢ e_i : T
+               ──────────────────────────────────────
+                       Γ ⊢ Set<T>{ e_1, ..., e_n } : Set<T>
+
+(T-Stack-Lit)  BraceKind = Stack<T>    n >= 0
+               for each entry e_i: Γ ⊢ e_i : T
+               ──────────────────────────────────────
+                       Γ ⊢ Stack<T>{ e_1, ..., e_n } : Stack<T>
+
+(T-Range)      Γ ⊢ lo : int    Γ ⊢ hi : int
+               ──────────────────────────────────────
+                       Γ ⊢ lo..hi : Iterable<int>
+                       Γ ⊢ lo..=hi : Iterable<int>             [inclusive form]
 ```
 
-Sets and stacks follow the same pattern; full method signatures
-in `builtins.md`.
+`BraceLit` with `BraceKind = Unknown` (a bare `{}` whose type
+must be inferred from context) defers to **bidirectional**
+checking — the expected type at the use-site (annotation, return
+position, or argument slot) supplies `K`/`V`/`T`. When no
+expected type is reachable, sema emits **E0208 Cannot infer
+literal type**, asking for an explicit annotation. Built-in
+operations on collection types (`.get`, `.set`, `.has`, `.push`,
+`.pop`, etc.) are typed by `T-Call` against their predeclared
+signatures in `builtins.md`; this file does not re-state them.
 
 ### Sum-type construction and patterns
 
@@ -224,9 +322,14 @@ Patterns are typed in the *opposite* direction — the scrutinee
 type flows in, the pattern binds variables:
 
 ```
-(P-Wild)         Γ |- _    : T          ⇒ no bindings
-(P-Lit-Int)      Γ |- n    : int        if n : int literal
-(P-Ident)        Γ |- x    : T          ⇒ binds x : T
+(P-Wild)         Γ |- _              : T            ⇒ no bindings
+(P-Unit)         Γ |- ()             : unit         ⇒ no bindings   [UnitPat]
+(P-Lit-Int)      Γ |- IntLitPat n    : T            if T ∈ {int, int8..int64, uint..uint64, byte, rune}
+                                                    and n fits in T
+(P-Lit-String)   Γ |- StringLitPat s : string       ⇒ no bindings
+(P-Lit-Rune)     Γ |- RuneLitPat r   : rune         ⇒ no bindings
+(P-Lit-Bool)     Γ |- BoolLitPat b   : bool         ⇒ no bindings
+(P-Ident)        Γ |- x              : T            ⇒ binds x : T
 (P-Tuple)        Γ |- (p_1, ..., p_n) : (T_1, ..., T_n)
                  if for each i: Γ |- p_i : T_i
 (P-Variant)      Γ |- V(p_1, ..., p_n) : D
@@ -238,6 +341,13 @@ type flows in, the pattern binds variables:
                  if each a_i types against T and binds the same
                  set of variables with the same types
 ```
+
+**FloatLitPat is illegal in v1.** A `FloatLitPat` AST node
+(produced by the parser per `ast.md:364`) is rejected by sema
+with **E0305 Float literal patterns not allowed** — float equality
+is unreliable and there is no clear semantics. Use a guard
+condition (`if x == 3.14` inside the arm body, with a wildcard
+pattern) when needed.
 
 ### `match` and exhaustiveness
 
@@ -278,9 +388,10 @@ Wildcard / ident patterns trivially cover.
 ### Try, return, break, continue, panic
 
 ```
-(T-Try-Result) Γ ⊢ e : Result<T, E>
-               enclosing function returns Result<U, E>      (E unifies)
-               ────────────────────────────────────────────────────
+(T-Try-Result) Γ ⊢ e : Result<T, E_inner>
+               enclosing function returns Result<U, E_outer>
+               E_inner = E_outer                              (per G11 — no implicit conversion)
+               ─────────────────────────────────────────────
                           Γ ⊢ try e : T
 
 (T-Try-Option) Γ ⊢ e : Option<T>
@@ -312,6 +423,24 @@ Wildcard / ident patterns trivially cover.
 `os.exit(code)` is a regular call typed by its binding signature
 which returns `Never`; no dedicated rule.
 
+**Negative cases.** `try` in a function that returns neither
+`Result<_, _>` nor `Option<_>` fires **E0402 `try` outside a
+Result/Option function**. `break`/`continue` outside a loop
+fires **E0404**. `spawn` outside a `scope` block fires
+**E0405** (see also T-Spawn below).
+
+### Defer
+
+```
+(T-Defer)      Γ ⊢ call : T              call AST shape is `Call`
+               ──────────────────────────────────────────────────
+                       Γ ⊢ defer call : unit
+```
+
+`defer` admits only a call expression as its argument (per G27);
+any other expression shape fires **E0406 defer argument must be
+a call**. The return type `T` of the deferred call is discarded.
+
 ### Control-flow expressions
 
 ```
@@ -328,7 +457,7 @@ which returns `Never`; no dedicated rule.
                ──────────────────────────────────────────────────────────────────
                        Γ ⊢ { s_1; ...; s_n; tail } : T
 
-(T-For)        Γ ⊢ iter : Iterable<T>    Γ, pat : T ⊢ body : unit
+(T-For)        Γ ⊢ iter : I where IterElem(I) = T    Γ, pat : T ⊢ body : unit
                ──────────────────────────────────────────────────
                        Γ ⊢ for pat in iter { body } : unit
 
@@ -337,28 +466,45 @@ which returns `Never`; no dedicated rule.
                        Γ ⊢ while c { body } : unit
 ```
 
-`Iterable<T>` is satisfied by `[]T`, `Map<K, V>` (with iter
-type `(K, V)`), `Set<T>`, `RangeExpr` (`int`), and `RecvChan<T>`
-(channel-as-iterator until close). Indexed iteration `for (i, v)
-in s` types `(i, v) : (int, T)` over a `[]T`.
+`IterElem(I)` is a closed mapping from iterable source-types to
+their per-step element type, defined in `builtins.md` under
+`Iterable<T>`. The v1 mapping is:
+
+| Source type `I` | `IterElem(I)` |
+|---|---|
+| `[]T` | `T` (or `(int, T)` if `pat` is a 2-tuple pattern — indexed iteration) |
+| `Map<K, V>` | `(K, V)` |
+| `Set<T>` | `T` |
+| `Stack<T>` | `T` (pop order) |
+| `Iterable<int>` (a `RangeExpr`) | `int` |
+| `RecvChan<T>` | `T` (loop ends on channel close) |
+
+`Iterable<T>` itself is **not** an open user-extensible
+interface in v1 — it is the closed set above. D11 parks the
+typeclass extension. Indexed iteration `for (i, v) in s` over
+`[]T` triggers the alternative `IterElem` clause; this is the
+only place where the pattern shape influences `IterElem`.
 
 ### Functions, closures, calls
 
 ```
 (T-Func-Decl)  params (x_i : T_i), return R, body Block
                  Γ, x_i : T_i ⊢ body : R
-               ───────────────────────────
-                  Γ ⊢ func f(...): R { body } : func(T_1, ..., T_n): R
+               ──────────────────────────────────────────────────────
+                  Γ ⊢ FuncDecl f                    binds f : func(T_1, ..., T_n): R
+                                                    in the enclosing file scope
 
-(T-Closure)    params (x_i : T_i), return R, body Block
+(T-Closure)    params (x_i : T_i), return R, body Block               [ClosureLit]
                  Γ, x_i : T_i ⊢ body : R
                  if any x_i lacks annotation, T_i is inferred from the
                  expected closure type at the call site
-               ───────────────────────────
+               ─────────────────────────────────────────────
                   Γ ⊢ (x_i: T_i) => body : func(T_1, ..., T_n): R
 
-(T-Call)       Γ ⊢ f : func(T_1, ..., T_n): R    Γ ⊢ arg_i : T_i
-               ─────────────────────────────────────────────────
+(T-Call)       Γ ⊢ f : func(T_1, ..., T_n): R    for each i: Γ ⊢ arg_i : S_i
+                                                              S_i = T_i, or S_i <: T_i
+                                                              via T-Chan-Widen
+               ─────────────────────────────────────────────────────────
                   Γ ⊢ f(arg_1, ..., arg_n) : R
 
 (T-Call-Generic)
@@ -370,22 +516,48 @@ in s` types `(i, v) : (int, T)` over a `[]T`.
 ```
 
 Type-parameter inference (`f(arg)` without explicit `<τ>`) uses
-**unify**: solve the constraint set `arg_i ≡ T_i[A → ?]` for `?`
-under occurs-check, then substitute.
+**unify** (Hindley-Milner Algorithm-W skeleton):
+
+```
+unify(t1, t2):
+  t1, t2 = apply_subst(σ, t1), apply_subst(σ, t2)
+  match (t1, t2):
+    (TVar α, TVar β) if α == β     → σ
+    (TVar α, t)                    → if α ∈ ftv(t): fail occurs-check
+                                     else: σ ∘ {α ↦ t}
+    (t, TVar α)                    → symmetric
+    (NamedT(N, [a_i]),
+     NamedT(M, [b_i])) if N == M   → fold unify over zip(a_i, b_i)
+    (TupleT([a_i]), TupleT([b_i])) → fold unify over zip(a_i, b_i)
+    (FuncT([a_i], r1),
+     FuncT([b_i], r2))             → fold unify over zip(a_i, b_i),
+                                     then unify(r1, r2)
+    (SliceT(a), SliceT(b))         → unify(a, b)
+    _                              → fail mismatch
+```
+
+Substitution `σ` accumulates left-to-right; failure on any pair
+emits **E0201 Type mismatch**.
 
 ### Scope, spawn, channels
 
 ```
-(T-Scope)      Γ ⊢ body : Result<T, E>  (or terminates with first Err(E))
-                 spawn blocks inside body each return Result<unit, E>
-                 parent (if given) : context.Context
-                 body's trailing expression has type T   (or `Block` value is unit if no trailing)
-               ─────────────────────────────────────────────────────
+(T-ScopeExpr)  Γ ⊢ body : Block, typed under the scope's frame:
+                 - body's trailing expression has type T;
+                   it is implicitly lifted to Ok(trailing) : Result<T, E>
+                   (no trailing expression ⇒ T = unit and the implicit
+                   value is Ok(()))
+                 - every `spawn { ... }` inside body satisfies T-Spawn
+                   with the same E parameter
+                 - parent, if given, has type context.Context
+               ────────────────────────────────────────────────────
                   Γ ⊢ scope<T, E>(parent?) { body } : Result<T, E>
 
-(T-Spawn)      Γ ⊢ body : Result<unit, E>     (only legal inside a scope<_, E>)
-               ────────────────────────────────────────────────────────────
-                  Γ ⊢ spawn { body } : unit  (registers in enclosing scope)
+(T-Spawn)      Γ ⊢ body : Result<unit, E_spawn>     [body is a Block, typed as in T-ScopeExpr]
+               enclosing scope's error parameter E_outer is in scope
+               E_spawn = E_outer                                  (same error channel)
+               ─────────────────────────────────────────────────────
+                  Γ ⊢ spawn { body } : unit          [registers in enclosing scope's errgroup]
 
 (T-MakeChannel)
                annotation T explicit              cap : int (if given)
@@ -399,10 +571,19 @@ under occurs-check, then substitute.
                        Γ ⊢ ch.recv() : T
                        Γ ⊢ ch.tryRecv() : Option<T>
 (T-Chan-Close) Γ ⊢ ch.close() : unit
+
+(T-Chan-Widen) Γ ⊢ ch : Channel<T>
+               ──────────────────────────────────────
+                       Channel<T> <: SendChan<T>
+                       Channel<T> <: RecvChan<T>     [implicit, one-way; consumed by T-Call
+                                                      arg-position matching]
 ```
 
-`Channel<T>` widens to `SendChan<T>` / `RecvChan<T>` implicitly
-at parameter sites; the reverse is not allowed.
+The widening is one-way: there is no rule taking `SendChan<T>`
+or `RecvChan<T>` back to `Channel<T>`. `T-Call` applies the
+widening when an argument of declared type `SendChan<T>` /
+`RecvChan<T>` is supplied a value of type `Channel<T>`. No other
+subtyping relations are admitted in v1 (besides `Never <: T`).
 
 ### Select
 
@@ -418,6 +599,90 @@ at parameter sites; the reverse is not allowed.
 A `select` with no `default` blocks; with `default` it doesn't.
 Both are well-typed.
 
+## Top-level declarations
+
+```
+(T-Top-Let)    TopLevelLet has initialiser e, optional annotation T'
+                 Γ ⊢ e : T    T' (if present) = T
+               ──────────────────────────────────────────────────────
+                  Γ ⊢ TopLevelLet x : T' = e        binds x : T (or T')
+                                                    in file scope as immutable
+
+(T-Top-Func)   same shape as T-Func-Decl, binding goes to file scope.
+
+(T-Top-Type)   TypeDecl T = TypeBody         (TypeBody well-formed under Γ)
+               ────────────────────────────────────────────────────────
+                  Γ ⊢ TypeDecl T              binds T as a type alias /
+                                              nominal definition (see WF-Body
+                                              below for the alternatives)
+
+(T-Top-Class)  ClassDecl C { ... }           (ClassBody well-formed)
+               ────────────────────────────────────────────────────────
+                  Γ ⊢ ClassDecl C             binds C as a class type
+
+(T-Top-Iface)  InterfaceDecl I { ... }       (InterfaceBody well-formed)
+               ────────────────────────────────────────────────────────
+                  Γ ⊢ InterfaceDecl I         binds I as an interface type
+```
+
+Top-level `let` is immutable (G14) and requires an initialiser
+(no bare `let x: T` at file scope; the parser rejects, sema
+never sees it). There is no top-level `var` in v1.
+
+## Type body / interface body well-formedness
+
+The right-hand side of `TypeDecl` is a `TypeBody` (per
+`ast.md:107–112`), one of:
+
+```
+(WF-Body-Alias)         Γ ⊢ T wf
+                        ─────────────────────────
+                                Γ ⊢ Alias T wf
+
+(WF-Body-Record)        for each field f_i : T_i      Γ ⊢ T_i wf
+                                  field names pairwise distinct
+                        ───────────────────────────────────────────
+                                Γ ⊢ Record { f_1: T_1, ..., f_n: T_n } wf
+
+(WF-Body-Tuple-Alias)   n >= 2     for each i: Γ ⊢ T_i wf
+                        ─────────────────────────────────────────────
+                                Γ ⊢ TupleAlias (T_1, ..., T_n) wf
+
+(WF-Body-Sum)           variant names pairwise distinct
+                                for each variant V_j:
+                                  - nullary, or
+                                  - V_j(f_1: T_{j,1}, ..., f_{m_j}: T_{j,m_j})
+                                    with each T_{j,k} wf
+                        ────────────────────────────────────────────────────
+                                Γ ⊢ Sum { V_1 | ... | V_k } wf
+```
+
+Class body well-formedness:
+
+```
+(WF-Class-Body)         for each field decl `var|let f : T`        Γ ⊢ T wf
+                        for each method decl m with params and return R
+                                method names + field names pairwise distinct
+                                each method body type-checks under
+                                  the class-scope frame (see T-Class-Method-* below)
+                        ────────────────────────────────────────────────────
+                                Γ ⊢ ClassBody wf
+```
+
+Interface body:
+
+```
+(WF-Iface-Body)         for each method signature (m_j, params_j, R_j):
+                                Γ ⊢ each param-type wf       Γ ⊢ R_j wf
+                                method names pairwise distinct
+                        for each extended interface I_k     I_k is a declared interface
+                        ────────────────────────────────────────────────────
+                                Γ ⊢ InterfaceBody wf
+```
+
+Inline interface types (`interface { ... }` appearing inline in
+a `TypeExpr` position) are well-formed by **(WF-Inline-Itf)**.
+
 ## Class membership, interface conformance
 
 ```
@@ -430,7 +695,7 @@ Both are well-typed.
                C declares instance method m(params): R
                  Γ, this : C, params ⊢ body : R
                ─────────────────────────────────────
-                       Γ ⊢ C.m : func(C, ...): R
+                       Γ ⊢ C.m as a source-level value : func(C, ...): R
 
 (T-Class-Method-Static)
                C declares static method m(params): R
@@ -438,6 +703,15 @@ Both are well-typed.
                ──────────────────────────────────────
                        Γ ⊢ C.m : func(...): R         [no implicit C receiver]
 ```
+
+**Note on T-Class-Method-Inst.** The `func(C, ...): R` shape is
+the type Tide gives to an instance method when it is
+referenced **as a free value** (`let f = C.m`, currently rare
+in the corpus). The receiver becomes the first parameter at the
+source level — Tide does not have separate "method-value" vs
+"method-expression" syntax like Go. Most uses are
+`obj.m(args)`, typed via `T-Field` → `T-Call` against the
+method's parameter list (no explicit receiver argument).
 
 ### `implements`
 
@@ -458,9 +732,10 @@ mapping; user-side conformance is by-the-letter.
 
 ```
 (T-Class-Gen)  class C<A_1, ..., A_k> { fields, methods }
-               instantiation C<τ_1, ..., τ_k> well-formed
-               ───────────────────────────────────────────
-                       Γ ⊢ C<τ_1, ..., τ_k> well-formed type
+               instantiation C<τ_1, ..., τ_k>: each τ_i is WF-T well-formed,
+                 arity k matches
+               ───────────────────────────────────────────────────
+                       Γ ⊢ C<τ_1, ..., τ_k> wf
 
 (T-Interface-Gen)
                same shape; type-args substitute into method signatures
@@ -469,13 +744,16 @@ mapping; user-side conformance is by-the-letter.
 ## refEq
 
 ```
-(T-RefEq)      Γ ⊢ a : C    Γ ⊢ b : C    C is a class type
-               ───────────────────────────────────────────
-                  Γ ⊢ refEq(a, b) : bool
+(T-RefEq)      Γ ⊢ a : C_a    Γ ⊢ b : C_b
+               C_a, C_b are class types
+               C_a = C_b                                  (same class)
+               ──────────────────────────────────────────────────
+                       Γ ⊢ refEq(a, b) : bool
 ```
 
-Calling `refEq` on non-class arguments → **E0206 refEq requires
-class operands**.
+Calling `refEq` on non-class arguments, or with operands of
+**different** class types, fires **E0206 refEq requires class
+operands of the same class**.
 
 ## Type errors — quick index
 
@@ -483,24 +761,38 @@ The full catalog lives in `diagnostics.md` (forthcoming). Codes
 touched by this file:
 
 - **E0201** — Type mismatch (wherever a rule's premise about
-  type equality fails).
+  type equality fails, including unify failure).
 - **E0202** — Wrong arity (call, variant payload, tuple
   destructure).
 - **E0203** — Wrong return type (function body doesn't match
   declared return).
 - **E0204** — Integer literal out of range for the inferred
   narrow numeric type.
-- **E0205** — Illegal type conversion.
-- **E0206** — `refEq` requires class operands.
-- **E0301** — Type used as value (from name-resolution, listed
-  here because the same code fires in type-checking too).
+- **E0205** — Illegal type conversion (source/target pair not
+  in `ConvOK`).
+- **E0206** — `refEq` requires class operands of the same class.
+- **E0207** — Wrong type arity on a generic instantiation.
+- **E0208** — Cannot infer literal type for a bare-`{}` `BraceLit`
+  with no contextual expected type.
+- **E0301** — Type used as value (defined by name-resolution;
+  also fires from this pass when a `NamedType` identifier
+  appears in expression position, e.g., generic-class callee
+  without a member access or brace literal).
 - **E0303** — Non-exhaustive match (with witness value).
 - **E0304** — Unreachable arm (a pattern is shadowed by an
   earlier arm).
+- **E0305** — Float-literal patterns are not allowed (`FloatLitPat`
+  in any pattern position).
 - **E0401** — `==`/`!=` on non-comparable type.
 - **E0402** — `try` used outside Result/Option-returning
-  function.
+  function (fires when T-Try-Result / T-Try-Option fail to find a
+  matching enclosing function-return type).
 - **E0403** — Error type of `try`'s sub-expression does not
-  match the enclosing function's error type.
-- **E0404** — `break`/`continue` outside a loop.
-- **E0405** — `spawn` outside a `scope` block.
+  match the enclosing function's error type
+  (`E_inner ≠ E_outer` in T-Try-Result).
+- **E0404** — `break`/`continue` outside a loop (no enclosing
+  loop frame in T-Break / T-Continue).
+- **E0405** — `spawn` outside a `scope` block (no enclosing
+  scope frame providing `E_outer` in T-Spawn).
+- **E0406** — `defer` argument must be a call (T-Defer
+  side-condition fails).
