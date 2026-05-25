@@ -1,0 +1,178 @@
+// Tide grammar — lexical part.
+// Standard EBNF dialect (W3C-style):
+//   *      zero or more
+//   +      one or more
+//   ?      optional
+//   |      alternation
+//   ( )    grouping
+//   "..."  literal terminal
+//   '...'  character class (shell-style)
+//   //     comment to end of line
+//
+// Authority: this file is the contract. Prose mirror in
+// ../docs/language-spec.md §Lexical may lag; on disagreement the
+// EBNF wins. Every terminal here must be exercised by ≥ 1 fixture
+// in ../tests/lexer/ (atomic-coverage rule, D17 — bootstrap-exempt
+// for the formalization series).
+//
+// Reserved keywords and operators are listed in keywords.md; this
+// file references them as quoted-string terminals.
+
+// =============================================================
+// Whitespace and comments
+// =============================================================
+
+Newline        = "\n" | "\r\n" ;
+Whitespace     = ' ' | '\t' ;
+LineComment    = "//" ('any character except newline')* ;
+BlockComment   = "/*" ('any character')* "*/" ;          // not nested
+SkipNonNewline = Whitespace | LineComment | BlockComment ;
+// Newlines are significant tokens at statement-level, suppressed
+// inside open brackets — see SyntaxNewlineSuppression in grammar
+// (syntactic part).
+
+// =============================================================
+// Identifiers and keywords
+// =============================================================
+
+Letter      = 'a'..'z' | 'A'..'Z' | '_' ;
+Digit       = '0'..'9' ;
+HexDigit    = Digit | 'a'..'f' | 'A'..'F' ;
+OctDigit    = '0'..'7' ;
+BinDigit    = '0' | '1' ;
+
+Ident       = Letter (Letter | Digit)* ;
+// A token is a Keyword (matched first) iff it appears in the
+// reserved set listed in keywords.md §"Reserved keywords"; otherwise
+// it is an Ident.
+Keyword     = "import"  | "type"      | "class"     | "interface"
+            | "implements" | "extends" | "static"
+            | "func"     | "let"      | "var"
+            | "if"       | "else"
+            | "for"      | "in"       | "while"     | "return"
+            | "match"    | "try"      | "defer"
+            | "spawn"    | "scope"    | "select"
+            | "break"    | "continue"
+            | "true"     | "false"    | "unit"
+            | "this"
+            ;
+
+// =============================================================
+// Integer literals
+// =============================================================
+
+DecimalLit  = Digit ( Digit | "_" )* ;
+HexLit      = "0x" HexDigit ( HexDigit | "_" )* ;
+OctalLit    = "0o" OctDigit ( OctDigit | "_" )* ;
+BinaryLit   = "0b" BinDigit ( BinDigit | "_" )* ;
+IntLit      = DecimalLit | HexLit | OctalLit | BinaryLit ;
+
+// =============================================================
+// Floating-point literals
+// =============================================================
+
+FloatLit    = Digit+ "." Digit* ExponentPart?
+            | "." Digit+ ExponentPart?
+            | Digit+ ExponentPart
+            ;
+ExponentPart = ("e" | "E") ("+" | "-")? Digit+ ;
+
+// =============================================================
+// String and rune literals
+// =============================================================
+
+EscapeChar  = "\\" ( "n" | "t" | "r" | "\\" | '"' | "'" | "0"
+                  | "x" HexDigit HexDigit
+                  | "u" HexDigit HexDigit HexDigit HexDigit ) ;
+StringChar  = EscapeChar | ('any char except "\\" or "\"" or newline') ;
+StringLit   = '"' StringChar* '"' ;
+
+RuneChar    = EscapeChar | ('any char except "\\" or "'" or newline') ;
+RuneLit     = "'" RuneChar "'" ;
+
+// =============================================================
+// Operators
+// =============================================================
+
+// Listed longest-first; the lexer matches the longest sequence.
+// Semantics in keywords.md §Operators.
+Op = "..="        // inclusive range
+   | "..."        // variadic (parameter / spread)
+   | ".."         // half-open range
+   | "=="         // equality
+   | "!="         // inequality
+   | "<="         // less or equal
+   | ">="         // greater or equal
+   | "&&"         // logical AND
+   | "||"         // logical OR
+   | "=>"         // arm separator (match / short closure)
+   | "->"         // reserved for future use (not produced)
+   | "<-"         // channel receive (only legal inside `select` case)
+   | "+"  | "-"  | "*"  | "/"  | "%"
+   | "="  | "!"
+   | "<"  | ">"        // also generic brackets — see disambiguation
+   | "|"               // variant separator and pattern alternative
+   ;
+
+// =============================================================
+// Punctuation
+// =============================================================
+
+Punct = "(" | ")" | "[" | "]" | "{" | "}"
+      | "."  | ","  | ";"  | ":"
+      ;
+
+// =============================================================
+// Token (top-level alternation)
+// =============================================================
+
+Token = Newline
+      | Keyword
+      | Ident
+      | FloatLit                   // FloatLit before IntLit (dot disambiguation)
+      | IntLit
+      | StringLit
+      | RuneLit
+      | Op
+      | Punct
+      ;
+
+// Whitespace and comments are skipped (not produced as tokens).
+// Newline is produced as a Token; the parser later suppresses it
+// inside open brackets per the syntactic part of this grammar.
+
+// =============================================================
+// Lexical conflict resolution
+// =============================================================
+//
+// 1. **Longest match.** Among all rules above, the lexer chooses the
+//    longest match. This makes `..=` win over `..`, `==` over `=`,
+//    `<-` over `<`, etc.
+//
+// 2. **Keyword vs Ident.** After matching an Ident-shape, the lexer
+//    checks whether the text is in the Keyword set. If yes, it
+//    produces a Keyword token; otherwise an Ident.
+//
+// 3. **FloatLit vs IntLit + Dot.** `1.0` is one FloatLit token (not
+//    IntLit + Op `.` + IntLit). The lexer commits to FloatLit on
+//    seeing `Digit+ "."`.
+//
+// 4. **Tuple-position field access `t.0`.** `t` is Ident, `.` is
+//    Punct, `0` is IntLit — three tokens. The lexer does NOT
+//    produce FloatLit for the trailing `.0` because Ident-then-dot
+//    splits naturally; the FloatLit rule fires only when the
+//    `Digit+ "."` shape appears in expression-position from the
+//    start. (Practical implementation: peek-back; or commit to
+//    IntLit + Punct + IntLit when preceded by an Ident.)
+//
+// 5. **Numeric `_` separator.** `1_000_000` is one IntLit; the `_`
+//    characters are part of the literal and stripped at semantic
+//    layer.
+//
+// 6. **Unary vs binary `-`.** The lexer emits a single `-` Op token
+//    in both cases; the parser disambiguates by context.
+//
+// 7. **`<` and `>` as comparison vs generic brackets.** The lexer
+//    always emits `<` / `>` as Op tokens. The parser resolves
+//    generic-argument-list positions by lookahead — see
+//    grammar.ebnf §Syntactic (forthcoming).

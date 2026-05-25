@@ -11,7 +11,8 @@ On disagreement these files win, per D17.
 | File | Purpose | Status |
 |---|---|---|
 | `keywords.md` | Reserved words, operators, punctuation, predeclared identifiers as a list | ✓ |
-| `grammar.ebnf` | Lexical + syntactic grammar in standard EBNF | forthcoming |
+| `grammar.ebnf` | Lexical + syntactic grammar in standard EBNF | ✓ lexical; syntactic forthcoming |
+| `test-contract.md` | Canonical fixture serialization (TOKENS / AST / TYPES / ERRORS / GO / STDOUT) | ✓ TOKENS; deeper sections forthcoming |
 | `ast.md` | Canonical AST node schema (fields, invariants, source spans) | forthcoming |
 | `name-resolution.md` | Scoping, implicit receiver, shadow rules | forthcoming |
 | `type-system.md` | Inference rules in sequent notation | forthcoming |
@@ -19,7 +20,6 @@ On disagreement these files win, per D17.
 | `desugaring.md` | Tide AST → simpler IR (match arms, scope+spawn, try) | forthcoming |
 | `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | forthcoming |
 | `diagnostics.md` | Numbered error-code catalog (`E0103 Unknown name`, …) | forthcoming |
-| `test-contract.md` | Canonical fixture serialization (TOKENS / AST / TYPES / ERRORS / GO / STDOUT) | forthcoming |
 | `acceptance.yml` | Per-example feature manifest (label → covered constructs) | forthcoming |
 
 ## Authority and coverage
