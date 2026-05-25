@@ -19,11 +19,11 @@
 //
 // Forces: bound `net` + `bufio` (new binding-surface rows), exhaustive
 // `match` over the inbound sum type, a `class implements Strategy`
-// pattern, structured concurrency with two long-running spawns and a
-// shared cancellation context, `defer conn.close()`.
+// pattern, structured concurrency with two long-running spawns that
+// share inbox / outbox channels, `defer ch.close()` for clean shutdown
+// on the reader side, `defer conn.close()` for the transport.
 
 import bufio
-import context
 import fmt
 import json
 import net
@@ -42,7 +42,7 @@ type Piece = | F | I | L | N | P | T | U | V | W | X | Y | Z
 // Inbound envelopes the agent reacts to. The wire format has many more
 // event kinds; we model the subset the loop actually consumes.
 type Inbound =
-  | Hello(serverName: string, protocolVersion: int)
+  | Hello(serverName: string, version: int)
   | Tick(tickNo: int, current: Piece, next: []Piece, board: [][]bool)
   | Ping(nonce: int)
   | MatchEnd(score: int, rank: int)
@@ -55,7 +55,7 @@ type Outbound =
   | Pong(nonce: int)
 
 // DTOs we hand to `json.serialize`. Records, not anonymous shapes —
-// json infers the field-key map from the named declaration.
+// json infers the field-key map from the declared field names.
 type HelloPayload = {
   agent_name:       string
   token:            string
@@ -100,18 +100,20 @@ func encodeOutbound(o: Outbound): []byte {
   }
 }
 
-// Just enough of the inbound shape to dispatch.
+// First-pass shape — `p` stays as raw JSON bytes (Go's
+// `json.RawMessage` idiom) so a second-pass parse can narrow per
+// envelope kind without resorting to G23's `Any` escape in
+// user-authored code.
 type RawInbound = {
   t: string
   q: Option<string>
-  p: Any
+  p: []byte
 }
 
 // Decode one JSON-Lines envelope into the typed Inbound. Errors are
 // reported as `Err(error)` so a single malformed line doesn't kill
 // the loop. The per-arm payload narrowing is sketched — production
-// code would call `json.parse<TickPayload>(...)` on the `.p` substring
-// with `Any` re-typed via the binding-layer escape hatch (G23).
+// code would call `json.parse<TickPayload>(raw.p)` etc.
 func decodeInbound(line: []byte): Result<Inbound, error> {
   let raw = try json.parse<RawInbound>(line)
   match raw.t {
@@ -190,17 +192,16 @@ func runAgent(host: string, port: int, agentName: string, strat: Strategy):
   let outbox = makeChannel<Outbound>(64)
 
   return scope<int, error> {
-    // Reader: pull lines until EOF or transport error.
+    // Reader: pull lines until EOF or transport error. Closing `inbox`
+    // on the way out (clean or otherwise) lets the body's `for env in
+    // inbox` exit deterministically — without this the scope hangs at
+    // match end.
     spawn {
+      defer inbox.close()
       var done = false
       while !done {
-        select {
-          case <-scope.context.done() => { done = true },
-          default                     => {},
-        }
-        if done { break }
         match conn.recv() {
-          None           => { done = true },
+          None           => { done = true },          // clean EOF
           Some(Ok(env))  => inbox.send(env),
           Some(Err(e))   => return Err(e),
         }
@@ -216,14 +217,14 @@ func runAgent(host: string, port: int, agentName: string, strat: Strategy):
       return Ok(())
     }
 
-    // Decision loop on the inbound side. Trailing-expression: the
-    // final score after MatchEnd.
+    // Decision loop runs inline in the scope body. The body owns
+    // every send to `outbox` and so closes it at the very end —
+    // closing earlier (e.g. inside the reader's `defer`) would race
+    // with these sends.
     outbox.send(HelloOut(agentName, ""))
     outbox.send(Ready("pentris-7"))
     var finalScore = 0
-    var done = false
     for env in inbox {
-      if done { continue }                            // drain after MatchEnd
       match env {
         Hello(_, _)             => {},
         Ping(nonce)             => outbox.send(Pong(nonce)),
@@ -231,11 +232,11 @@ func runAgent(host: string, port: int, agentName: string, strat: Strategy):
         MatchEnd(score, rank)   => {
           fmt.println("match end: score=", score, "rank=", rank)
           finalScore = score
-          outbox.close()
-          done = true
+          break
         },
       }
     }
+    outbox.close()
     finalScore                                        // trailing expression
   }
 }
