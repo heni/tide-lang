@@ -5,6 +5,16 @@
 > forces them. Expect churn through the early phases. The acceptance suite
 > in [`../examples/README.md`](../examples/README.md) is the working ground
 > truth — anything the suite uses must be specified here.
+>
+> **Authority.** This document is the **prose** view of Tide. The
+> companion formal docs — [`keywords.md`](keywords.md),
+> [`grammar.md`](grammar.md) (lexical + syntactic),
+> [`operators.md`](operators.md),
+> [`builtins.md`](builtins.md), [`types.md`](types.md) — are
+> machine-precise. On disagreement the formal docs win; the prose is
+> a mirror. Updates require a paired edit. Every formal artifact must
+> carry ≥ 1 atomic fixture in `tests/{lexer,grammar,sema}/` — see
+> `docs/test-contract.md`.
 
 ## Lexical
 
