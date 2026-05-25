@@ -21,6 +21,7 @@ On disagreement these files win, per D17.
 | `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | ✓ |
 | `diagnostics.md` | Numbered error-code catalog (`E0103 Unknown name`, …) | ✓ |
 | `acceptance.yml` | Per-example feature manifest (label → covered constructs) | ✓ |
+| `audit-report.md` | Formalization-L closing audit; D17 bootstrap exemption closure | ✓ |
 
 ## Authority and coverage
 
@@ -30,9 +31,11 @@ On disagreement these files win, per D17.
   built-in, AST node, type rule, diagnostic code, lowering rule)
   MUST be exercised by ≥ 1 atomic fixture in
   `../tests/{lexer,grammar,sema,codegen}/`.
-- The closing audit PR of the formalization series gates the
-  coverage check for the whole formal surface (D17 bootstrap
-  exemption — series PRs are not individually blocked).
+- The closing audit (`audit-report.md`) gated the coverage
+  check for the whole formal surface; the D17 bootstrap
+  exemption is now **closed**. From this point onward, every
+  new formal-doc edit requires paired fixtures in
+  `../tests/{lexer,grammar,sema,codegen}/`.
 
 ## How to consume
 
