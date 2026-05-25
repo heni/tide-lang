@@ -10,7 +10,7 @@
 import fmt
 import time
 
-class counters {
+class Counters {
   var produced: int
   var dropped:  int
   var emitted:  int
@@ -20,9 +20,9 @@ func main() {
   let deadline = time.after(time.milliseconds(500))
   let ticks    = time.tick(time.milliseconds(50))
   let buffer   = makeChannel<int>(4)
-  let cnt      = counters{ produced: 0, dropped: 0, emitted: 0 }
+  let cnt      = Counters{ produced: 0, dropped: 0, emitted: 0 }
 
-  try scope<unit, error> {
+  match scope<unit, error> {
     // Producer: every iteration tries to enqueue a sequential number;
     // drops if the buffer is full. Exits when deadline closes.
     spawn {
@@ -58,6 +58,9 @@ func main() {
       }
       return Ok(())
     }
+  } {
+    Ok(_)  => {},
+    Err(e) => fmt.println("dispatcher error:", e),
   }
 
   fmt.println("---")

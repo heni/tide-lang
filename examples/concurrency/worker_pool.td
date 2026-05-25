@@ -24,14 +24,16 @@ func worker(id: int, jobs: RecvChan<Job>, results: SendChan<Result>) {
     // Simulate work.
     time.sleep(time.milliseconds(50))
     var v = j.workN
-    for _ in 1..=j.workN {
+    var k = 0
+    while k < j.workN {
       v = v * 2
+      k = k + 1
     }
     results.send(Result{ jobID: j.id, output: v })
   }
 }
 
-func runPool(workerCount: int, jobs: []Job): []Result {
+func runPool(workerCount: int, jobs: []Job): Result<[]Result, error> {
   let jobCh    = makeChannel<Job>(workerCount)
   let resultCh = makeChannel<Result>(jobs.len())
 
@@ -57,7 +59,7 @@ func runPool(workerCount: int, jobs: []Job): []Result {
   for r in resultCh {
     out = out.push(r)
   }
-  return out
+  return Ok(out)
 }
 
 func main() {
@@ -65,9 +67,13 @@ func main() {
   for i in 1..=8 {
     jobs = jobs.push(Job{ id: i, workN: i })
   }
-  let results = runPool(3, jobs)
-  fmt.println("completed", results.len(), "jobs")
-  for r in results {
-    fmt.println("  job", r.jobID, "->", r.output)
+  match runPool(3, jobs) {
+    Ok(results) => {
+      fmt.println("completed", results.len(), "jobs")
+      for r in results {
+        fmt.println("  job", r.jobID, "->", r.output)
+      }
+    },
+    Err(e) => fmt.println("pool error:", e),
   }
 }

@@ -61,7 +61,7 @@ func main() {
   let alice = broker.subscribe(8)
   let bob   = broker.subscribe(8)
 
-  try scope<unit, error> {
+  match scope<unit, error> {
     spawn {
       var total = 0
       for v in alice { total = total + v }
@@ -83,5 +83,8 @@ func main() {
       broker.shutdown()
       return Ok(())
     }
+  } {
+    Ok(_)  => {},
+    Err(e) => fmt.println("broker error:", e),
   }
 }

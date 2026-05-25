@@ -16,7 +16,7 @@ func main() {
   let timeout = time.after(time.milliseconds(300))
 
   // Produce some inbox traffic.
-  try scope<unit, error> {
+  match scope<unit, error> {
     spawn {
       for s in ["hello", "world", "tide", "rising"] {
         inbox.send(s)
@@ -28,9 +28,8 @@ func main() {
     // Drain outbox so the "send" case can succeed; track count.
     spawn {
       var n = 0
-      for v in outbox {
+      for _ in outbox {
         n = n + 1
-        let _ = v
       }
       fmt.println("outbox received:", n)
       return Ok(())
@@ -79,5 +78,8 @@ func main() {
       stop.send(())
       return Ok(())
     }
+  } {
+    Ok(_)  => {},
+    Err(e) => fmt.println("select error:", e),
   }
 }

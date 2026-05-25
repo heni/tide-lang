@@ -1,12 +1,14 @@
-// Nested structured-concurrency scopes. An outer scope launches one
-// inner scope per region; each inner scope fans out per item. A failure
-// inside an inner scope cancels its siblings; the outer scope cancels
-// its remaining inner scopes.
+// Nested structured-concurrency scopes with real cancellation
+// propagation. An outer scope launches one inner scope per region; each
+// inner scope fans out per item. A failure inside an inner scope
+// cancels its siblings *and* the outer scope's other regions, because
+// the inner `scope<T, E>(parent)` form derives its context from the
+// outer scope's context.
 //
-// Forces: scope nesting, propagation of cancellation through
-// context.Context, callees that take an explicit context.Context
-// parameter (scope.context is lexically bound — see language-spec.md
-// §Concurrency · Structured concurrency).
+// Forces: scope nesting, the explicit-parent scope form
+// `scope<T, E>(parentCtx) { ... }` (G44), and callees that take an
+// explicit context.Context parameter — `scope.context` is lexically
+// bound (G40) and does not flow into callees.
 
 import context
 import fmt
@@ -17,7 +19,7 @@ type Region = {
   items: []string
 }
 
-// Pretend "work". Returns Err for the magic name "bad" so we can see
+// "Work". Returns Err for the magic name "bad" so we can see
 // cancellation propagate.
 func fetch(ctx: context.Context, region: string, item: string):
     Result<string, error> {
@@ -35,19 +37,14 @@ func fetch(ctx: context.Context, region: string, item: string):
   return Ok(region + "/" + item)
 }
 
-// Inner scope: one region's items, parallel. First Err here cancels
-// siblings; the result bubbles up to the caller.
+// Inner scope: fan out one fetch per item. The scope's context derives
+// from `ctx` (the outer scope's context) — when the outer cancels,
+// every in-flight `fetch` sees its ctx.done() close.
 func fetchRegion(ctx: context.Context, region: Region):
     Result<[]string, error> {
-  return scope<string, error> {
+  return scope<string, error>(ctx) {
     for item in region.items {
-      spawn {
-        // `ctx` is the parent's context (e.g. the outer scope's
-        // scope.context); we'd combine it with scope.context if we
-        // wanted the inner scope to honour both — for the demo, scope
-        // is enough.
-        return fetch(scope.context, region.name, item)
-      }
+      spawn { return fetch(scope.context, region.name, item) }
     }
   }
 }

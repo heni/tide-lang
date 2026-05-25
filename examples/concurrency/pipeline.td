@@ -17,18 +17,18 @@ func produce(n: int, out: SendChan<int>) {
   out.close()
 }
 
-// Stage 2: read from `in`, square each value, push to `out`, then close.
-func square(in: RecvChan<int>, out: SendChan<int>) {
-  for v in in {
+// Stage 2: read from `inCh`, square each value, push to `out`, then close.
+func square(inCh: RecvChan<int>, out: SendChan<int>) {
+  for v in inCh {
     out.send(v * v)
   }
   out.close()
 }
 
-// Stage 3: read from `in`, accumulate a sum, push it to `out`, close.
-func sum(in: RecvChan<int>, out: SendChan<int>) {
+// Stage 3: read from `inCh`, accumulate a sum, push it to `out`, close.
+func sum(inCh: RecvChan<int>, out: SendChan<int>) {
   var total = 0
-  for v in in {
+  for v in inCh {
     total = total + v
   }
   out.send(total)
@@ -44,10 +44,13 @@ func main() {
   // out through `result`. The scope joins when every stage's spawn
   // returns (which happens once each stage's input is closed and
   // drained).
-  try scope<unit, error> {
+  match scope<unit, error> {
     spawn { produce(10, nums); return Ok(()) }
     spawn { square(nums, squares); return Ok(()) }
     spawn { sum(squares, result); return Ok(()) }
+  } {
+    Ok(_)  => {},
+    Err(e) => fmt.println("pipeline error:", e),
   }
 
   // sum of squares 1..=10 = 1 + 4 + 9 + ... + 100 = 385
