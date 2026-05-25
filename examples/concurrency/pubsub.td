@@ -19,11 +19,11 @@ class Broker<T> {
   }
 
   subscribe(buf: int): RecvChan<T> {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
     let ch = makeChannel<T>(buf)
-    this.subs = this.subs.push(ch)
+    subs = subs.push(ch)
     return ch
   }
 
@@ -31,10 +31,10 @@ class Broker<T> {
   // than back-pressuring the publisher — the trade-off most pub/sub
   // designs make.
   publish(v: T) {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
-    for ch in this.subs {
+    for ch in subs {
       select {
         case ch.send(v) => {},                        // delivered
         default         => {},                        // dropped — subscriber slow
@@ -45,13 +45,13 @@ class Broker<T> {
   // Close every subscriber channel; further publish() calls are no-ops
   // (sending on a closed channel would panic — but subs is cleared).
   shutdown() {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
-    for ch in this.subs {
+    for ch in subs {
       ch.close()
     }
-    this.subs = []SendChan<T>{}
+    subs = []SendChan<T>{}
   }
 }
 

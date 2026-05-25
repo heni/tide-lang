@@ -9,10 +9,11 @@
 //     of those two points' X coordinates.
 //
 // Forces: a `class DSU` with array-backed parent and size tables,
-// path-compressing `find` that writes through a `this.field[i] = v`
-// chain; `math.sqrt`; primitive numeric conversion `float64(int)`
-// (G49); `sort.sorted` over a `(int, int, float64)` tuple by `.2`
-// inside `buildPairs` and by `.1` inside `components()` (G24).
+// path-compressing `find` that writes back into a `var` field through
+// the implicit-receiver rule (`id[a] = find(id[a])`); `math.sqrt`;
+// primitive numeric conversion `float64(int)` (G49); `sort.sorted`
+// over a `(int, int, float64)` tuple by `.2` inside `buildPairs` and
+// by `.1` inside `components()` (G24).
 
 import fmt
 import math
@@ -67,36 +68,37 @@ class DSU {
   // Find with path compression. The function is recursive; `id` is a
   // `var` field so the path-compressing write is legal.
   find(a: int): int {
-    if this.id[a] != a {
-      this.id[a] = this.find(this.id[a])
+    if id[a] != a {
+      id[a] = find(id[a])
     }
-    return this.id[a]
+    return id[a]
   }
 
   // Returns the new root on a successful join, -1 if `a` and `b` were
   // already in the same component.
   join(a: int, b: int): int {
-    var ra = this.find(a)
-    var rb = this.find(b)
+    var ra = find(a)
+    var rb = find(b)
     if ra == rb {
       return -1
     }
-    if this.sz[ra] < this.sz[rb] {
+    if sz[ra] < sz[rb] {
       let tmp = ra
       ra = rb
       rb = tmp
     }
-    this.sz[ra] = this.sz[ra] + this.sz[rb]
-    this.id[rb] = ra
+    sz[ra] = sz[ra] + sz[rb]
+    id[rb] = ra
     return ra
   }
 
   // Component sizes (root index, size), sorted descending by size.
+  // Inner-loop name `s` chosen to avoid shadowing the field `sz`.
   components(): [](int, int) {
     var out: [](int, int) = [](int, int){}
-    for (i, sz) in this.sz {
-      if this.id[i] == i {
-        out = out.push((i, sz))
+    for (i, s) in sz {
+      if id[i] == i {
+        out = out.push((i, s))
       }
     }
     return sort.sorted(out, (a, b) => a.1 > b.1)

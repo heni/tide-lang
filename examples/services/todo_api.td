@@ -32,7 +32,7 @@ class ApiError implements error {
   let status:  int
   let message: string
 
-  error(): string { return this.message }
+  error(): string { return message }
 }
 
 func badRequest(msg: string):    ApiError { return ApiError{ status: 400, message: msg } }
@@ -53,44 +53,44 @@ class Store {
   }
 
   list(): []Todo {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
     var out: []Todo = []Todo{}
-    for (_, t) in this.items {
+    for (_, t) in items {
       out = out.push(t)
     }
     return out
   }
 
   get(id: int): Result<Todo, ApiError> {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
-    match this.items.get(id) {
+    match items.get(id) {
       Some(t) => Ok(t),
       None    => Err(notFound("todo not found")),
     }
   }
 
   create(title: string): Todo {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
-    let t = Todo{ id: this.nextID, title: title, done: false }
-    this.items.set(this.nextID, t)
-    this.nextID = this.nextID + 1
+    let t = Todo{ id: nextID, title: title, done: false }
+    items.set(nextID, t)
+    nextID = nextID + 1
     return t
   }
 
   delete(id: int): Result<unit, ApiError> {
-    this.lock.lock()
-    defer this.lock.unlock()
+    lock.lock()
+    defer lock.unlock()
 
-    if !this.items.has(id) {
+    if !items.has(id) {
       return Err(notFound("todo not found"))
     }
-    this.items.delete(id)
+    items.delete(id)
     return Ok(())
   }
 }
@@ -99,7 +99,7 @@ class TodosHandler implements http.Handler {
   let store: Store
 
   serveHTTP(w: http.ResponseWriter, r: http.Request) {
-    match this.route(r) {
+    match route(r) {
       Ok(payload) => writeJSON(w, 200, payload),
       Err(err)    => writeJSON(w, err.status, err),
     }
@@ -116,7 +116,7 @@ class TodosHandler implements http.Handler {
       // /todos collection
       match r.method {
         "GET" => {
-          return Ok(this.store.list())
+          return Ok(store.list())
         },
         "POST" => {
           let body = try readBody(r)
@@ -124,7 +124,7 @@ class TodosHandler implements http.Handler {
           if strings.trimSpace(req.title) == "" {
             return Err(badRequest("title must be non-empty"))
           }
-          return Ok(this.store.create(req.title))
+          return Ok(store.create(req.title))
         },
         _ => return Err(badRequest("method not allowed")),
       }
@@ -134,11 +134,11 @@ class TodosHandler implements http.Handler {
     let id = try parsePathID(parts[2])
     match r.method {
       "GET" => {
-        let t = try this.store.get(id)
+        let t = try store.get(id)
         return Ok(t)
       },
       "DELETE" => {
-        try this.store.delete(id)
+        try store.delete(id)
         return Ok(())
       },
       _ => return Err(badRequest("method not allowed")),

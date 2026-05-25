@@ -6,9 +6,12 @@
 // outer scope's context.
 //
 // Forces: scope nesting, the explicit-parent scope form
-// `scope<T, E>(parentCtx) { ... }` (G44), and callees that take an
-// explicit context.Context parameter — `scope.context` is lexically
-// bound (G40) and does not flow into callees.
+// `scope<T, E>(parentCtx) { ... }` (G44), channel-and-drain collection
+// in the trailing expression (the unified scope model — see
+// language-spec.md §Concurrency · Structured concurrency), and
+// callees that take an explicit context.Context parameter —
+// `scope.context` is lexically bound (G40) and does not flow into
+// callees.
 
 import context
 import fmt
@@ -37,15 +40,26 @@ func fetch(ctx: context.Context, region: string, item: string):
   return Ok(region + "/" + item)
 }
 
-// Inner scope: fan out one fetch per item. The scope's context derives
-// from `ctx` (the outer scope's context) — when the outer cancels,
-// every in-flight `fetch` sees its ctx.done() close.
+// Inner scope: fan out one fetch per item, collect the strings via a
+// channel that is drained in the trailing expression. The scope's
+// context derives from `ctx` (the outer scope's context) — when the
+// outer cancels, every in-flight `fetch` sees its ctx.done() close.
 func fetchRegion(ctx: context.Context, region: Region):
     Result<[]string, error> {
-  return scope<string, error>(ctx) {
+  return scope<[]string, error>(ctx) {
+    let collect = makeChannel<string>(region.items.len())
     for item in region.items {
-      spawn { return fetch(scope.context, region.name, item) }
+      spawn {
+        let s = try fetch(scope.context, region.name, item)
+        collect.send(s)
+        return Ok(())
+      }
     }
+    // Trailing expression — runs after every spawn has joined.
+    collect.close()
+    var out: []string = []string{}
+    for s in collect { out = out.push(s) }
+    out
   }
 }
 
@@ -56,10 +70,19 @@ func main() {
     Region{ name: "asia", items: ["p", "q"] },
   ]
 
-  let result = scope<[]string, error> {
+  let result = scope<[][]string, error> {
+    let collect = makeChannel<[]string>(regions.len())
     for r in regions {
-      spawn { return fetchRegion(scope.context, r) }
+      spawn {
+        let items = try fetchRegion(scope.context, r)
+        collect.send(items)
+        return Ok(())
+      }
     }
+    collect.close()
+    var out: [][]string = [][]string{}
+    for items in collect { out = out.push(items) }
+    out
   }
 
   match result {

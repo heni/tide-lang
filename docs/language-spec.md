@@ -418,8 +418,9 @@ through every reference to the same instance.
 class Counter {
   var n: int
 
-  increment()  { this.n = this.n + 1 }
-  value(): int { return this.n }
+  increment()  { n = n + 1 }                      // implicit receiver
+  value(): int { return n }
+  setN(v: int) { n = v }                          // no shadow — bare write hits the field
 
   static new(): Counter { return Counter{ n: 0 } }
 }
@@ -441,8 +442,72 @@ class MyReader implements io.Reader {
 }
 ```
 
-`this` is the implicit receiver. The pointer-vs-value-receiver
-distinction is a codegen concern, not a surface concern.
+The receiver is **implicit** inside a method body: a bare identifier
+resolves first to a local binding or parameter, then to a field or
+method of the receiver, then to outer-scope names. `this` is the
+explicit form of the receiver, needed only when a parameter or local
+shadows a field, or when the instance is used as a value
+(`other.add(this)`).
+
+`this` is purely lexical — it names the instance the method was
+called on, and nothing more. **No dynamic binding, no `.bind()` /
+`.call()` / `.apply()`, no prototype-chain method resolution.** What
+the cut list (D2) drops is JS's *semantic* load on `this`, not the
+keyword. Tide is a bridge between the TS and Go worlds, both of
+which use `this` as the natural receiver name — removing the
+keyword would be its own inconsistency. The pointer-vs-value-
+receiver distinction is a codegen concern, not a surface concern.
+
+**Shadowing — diagnostics.** The implicit-receiver rule keeps
+method bodies clean but creates a silent-bug class around the
+field / parameter / local name overlap. Tide treats this strictly,
+but only on the **write** side — that is where the silent-bug class
+actually bites:
+
+- **Error.** When a method parameter or a method-body `let`/`var`
+  introduces a name that already names a field of the enclosing
+  class, a **write** to that bare name is a compile error: the
+  developer almost certainly intended the field. The fix is either
+  to rename the parameter / local, or to use the explicit
+  `this.field` form for the write.
+
+  ```td
+  class Counter {
+    var n: int
+
+    // ERROR: writing to a bare `n` while param `n` shadows the field.
+    set(n: int) { n = 0 }
+    // OK: rename the parameter so the bare write targets the field.
+    setRenamed(v: int) { n = v }
+    // OK: keep the name and qualify the write.
+    setExplicit(n: int) { this.n = n }
+  }
+  ```
+
+  A **read** of bare `n` in the same shadow region is fine — the
+  lookup rule (local > param > field) makes it the parameter, which
+  is the obvious meaning and almost always what the developer
+  wants.
+
+- **Warning.** Milder shadowing — cases where the silent-bug cost is
+  low because no semantic collision actually fires:
+  - A method parameter or method-body local shares a name with a
+    class **method**, but that method is never invoked inside the
+    function body (so the bare name unambiguously means the
+    parameter / local).
+  - A nested-block local shadows an outer local in the same
+    function.
+  - A method-body local shadows a free function in scope.
+
+  These are usually deliberate but worth a flag; the checker emits a
+  warning, not an error. Promote any to error if the example
+  acceptance suite later finds one to be a real footgun.
+
+The asymmetry is deliberate. Field/local write-shadow is the case
+where the silent-bug cost is high — an intended field-write becomes
+a no-op rebind, indistinguishable from working code. Other shadow
+shapes almost always do what the reader expects, so a warning is
+enough.
 
 **Static methods** — declared with `static`, called as `ClassName.name(...)`
 or `ClassName<T>.name(...)`:
@@ -594,21 +659,54 @@ both inside and outside `select`.
 ### Structured concurrency
 
 ```td
-let pages = try scope<Page, error> {
+let pages = try scope<[]Page, error> {
+  let results = makeChannel<Page>(urls.len())
   for u in urls {
-    spawn { try fetch(u, timeout) }
+    spawn {
+      let p = try fetch(u, timeout, scope.context)
+      results.send(p)
+      return Ok(())
+    }
   }
+  // Trailing expression — evaluated AFTER every spawn has joined.
+  results.close()
+  var out: []Page = []Page{}
+  for p in results { out = out.push(p) }
+  out
 }
 ```
 
-A `scope<T, E> { ... }` runs the spawned tasks, joins them when the
-block ends, and:
+A `scope<T, E> { ... }` is an **expression** of type `Result<T, E>`.
 
-- Returns `Result<[]T, E>` when each spawn returns `Result<T, E>`.
-- Returns `Result<unit, E>` when spawns are fire-and-forget (return
-  `Result<unit, E>`).
-- The first `Err` cancels its siblings via the scope's context and is
-  the scope's result.
+- Each `spawn { ... }` inside the scope block runs concurrently.
+- The scope's block executes top-to-bottom, registering spawns as it
+  goes.
+- **Join contract.** The scope **does not return** until every
+  `spawn`ed block has finished (success or error). Code after the
+  scope expression — and the scope's own *trailing expression* (see
+  below) — can rely on every spawn having completed: drain channels,
+  close resources, accumulate results, all safe.
+- If any spawn returns `Err(e)`, the scope returns `Err(e)` (first
+  failure wins). The scope's `scope.context` is cancelled at that
+  point so siblings are signalled. The trailing expression is then
+  **not** evaluated.
+- If every spawn succeeds, the **trailing expression** of the scope
+  block is evaluated and its value becomes the `Ok` payload of the
+  scope's `Result<T, E>`.
+
+**Shorthand forms.** When the scope produces no useful value:
+
+- `scope<E> { ... }: Result<unit, E>` — single type parameter; the
+  block needs no trailing expression. `Ok(())` if all spawns succeed.
+- `scope { ... }: Result<unit, error>` — the shortest form, default
+  error type.
+
+Spawned blocks return `Result<unit, E>`. They are **fire-and-forget**
+with respect to value collection — a spawn that wants to produce a
+value sends it through a channel or writes to a shared structure (which
+is safe to read after the scope joins). The collecting-via-`scope<[]T,
+E>` form is therefore an *idiom*, not a special form: the trailing
+expression assembles the slice from a channel or accumulator.
 
 **`scope.context`** is an identifier bound only in the **lexical body**
 of a `scope { ... }` block — including in any nested `spawn` blocks. A
