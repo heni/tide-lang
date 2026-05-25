@@ -69,6 +69,25 @@ is demonstrated.
 the uncolored concurrency model (D7) end to end — the place the Go runtime
 actually beats a single-threaded event loop.
 
+## `concurrency/` — canonical Go-runtime patterns
+
+The strongest part of Tide's runtime is the part the syntax doesn't make
+obvious: goroutines, channels, `select`, structured-concurrency scopes. The
+`services/` examples touch concurrency in two places; this folder makes
+the runtime case directly with one program per canonical pattern.
+
+| Example | Forces | Phase |
+|---|---|---|
+| `pipeline` | directional channel types, range-to-close, three-stage producer/transform/consumer | 5 |
+| `worker_pool` | fan-out / fan-in, bounded parallelism, scope-joined workers | 5 |
+| `pubsub` | per-subscriber channels under a mutex, drop-on-overflow via `select` + `default` | 5 |
+| `rate_limited` | `time.tick`, `time.after`, non-blocking `select` arms | 5 |
+| `nested_scopes` ★ | nested structured concurrency, cancellation propagation via `context` | 5 |
+| `select_showcase` | every `select` case form (receive-bind, drop, send, timeout) | 5 |
+
+See [`concurrency/README.md`](concurrency/README.md) for the per-example
+write-up.
+
 ## How to use this suite
 
 - Implement features against the next example in phase order.
