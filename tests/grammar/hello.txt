@@ -1,0 +1,21 @@
+--- TITLE ---
+hello.td — single import + main func + qualified call
+
+--- INPUT ---
+import fmt
+
+func main() {
+  fmt.println("Tide is rising.")
+}
+
+--- AST ---
+(File @1:1-5:2
+  (Import "fmt" @1:1-1:11)
+  (FuncDecl "main" @3:1-5:2
+    (params)
+    (Block @3:13-5:2
+      (ExprStmt @4:3-4:33
+        (Call @4:3-4:33
+          (Field "println" @4:3-4:14
+            (Ident "fmt" @4:3-4:6))
+          (StringLitExpr "Tide is rising." @4:15-4:32))))))

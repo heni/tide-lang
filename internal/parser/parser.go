@@ -1,0 +1,674 @@
+package parser
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/heni/tide-lang/internal/ast"
+	"github.com/heni/tide-lang/internal/lexer"
+)
+
+// Diag is a parser-level diagnostic with the same shape as
+// lexer.Diag (canonical file:line:col format).
+type Diag struct {
+	File    string
+	Code    string
+	Message string
+	Line    int
+	Col     int
+}
+
+func (d *Diag) Error() string {
+	if d.File == "" {
+		return fmt.Sprintf("%d:%d: error[%s]: %s", d.Line, d.Col, d.Code, d.Message)
+	}
+	return fmt.Sprintf("%s:%d:%d: error[%s]: %s", d.File, d.Line, d.Col, d.Code, d.Message)
+}
+
+// Parse takes a token stream (from lexer.Lex) and returns a *File.
+// The first diagnostic encountered halts parsing.
+func Parse(toks []lexer.Token) (*ast.File, *Diag) {
+	return ParseFile(toks, "")
+}
+
+// ParseFile is Parse but tags diagnostics with the source filename.
+func ParseFile(toks []lexer.Token, file string) (*ast.File, *Diag) {
+	p := &parser{toks: toks, file: file}
+	return p.parseFile()
+}
+
+type parser struct {
+	toks []lexer.Token
+	pos  int
+	file string
+}
+
+// ---- token cursor helpers ----
+
+func (p *parser) peek() lexer.Token {
+	if p.pos >= len(p.toks) {
+		// Defensive: lexer always appends EOF so this shouldn't
+		// happen, but emit a synthetic EOF if it does.
+		return lexer.Token{Kind: lexer.KindEOF}
+	}
+	return p.toks[p.pos]
+}
+
+func (p *parser) at(k lexer.Kind, lex ...string) bool {
+	t := p.peek()
+	if t.Kind != k {
+		return false
+	}
+	if len(lex) == 0 {
+		return true
+	}
+	for _, want := range lex {
+		if t.Lexeme == want {
+			return true
+		}
+	}
+	return false
+}
+
+// skipNewlines consumes runs of Newline tokens. Newlines are
+// statement separators, but several positions don't care about
+// them (after an open brace, before a closing one, between
+// tokens of a single expression continued on the next line via
+// open brackets, …). PR-B's parser is lenient: newlines are
+// skipped at most positions, treated as a separator only between
+// statements inside a Block.
+func (p *parser) skipNewlines() {
+	for p.at(lexer.KindNewline) {
+		p.pos++
+	}
+}
+
+func (p *parser) advance() lexer.Token {
+	t := p.peek()
+	p.pos++
+	return t
+}
+
+// expect consumes a token of kind k (and matching lexeme, if given)
+// or returns a diagnostic.
+func (p *parser) expect(k lexer.Kind, lex string) (lexer.Token, *Diag) {
+	t := p.peek()
+	if t.Kind != k || (lex != "" && t.Lexeme != lex) {
+		return t, p.diag("E0101", fmt.Sprintf("expected %s %q, got %s %q",
+			k, lex, t.Kind, t.Lexeme), t.Line, t.Col)
+	}
+	p.pos++
+	return t, nil
+}
+
+func (p *parser) diag(code, msg string, line, col int) *Diag {
+	return &Diag{File: p.file, Code: code, Message: msg, Line: line, Col: col}
+}
+
+// ---- file ----
+
+func (p *parser) parseFile() (*ast.File, *Diag) {
+	startLine, startCol := 1, 1
+	f := &ast.File{}
+
+	p.skipNewlines()
+	// Imports first.
+	for p.at(lexer.KindKeyword, "import") {
+		im, err := p.parseImport()
+		if err != nil {
+			return nil, err
+		}
+		f.Imports = append(f.Imports, im)
+		p.skipNewlines()
+	}
+	// Then declarations.
+	for !p.at(lexer.KindEOF) {
+		d, err := p.parseDecl()
+		if err != nil {
+			return nil, err
+		}
+		f.Decls = append(f.Decls, d)
+		p.skipNewlines()
+	}
+	if len(f.Decls) == 0 {
+		return nil, p.diag("E0101", "File has no declarations", 1, 1)
+	}
+	eof := p.peek()
+	f.Span = ast.Span{
+		StartLine: startLine, StartCol: startCol,
+		EndLine: eof.Line, EndCol: eof.Col,
+	}
+	return f, nil
+}
+
+func (p *parser) parseImport() (*ast.Import, *Diag) {
+	kw := p.advance() // consume 'import'
+	// Path is either a single Ident or a dotted chain. PR-B keeps
+	// the path verbatim by joining identifiers / dots back into a
+	// string.
+	var parts []string
+	end := kw
+	if !p.at(lexer.KindIdent) {
+		t := p.peek()
+		return nil, p.diag("E0101", "expected identifier after `import`", t.Line, t.Col)
+	}
+	t := p.advance()
+	parts = append(parts, t.Lexeme)
+	end = t
+	for p.at(lexer.KindPunct, ".") || p.at(lexer.KindPunct, "/") {
+		sep := p.advance()
+		parts = append(parts, sep.Lexeme)
+		if !p.at(lexer.KindIdent) {
+			t = p.peek()
+			return nil, p.diag("E0101", "expected identifier in import path", t.Line, t.Col)
+		}
+		next := p.advance()
+		parts = append(parts, next.Lexeme)
+		end = next
+	}
+	return &ast.Import{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: end.Line, EndCol: end.Col + len(end.Lexeme),
+		},
+		Path: strings.Join(parts, ""),
+	}, nil
+}
+
+func (p *parser) parseDecl() (ast.Decl, *Diag) {
+	if p.at(lexer.KindKeyword, "func") {
+		return p.parseFuncDecl()
+	}
+	t := p.peek()
+	return nil, p.diag("E0101",
+		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
+		t.Line, t.Col)
+}
+
+func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
+	kw := p.advance() // consume 'func'
+	name, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+		return nil, err
+	}
+	// PR-B: empty parameter list only.
+	if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+		return nil, err
+	}
+	// PR-B: no return-type clause.
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.FuncDecl{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Name: name.Lexeme,
+		Body: body,
+	}, nil
+}
+
+// ---- block & statements ----
+
+func (p *parser) parseBlock() (*ast.Block, *Diag) {
+	open, err := p.expect(lexer.KindPunct, "{")
+	if err != nil {
+		return nil, err
+	}
+	blk := &ast.Block{}
+	p.skipNewlines()
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		s, err := p.parseStmt()
+		if err != nil {
+			return nil, err
+		}
+		blk.Stmts = append(blk.Stmts, s)
+		p.skipNewlines()
+	}
+	close, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	blk.Span = ast.Span{
+		StartLine: open.Line, StartCol: open.Col,
+		EndLine: close.Line, EndCol: close.Col + 1,
+	}
+	return blk, nil
+}
+
+func (p *parser) parseStmt() (ast.Stmt, *Diag) {
+	switch {
+	case p.at(lexer.KindKeyword, "if"):
+		return p.parseIfStmt()
+	case p.at(lexer.KindKeyword, "for"):
+		return p.parseForStmt()
+	default:
+		// Expression statement.
+		e, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.ExprStmt{Span: e.NodeSpan(), Expr: e}, nil
+	}
+}
+
+func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
+	kw := p.advance() // consume 'if'
+	cond, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	then, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	stmt := &ast.IfStmt{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: then.Span.EndLine, EndCol: then.Span.EndCol,
+		},
+		Cond:      cond,
+		ThenBlock: then,
+	}
+	if p.at(lexer.KindKeyword, "else") {
+		p.advance() // consume 'else'
+		if p.at(lexer.KindKeyword, "if") {
+			elseIf, err := p.parseIfStmt()
+			if err != nil {
+				return nil, err
+			}
+			stmt.Else = elseIf
+			stmt.Span.EndLine = elseIf.Span.EndLine
+			stmt.Span.EndCol = elseIf.Span.EndCol
+		} else {
+			elseBlk, err := p.parseBlock()
+			if err != nil {
+				return nil, err
+			}
+			stmt.Else = elseBlk
+			stmt.Span.EndLine = elseBlk.Span.EndLine
+			stmt.Span.EndCol = elseBlk.Span.EndCol
+		}
+	}
+	return stmt, nil
+}
+
+func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
+	kw := p.advance() // consume 'for'
+	if !p.at(lexer.KindIdent) {
+		t := p.peek()
+		return nil, p.diag("E0101", "expected loop variable name", t.Line, t.Col)
+	}
+	id := p.advance()
+	var pat ast.Pattern = &ast.IdentPat{
+		Span: ast.Span{StartLine: id.Line, StartCol: id.Col,
+			EndLine: id.Line, EndCol: id.Col + len(id.Lexeme)},
+		Name: id.Lexeme,
+	}
+	if _, err := p.expect(lexer.KindKeyword, "in"); err != nil {
+		return nil, err
+	}
+	iter, err := p.parseIterable()
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.ForStmt{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Pattern:  pat,
+		Iterable: iter,
+		Body:     body,
+	}, nil
+}
+
+// parseIterable parses the right-hand side of `for x in <here>`.
+// A RangeExpr (a..b / a..=b) is detected by looking for the range
+// operator after the first sub-expression; any other Expr is
+// wrapped in IterExpr to satisfy the Iterable interface.
+func (p *parser) parseIterable() (ast.Iterable, *Diag) {
+	low, err := p.parseAddSubExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.KindOp, "..") || p.at(lexer.KindOp, "..=") {
+		op := p.advance()
+		high, err := p.parseAddSubExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.RangeExpr{
+			Span: ast.Span{
+				StartLine: low.NodeSpan().StartLine, StartCol: low.NodeSpan().StartCol,
+				EndLine: high.NodeSpan().EndLine, EndCol: high.NodeSpan().EndCol,
+			},
+			Low:       low,
+			High:      high,
+			Inclusive: op.Lexeme == "..=",
+		}, nil
+	}
+	return &ast.IterExpr{Inner: low}, nil
+}
+
+// ---- expressions (precedence climbing) ----
+//
+// Precedence (high → low), matching grammar.ebnf §Operator table:
+//   primary   — literal / ident / paren / call / field
+//   unary     — !x, -x
+//   mul       — *  /  %
+//   add       — +  -
+//   cmp       — ==  !=  <  <=  >  >=
+//   logical   — &&
+//   logical   — ||
+
+func (p *parser) parseExpr() (ast.Expr, *Diag) { return p.parseLogicalOr() }
+
+func (p *parser) parseLogicalOr() (ast.Expr, *Diag) {
+	return p.parseBinaryL(p.parseLogicalAnd, []string{"||"})
+}
+
+func (p *parser) parseLogicalAnd() (ast.Expr, *Diag) {
+	return p.parseBinaryL(p.parseCompare, []string{"&&"})
+}
+
+func (p *parser) parseCompare() (ast.Expr, *Diag) {
+	return p.parseBinaryL(p.parseAddSubExpr, []string{"==", "!=", "<", "<=", ">", ">="})
+}
+
+func (p *parser) parseAddSubExpr() (ast.Expr, *Diag) {
+	return p.parseBinaryL(p.parseMulDiv, []string{"+", "-"})
+}
+
+func (p *parser) parseMulDiv() (ast.Expr, *Diag) {
+	return p.parseBinaryL(p.parseUnary, []string{"*", "/", "%"})
+}
+
+// parseBinaryL is a left-associative binary-operator helper for a
+// single precedence level. ops are the operator lexemes admitted
+// at this level.
+func (p *parser) parseBinaryL(next func() (ast.Expr, *Diag), ops []string) (ast.Expr, *Diag) {
+	left, err := next()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		matched := false
+		for _, op := range ops {
+			if p.at(lexer.KindOp, op) {
+				matched = true
+				opTok := p.advance()
+				right, err := next()
+				if err != nil {
+					return nil, err
+				}
+				left = &ast.Binary{
+					Span: ast.Span{
+						StartLine: left.NodeSpan().StartLine, StartCol: left.NodeSpan().StartCol,
+						EndLine: right.NodeSpan().EndLine, EndCol: right.NodeSpan().EndCol,
+					},
+					Op:    opTok.Lexeme,
+					Left:  left,
+					Right: right,
+				}
+				break
+			}
+		}
+		if !matched {
+			return left, nil
+		}
+	}
+}
+
+func (p *parser) parseUnary() (ast.Expr, *Diag) {
+	if p.at(lexer.KindOp, "!") || p.at(lexer.KindOp, "-") {
+		op := p.advance()
+		operand, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.Unary{
+			Span: ast.Span{
+				StartLine: op.Line, StartCol: op.Col,
+				EndLine: operand.NodeSpan().EndLine, EndCol: operand.NodeSpan().EndCol,
+			},
+			Op:      op.Lexeme,
+			Operand: operand,
+		}, nil
+	}
+	return p.parsePostfix()
+}
+
+func (p *parser) parsePostfix() (ast.Expr, *Diag) {
+	e, err := p.parsePrimary()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		switch {
+		case p.at(lexer.KindPunct, "("):
+			call, err := p.parseCallSuffix(e)
+			if err != nil {
+				return nil, err
+			}
+			e = call
+		case p.at(lexer.KindPunct, "."):
+			p.advance()
+			if !p.at(lexer.KindIdent) {
+				t := p.peek()
+				return nil, p.diag("E0101", "expected field name after `.`", t.Line, t.Col)
+			}
+			name := p.advance()
+			e = &ast.Field{
+				Span: ast.Span{
+					StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+					EndLine: name.Line, EndCol: name.Col + len(name.Lexeme),
+				},
+				Receiver: e,
+				Name:     name.Lexeme,
+			}
+		default:
+			return e, nil
+		}
+	}
+}
+
+func (p *parser) parseCallSuffix(callee ast.Expr) (*ast.Call, *Diag) {
+	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+		return nil, err
+	}
+	c := &ast.Call{Callee: callee}
+	p.skipNewlines()
+	if !p.at(lexer.KindPunct, ")") {
+		for {
+			arg, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			c.Args = append(c.Args, arg)
+			p.skipNewlines()
+			if !p.at(lexer.KindPunct, ",") {
+				break
+			}
+			p.advance() // consume ','
+			p.skipNewlines()
+		}
+	}
+	close, err := p.expect(lexer.KindPunct, ")")
+	if err != nil {
+		return nil, err
+	}
+	c.Span = ast.Span{
+		StartLine: callee.NodeSpan().StartLine, StartCol: callee.NodeSpan().StartCol,
+		EndLine: close.Line, EndCol: close.Col + 1,
+	}
+	return c, nil
+}
+
+func (p *parser) parsePrimary() (ast.Expr, *Diag) {
+	t := p.peek()
+	switch t.Kind {
+	case lexer.KindIntLit:
+		p.advance()
+		v, err := parseIntLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0109", "Malformed numeric literal", t.Line, t.Col)
+		}
+		return &ast.IntLitExpr{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   v,
+		}, nil
+	case lexer.KindStringLit:
+		p.advance()
+		val, err := decodeStringLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0110", "Malformed escape sequence", t.Line, t.Col)
+		}
+		return &ast.StringLitExpr{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   val,
+		}, nil
+	case lexer.KindKeyword:
+		switch t.Lexeme {
+		case "true":
+			p.advance()
+			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: true}, nil
+		case "false":
+			p.advance()
+			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: false}, nil
+		}
+		return nil, p.diag("E0101", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
+	case lexer.KindIdent:
+		p.advance()
+		return &ast.Ident{Span: spanFromToken(t), Name: t.Lexeme}, nil
+	case lexer.KindPunct:
+		if t.Lexeme == "(" {
+			p.advance()
+			e, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+				return nil, err
+			}
+			return e, nil
+		}
+	}
+	return nil, p.diag("E0101",
+		fmt.Sprintf("expected expression, got %s %q", t.Kind, t.Lexeme),
+		t.Line, t.Col)
+}
+
+// ---- helpers ----
+
+func spanFromToken(t lexer.Token) ast.Span {
+	return ast.Span{
+		StartLine: t.Line, StartCol: t.Col,
+		EndLine: t.Line, EndCol: t.Col + tokenWidth(t),
+	}
+}
+
+func tokenWidth(t lexer.Token) int {
+	// Char-counted token width. lexer guarantees Lexeme is ASCII
+	// for non-string tokens (idents are ASCII-only in v1); for
+	// strings, the lexeme contains the surrounding quotes and the
+	// raw escape sequences, so byte-length equals char-length on
+	// ASCII source and is a reasonable approximation otherwise.
+	return len(t.Lexeme)
+}
+
+func parseIntLit(s string) (int64, error) {
+	// Strip "_" separators (grammar.ebnf admits them anywhere in
+	// the literal body); pick base from prefix.
+	clean := strings.ReplaceAll(s, "_", "")
+	if strings.HasPrefix(clean, "0x") || strings.HasPrefix(clean, "0X") {
+		return strconv.ParseInt(clean[2:], 16, 64)
+	}
+	if strings.HasPrefix(clean, "0o") || strings.HasPrefix(clean, "0O") {
+		return strconv.ParseInt(clean[2:], 8, 64)
+	}
+	if strings.HasPrefix(clean, "0b") || strings.HasPrefix(clean, "0B") {
+		return strconv.ParseInt(clean[2:], 2, 64)
+	}
+	return strconv.ParseInt(clean, 10, 64)
+}
+
+// decodeStringLit converts a lexer-token lexeme `"hello\n"` to the
+// decoded value `hello<LF>`.
+func decodeStringLit(s string) (string, error) {
+	if len(s) < 2 || s[0] != '"' || s[len(s)-1] != '"' {
+		return "", fmt.Errorf("not a string literal")
+	}
+	inner := s[1 : len(s)-1]
+	var b strings.Builder
+	for i := 0; i < len(inner); {
+		c := inner[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		if i+1 >= len(inner) {
+			return "", fmt.Errorf("trailing backslash")
+		}
+		esc := inner[i+1]
+		switch esc {
+		case 'n':
+			b.WriteByte('\n')
+			i += 2
+		case 't':
+			b.WriteByte('\t')
+			i += 2
+		case 'r':
+			b.WriteByte('\r')
+			i += 2
+		case '\\':
+			b.WriteByte('\\')
+			i += 2
+		case '"':
+			b.WriteByte('"')
+			i += 2
+		case '\'':
+			b.WriteByte('\'')
+			i += 2
+		case '0':
+			b.WriteByte(0)
+			i += 2
+		case 'x':
+			if i+3 >= len(inner) {
+				return "", fmt.Errorf("short \\x escape")
+			}
+			n, err := strconv.ParseInt(inner[i+2:i+4], 16, 32)
+			if err != nil {
+				return "", err
+			}
+			b.WriteByte(byte(n))
+			i += 4
+		case 'u':
+			if i+5 >= len(inner) {
+				return "", fmt.Errorf("short \\u escape")
+			}
+			n, err := strconv.ParseInt(inner[i+2:i+6], 16, 32)
+			if err != nil {
+				return "", err
+			}
+			b.WriteRune(rune(n))
+			i += 6
+		default:
+			return "", fmt.Errorf("unknown escape \\%c", esc)
+		}
+	}
+	return b.String(), nil
+}

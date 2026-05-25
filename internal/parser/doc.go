@@ -1,4 +1,9 @@
-// Package parser turns a token stream into a Tide abstract syntax tree.
+// Package parser turns a Tide token stream into an AST.
 //
-// Status: not implemented. See docs/architecture.md.
+// Contract: lang-spec/grammar.ebnf (syntactic part) and lang-spec/ast.md.
+// PR-B scope: only the productions needed by examples/hello.td and
+// examples/interview/fizzbuzz.td (imports, FuncDecl with empty
+// param list, Block of ExprStmt / IfStmt / ForStmt, ranges,
+// binary ops, calls, field access, ident/int/string/bool
+// literals).
 package parser

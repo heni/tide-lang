@@ -88,11 +88,65 @@ Newline<>            1:11
 EOF<>                2:1
 ```
 
-## AST  *(forthcoming — defined by `ast.md`)*
+## AST
 
-S-expression with spec-canonical node names. Each node carries a
-`@line:col-line:col` span attribute. The exact form lands with
-`ast.md`.
+S-expression with the canonical node names from `ast.md`. Each
+node carries a `@line:col-line:col` span attribute (char-counted
+positions, matching the TOKENS format).
+
+### Form
+
+For each node:
+
+```
+(NodeKind [attrs ...] @startLine:startCol-endLine:endCol
+  child1
+  child2
+  ...)
+```
+
+- `NodeKind` is the node's name verbatim from `ast.md` (e.g.
+  `FuncDecl`, `IntLitExpr`, `Binary`).
+- `attrs` are quoted string literals or int/bool constants in
+  the order documented per node — typically a name, a literal
+  value, or an operator lexeme. Strings are wrapped in `"…"`;
+  escape sequences inside the value are written as `\n \t \r
+  \\ \"`.
+- Each child appears on its own line, indented by **two spaces**
+  per nesting level relative to its parent's opening paren.
+- The closing paren of a node trails the last child on the same
+  line, with no extra space.
+
+### Examples
+
+A bare integer literal at line 1 col 5:
+
+```
+(IntLitExpr 42 @1:5-1:7)
+```
+
+A binary expression:
+
+```
+(Binary "+" @1:1-1:6
+  (IntLitExpr 1 @1:1-1:2)
+  (IntLitExpr 2 @1:5-1:6))
+```
+
+A function declaration with an empty parameter list:
+
+```
+(FuncDecl "main" @3:1-5:2
+  (params)
+  (Block @3:13-5:2
+    ...))
+```
+
+The form is deterministic: two parses of the same input must
+produce byte-identical canonical strings. The runner normalises
+trailing whitespace on each line and strips trailing newlines
+before comparing, but interior whitespace (indentation) is
+part of the contract.
 
 ## TYPES  *(forthcoming — defined by `type-system.md`)*
 
