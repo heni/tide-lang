@@ -16,8 +16,11 @@
 
 import fmt
 import os
-import strings
 
+// Note: the problem input is bounded to ASCII, so the helpers below
+// narrow Go's `unicode.IsLower` / `unicode.ToLower` to the ASCII
+// range. Adding a `unicode` binding row would let this file mirror
+// Go faithfully; deferred — see spec-gaps backlog.
 func isLower(c: rune): bool {
   return c >= 'a' && c <= 'z'
 }

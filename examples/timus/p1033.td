@@ -13,12 +13,11 @@
 
 import fmt
 import os
-import strings
 
 type Coord     = (int, int)                 // (x, y)
 type Direction = | Up | Down | Left | Right
 
-let allDirections = [Up, Down, Left, Right]
+let allDirections: []Direction = [Up, Down, Left, Right]
 
 func advance(grid: []string, p: Coord, d: Direction): Option<Coord> {
   let n = grid.len()

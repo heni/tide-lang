@@ -36,7 +36,7 @@ func addLink(adj: Map<int, []int>, u: int, v: int) {
   }
 }
 
-func readEdges(): Result<([]int, []int, []int), error> {
+func readEdges(): Result<(int, []int, []int, []int), error> {
   let n = try fmt.scan<int>()
   var us: []int = []int{}
   var vs: []int = []int{}
@@ -56,7 +56,7 @@ func readEdges(): Result<([]int, []int, []int), error> {
       Ok(u)  => victims = victims.push(u - 1),
     }
   }
-  return Ok((us, vs, victims))
+  return Ok((n, us, vs, victims))
 }
 
 func buildGraph(us: []int, vs: []int): Graph {
@@ -104,17 +104,7 @@ func solve(n: int, us: []int, vs: []int, victims: []int): []int {
 func main() {
   match readEdges() {
     Err(e) => { fmt.println("read error:", e); os.exit(1) },
-    Ok((us, vs, victims)) => {
-      // Re-read N from the input — but we already consumed it as part
-      // of readEdges. The Go reference threads N through; we recover
-      // it from max(u, v, victim) + 1, then take suspect IDs +1 for
-      // 1-indexed output.
-      var maxIdx = 0
-      for u in us      { if u > maxIdx { maxIdx = u } }
-      for v in vs      { if v > maxIdx { maxIdx = v } }
-      for u in victims { if u > maxIdx { maxIdx = u } }
-      let n = maxIdx + 1
-
+    Ok((n, us, vs, victims)) => {
       let suspects = solve(n, us, vs, victims)
       if suspects.len() == 0 {
         fmt.println(0)

@@ -23,11 +23,16 @@ func minInt(a: int, b: int): int {
   return b
 }
 
-// Returns (a_k, b_k) where F(k) = a_k * F(0) + b_k * F(1) for the
-// classical Fibonacci sequence in (a, b) form.
+// Returns the pair (F(k), F(k+1)) of the classical Fibonacci
+// sequence (F(0)=0, F(1)=1). The two BigInts also serve as the
+// `(a_k, b_k)` coefficients in the linear combination of any
+// generalised Fibonacci-recurrent sequence:
+//   G(k) = a_k * G(0) + b_k * G(1)
+// where (a_k, b_k) = (F(k-1), F(k)). We use that fact in `solve`
+// below to set up the 2x2 Cramer's system.
 func fibCoeff(k: int): (big.BigInt, big.BigInt) {
-  var a = big.fromInt(0)            // a_0 = 0
-  var b = big.fromInt(1)            // b_0 = 1
+  var a = big.fromInt(0)            // F(0)
+  var b = big.fromInt(1)            // F(1)
   for _ in 0..k {
     let nextB = a.add(b)
     a = b
@@ -58,11 +63,28 @@ func solve(i: int, fi: int64, j: int, fj: int64, n: int): int64 {
   return aN.toInt64() * x + bN.toInt64() * y
 }
 
+// One place that demonstrates the diverging-built-in rule
+// (`os.exit` unifies with any expected type), so the call sites
+// below stay clean.
+func readInt(): int {
+  return match fmt.scan<int>() {
+    Err(e) => { fmt.println("read error:", e); os.exit(1) },
+    Ok(v)  => v,
+  }
+}
+
+func readInt64(): int64 {
+  return match fmt.scan<int64>() {
+    Err(e) => { fmt.println("read error:", e); os.exit(1) },
+    Ok(v)  => v,
+  }
+}
+
 func main() {
-  let i  = match fmt.scan<int>()   { Err(e) => { fmt.println("read error:", e); os.exit(1) }, Ok(v) => v }
-  let fi = match fmt.scan<int64>() { Err(e) => { fmt.println("read error:", e); os.exit(1) }, Ok(v) => v }
-  let j  = match fmt.scan<int>()   { Err(e) => { fmt.println("read error:", e); os.exit(1) }, Ok(v) => v }
-  let fj = match fmt.scan<int64>() { Err(e) => { fmt.println("read error:", e); os.exit(1) }, Ok(v) => v }
-  let n  = match fmt.scan<int>()   { Err(e) => { fmt.println("read error:", e); os.exit(1) }, Ok(v) => v }
+  let i  = readInt()
+  let fi = readInt64()
+  let j  = readInt()
+  let fj = readInt64()
+  let n  = readInt()
   fmt.println(solve(i, fi, j, fj, n))
 }

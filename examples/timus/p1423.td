@@ -14,7 +14,6 @@
 
 import fmt
 import os
-import strings
 
 func nextState(s: []byte, pi: []int, st0: int, b: byte): int {
   var st = st0
