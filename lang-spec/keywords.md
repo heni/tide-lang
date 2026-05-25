@@ -48,7 +48,7 @@ this
 ```
 
 `this` is the explicit form of the implicit receiver inside an
-instance method (see `language-spec.md` §Classes). Outside class
+instance method (see `../docs/language-spec.md` §Classes). Outside class
 methods, `this` is a syntax error.
 
 ## Contextual keywords
