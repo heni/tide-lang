@@ -34,12 +34,28 @@ typing relation: if `Γ ⊢ source : T` per `type-system.md`, then
 `Γ ⊢ desugar(source) : T`.
 
 **Span preservation.** Every IR node carries the `Span` of the
-source it was derived from. When a single source node fans out
-to multiple IR nodes (e.g., `try` ⟿ `match`-with-return), all
-fragments share the source `Span` so the eventual `//line`
-directives at codegen point back to the original `.td` line.
+source it was derived from. The rule when one source construct
+fans out into multiple IR nodes:
+
+- The **root** synthesised node inherits the source construct's
+  full span (the `TryExpr` keyword span for a `try` rewrite, the
+  `ScopeExpr` keyword span for a scope rewrite).
+- **Sub-expression** nodes retain their own source spans. In
+  `try e`, the rewritten `MatchExpr.subject` is `e` with `e`'s
+  span; the synthesised `Return Err(...)` carries the
+  `try`-construct span (not `e`'s), so a diagnostic about the
+  propagated error points at the `try`, not at `e`.
+
 This is the contract sema and codegen rely on for diagnostics
 (D10).
+
+**Fresh-name generation.** Stages 4 and 6 introduce fresh
+locals (`fresh_v`, `fresh_e`, `fresh_g`, `fresh_ctx`). All
+freshly generated names use the reserved prefix `$tide_`
+followed by a per-pass monotonic counter; the lexer rejects
+`$` in user source (`grammar.ebnf` LexicalIdent), so collisions
+are impossible by construction. Codegen rewrites `$tide_NN` to
+a Go-legal identifier `_tide_NN`.
 
 ## Pass ordering
 
@@ -75,39 +91,50 @@ Each stage's contract is described below.
 
 ```
 [[ Ident x ]]
-  where x resolves to a class field f or instance method m
+  where x resolves to a class field f of the enclosing class C
   and the surrounding context is an instance-method body
                                                       ⟿
-  Field {
-    receiver: This { type: C },
-    name: x,
+  Field { receiver: This { type: C }, name: x }
+
+[[ Call { callee: Ident m, args: [a_1, ..., a_n] } ]]
+  where m resolves to an instance method on the enclosing class C
+  and the surrounding context is an instance-method body
+                                                      ⟿
+  Call {
+    callee: Field { receiver: This { type: C }, name: m },
+    args:   [a_1, ..., a_n],
   }
+
+[[ Ident m ]]
+  where m resolves to an instance method on the enclosing class C
+  in expression position (method-as-value, e.g., `let f = m`)
+                                                      ⟿
+  Field { receiver: This { type: C }, name: m }
 ```
 
 Reads of bare `n` inside `class Counter.inc() { count = count + 1 }`
-become `this.count` in the IR. The resolver has already detected
-the bind; desugaring just makes it explicit so codegen does not
-need to re-walk scopes.
+become `this.count`. Bare instance-method calls (e.g.,
+`name-resolution.md` §94-105 shows `error(): string` inside a
+class `implements error`) become `this.m(...)`. The resolver has
+already determined the bind; this stage materialises it so
+codegen does not re-walk scopes.
 
-Writes to bare `n` are already blocked by E0502 at name
-resolution; they cannot reach desugaring.
+Writes to bare `n` that shadow a field are already blocked by
+E0502 at name resolution; they cannot reach desugaring.
 
-## Stage 2 — Short closure expansion
+## Stage 2 — (no-op; parser-level normalisation)
 
-```
-[[ ShortClosure { params: ps, body: e } ]]
-                                                      ⟿
-  ClosureLit {
-    params: ps,
-    return: typeof(e),
-    body: Block { stmts: [], trailing: Some(e) },
-  }
-```
+Tide has no `ShortClosure` AST node — the parser already
+normalises the short form `(x, y) => x + y` into
+`ClosureLit { params, body: Block { stmts: [], trailing:
+Some(x + y) } }` per `ast.md:289-292`. Desugaring therefore
+sees one canonical closure shape and does nothing in this
+stage.
 
-Closures already typed by `T-Closure` see no shape change in
-the IR for the explicit form; only the short `(x, y) => x + y`
-form gets normalised to a full `ClosureLit` with a single-tail
-`Block`.
+This stage is kept in the pipeline list for orientation —
+implementers shouldn't add a fresh "short closure" rewrite when
+they encounter one in the AST; the parser has already handled
+it.
 
 ## Stage 3 — Variant constructor application
 
@@ -144,11 +171,12 @@ Some, payload: [3] }`.
 unwrapped value or returns the wrapped error.
 
 ```
-[[ Try { inner: e } ]]
-  where typeof(e) = Result<T, E>
-  and the enclosing function returns Result<U, E>
+[[ TryExpr { inner: e } ]]
+  where typeof(e) = Result<T, E_inner>
+  and the enclosing function returns Result<U, E_outer>
+  and E_inner = E_outer                                  (per T-Try-Result, G11)
                                                       ⟿
-  Match {
+  MatchExpr {
     subject: e,
     arms: [
       Arm { pat: VariantPat{ tag: Ok, sub: [IdentPat fresh_v] },
@@ -167,11 +195,11 @@ desugaring pass; they don't shadow user bindings.)
 The Option case is symmetric:
 
 ```
-[[ Try { inner: e } ]]
+[[ TryExpr { inner: e } ]]
   where typeof(e) = Option<T>
   and the enclosing function returns Option<U>
                                                       ⟿
-  Match {
+  MatchExpr {
     subject: e,
     arms: [
       Arm { pat: VariantPat{ tag: Some, sub: [IdentPat fresh_v] },
@@ -184,8 +212,11 @@ The Option case is symmetric:
   }
 ```
 
-After this stage, the IR contains **no** `Try` nodes. T-Try-*
-diagnostics (E0402, E0403) have already fired in sema.
+After this stage, the IR contains **no** `TryExpr` nodes. The
+side-condition `E_inner = E_outer` is checked by sema (T-Try-Result,
+G11); E0402 / E0403 have fired already if it didn't hold. Desugaring
+asserts the invariant — if it fails here, that's E0701 (internal
+compiler error).
 
 ## Stage 5 — `match` decision tree
 
@@ -200,8 +231,13 @@ Sketch:
 ```
 compile(subject, [arm_1, ..., arm_n]):
   if n == 0:
-    panic at runtime — non-exhaustiveness check already happened in sema,
-    so this branch is unreachable; emit `panic("unreachable")`.
+    // Non-exhaustiveness was checked in sema (E0303). If the
+    // algorithm still reaches an empty arm list here, emit an
+    // UnreachableIR node — lowering-go.md decides how to encode it
+    // (typically `panic("unreachable")`). Keeping the abstract
+    // node in IR avoids hard-coding the panic message at this
+    // layer.
+    return UnreachableIR
   let first_col_pats = [arm_i.pat[0] for i in 1..n]
   if all are wildcards / idents:
     bind idents → recurse into the residual matrix on the remaining columns
@@ -235,10 +271,10 @@ MatchIR {
 }
 ```
 
-After this stage, the IR contains **no** `Match` nodes (the
-source-level shape is gone); codegen sees only `MatchIR`. A
-runtime `panic("unreachable")` is inserted only where the
-algorithm guarantees the branch is dead.
+After this stage, the IR contains **no** `MatchExpr` nodes (the
+source-level shape is gone); codegen sees only `MatchIR`. The
+optional `UnreachableIR` leaf (only reached when sema's
+exhaustiveness check has held) is lowered by `lowering-go.md`.
 
 ## Stage 6 — `scope` / `spawn`
 
@@ -263,10 +299,13 @@ desugar_body(B, g, ctx, T, E):
   let stmts'    = desugar each stmt of B with `scope` ↦ ScopeBinding{g, ctx}
   let trailing' = B.trailing
   if trailing' is None:
-    append: VariantExpr { tag: Ok, payload: [UnitLit], type: Result<unit, E> }
+    // T = unit case (from T-ScopeExpr); wrap unit value.
+    let wrapped = VariantExpr { tag: Ok, payload: [UnitLit],
+                                type: Result<unit, E> }
   else:
-    append: VariantExpr { tag: Ok, payload: [trailing'], type: Result<T, E> }
-  Block { stmts: stmts', trailing: <the Ok-wrapped value above> }
+    let wrapped = VariantExpr { tag: Ok, payload: [trailing'],
+                                type: Result<T, E> }
+  Block { stmts: stmts', trailing: Some(wrapped) }
 ```
 
 So the auto-`Ok` wrap from T-ScopeExpr is materialised here —
@@ -291,24 +330,45 @@ bodies; the sema-time E0405 check guarantees this.
 ## Stage 7 — BraceLit canonicalisation
 
 Container literals become explicit constructor calls so codegen
-emits the same shape for empty and non-empty cases.
+emits the same shape for empty and non-empty cases. The
+result is a `Block` whose statements build the container and
+whose trailing expression is the container value (so the
+expression context is preserved).
 
 ```
 [[ BraceLit { kind: Map<K, V>, entries: [(k_1, v_1), ..., (k_n, v_n)] } ]]
+  fresh local: $tide_m                                  (n >= 0)
                                                       ⟿
-  let m = Map.new<K, V>() in
-  m.set(k_1, v_1); ...; m.set(k_n, v_n); m
+  Block {
+    stmts: [
+      LetStmt { name: $tide_m,
+                init: Call { callee: Field { receiver: Map, name: new },
+                             type_args: [K, V], args: [] } },
+      ExprStmt { expr: Call { callee: Field { receiver: $tide_m, name: set },
+                              args: [k_1, v_1] } },
+      ...
+      ExprStmt { expr: Call { callee: Field { receiver: $tide_m, name: set },
+                              args: [k_n, v_n] } },
+    ],
+    trailing: Some(Var $tide_m),
+  }
 
 [[ BraceLit { kind: Set<T>, entries: [e_1, ..., e_n] } ]]
                                                       ⟿
-  let s = Set.new<T>() in
-  s.add(e_1); ...; s.add(e_n); s
+  Block { ...                                         (analogous; Set.new<T>(),
+                                                       .add per element)
+        }
 
 [[ BraceLit { kind: Stack<T>, entries: [e_1, ..., e_n] } ]]
                                                       ⟿
-  let st = Stack.new<T>() in
-  st.push(e_1); ...; st.push(e_n); st
+  Block { ...                                         (analogous; Stack.new<T>(),
+                                                       .push per element)
+        }
 ```
+
+The empty case (`n == 0`) collapses to a `Block` with one
+`LetStmt` and a trailing `Var` — no `.set` / `.add` / `.push`
+statements. The IR shape is identical at the structural level.
 
 `BraceLit { kind: Record R, ... }` keeps its shape — record
 literals are a single struct-construction, not a chain of
@@ -347,6 +407,14 @@ constructions; container-literal nodes are gone.
     elem_ty:     int,
     indexed:     false,
   }
+
+[ NOTE: `RangeExpr` is the ONLY form that has type
+  `Iterable<int>` in v1 (see `builtins.md` §Iterable and
+  `type-system.md` §T-For). There is no free function or
+  variable producing `Iterable<int>`, so this rule matches
+  every for-over-int-range; no fallback case for
+  `for i in computeRange()` exists because no expression of
+  type `Iterable<int>` can be produced outside a literal range. ]
 
 [[ ForStmt { pat, iter } ]]
   where iter : string
@@ -392,20 +460,25 @@ strings, maps, and channels.
   `a == b` (interface / pointer identity).
 - **Pattern matches over primitive scrutinees** (e.g.,
   `match c { '(' => ..., ')' => ... }`). The decision-tree
-  algorithm produces a `MatchIR` switching on literal values
-  rather than variant tags; the structure is the same. There is
-  no separate `SwitchIR`.
+  algorithm produces a `MatchIR` whose `BranchIR.tag` is a
+  `LiteralValue` instead of a `VariantTag`. `LiteralValue`
+  carries the underlying primitive shape (`int`, `rune`,
+  `string`, `bool`) plus the literal value; codegen lowers to
+  a Go `switch`-on-value. There is no separate `SwitchIR`.
 
 ## IR shape — canonical node list
 
 The IR after all stages contains:
 
 - **Expressions**: every AST `Expr` variant *except*
-  `Try`, `Match`, `BraceLit{Map|Set|Stack}`, `ShortClosure`,
-  `VariantExpr` (in implicit form — only fully-typed
-  `VariantExpr` remains). The new IR-only forms are
-  `MatchIR`, `ScopeIR`, `SpawnIR`, `ForRangeIR`, `ForMapIR`,
-  `ForSetIR`, `ForChanIR`, `TopContextExpr` (background context).
+  `TryExpr`, `MatchExpr`, and `BraceLit { kind: Map|Set|Stack }`.
+  `VariantExpr` remains in its **fully-typed** form (Stage 3
+  promoted implicit Call/Ident shapes to typed `VariantExpr`).
+  The new IR-only forms are: `MatchIR` (with
+  `BranchIR.tag ∈ {VariantTag, LiteralValue}`), `ScopeIR`,
+  `SpawnIR`, `ForRangeIR` (with optional `str_runes: bool` flag
+  for string iteration), `ForMapIR`, `ForSetIR`, `ForChanIR`,
+  `TopContextExpr` (background context), `UnreachableIR`.
 - **Statements**: same as AST but with the additions above and
   with implicit-receiver expansion baked in.
 - **Decls**: unchanged from AST.
