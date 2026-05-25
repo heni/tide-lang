@@ -90,6 +90,16 @@ let xs: []int = []          // empty literal needs context
 var cur: Option<Node> = head
 ```
 
+**Discard pattern.** `_` is a write-only binding that evaluates its
+right-hand side and ignores the value:
+
+```td
+let _ = sideEffect()
+```
+
+Reading `_` is a compile error. Multiple `_`s in the same scope do not
+shadow each other.
+
 ## Collections
 
 ### Slices: `[]T`
@@ -237,6 +247,9 @@ Top-level functions use the `func` keyword. Methods inside a `class` or an
 - Variadic: `func print(args: ...Any)`. At the call site, individual
   arguments — including concrete values *and* interface values — widen
   to `Any`.
+- Parameters may use the discard pattern `_` (e.g. `func cb(_: int,
+  name: string)`). Useful when implementing an interface that demands
+  a parameter the body does not need.
 
 ## Error handling
 
@@ -278,6 +291,10 @@ return value
 
 Range forms: `a..b` half-open `[a, b)`; `a..=b` inclusive `[a, b]`. No
 stepped ranges in v1.
+
+The discard pattern `_` is valid in any `for` binder position:
+`for _ in 1..=n` (iterate n times, ignore the index), `for (_, v) in s`
+(value-only over a slice), `for (k, _) in m` (keys-only over a map).
 
 `defer expr` queues `expr` (typically a method call) to run when the
 enclosing **function** returns, in LIFO order. Function-scoped, not
@@ -509,9 +526,19 @@ dynamically; if it needs the scope's context, pass it as a parameter.
 Inside the lexical scope, `scope.context: context.Context` is the
 cancellable context to pass into bound Go calls.
 
-Scopes nest. An inner scope's lifetime is bounded by its enclosing scope;
-an outer cancellation propagates to inner scopes through the
-`context.Context` chain.
+**Nested scopes and cancellation.** A `scope<T, E>` accepts an optional
+`context.Context` argument that becomes the scope's parent:
+
+- `scope<T, E> { ... }` — root scope. Internal context derives from
+  `context.background()`.
+- `scope<T, E>(parent) { ... }` — inner scope. Internal context
+  derives from `parent`. When `parent.done()` fires (e.g. because the
+  outer scope cancelled), this scope cancels every running spawn.
+
+The explicit-parent form is how cancellation propagates across scope
+boundaries without breaking the lexical-binding rule above: callees that
+open inner scopes take `ctx: context.Context` as a parameter and pass
+it as `scope<T, E>(ctx) { ... }`.
 
 ## Examples
 
