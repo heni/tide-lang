@@ -245,6 +245,20 @@ all type to `unit`.
   with identical fields are not `==`). For explicit reference equality,
   the built-in `refEq<T>(a, b): bool` is the readable spelling (G26).
 
+**Boolean operators.** All three short-circuit; both operands and the
+result must be `bool`. There is no implicit truthiness — `0`, `""`,
+`None`, and empty collections are *not* `false`.
+
+- `a && b` — AND. `b` is not evaluated if `a` is `false`.
+- `a || b` — OR. `b` is not evaluated if `a` is `true`.
+- `!a`    — negation.
+
+Precedence (high → low): `!`, `&&`, `||`. Same as Go and C.
+
+**Numeric and comparison operators.** `+ - * / %` on numeric types;
+`< <= > >=` on comparable primitive types (numbers, strings, runes,
+bools by `false < true`).
+
 ## Functions
 
 ```td
@@ -317,6 +331,15 @@ stepped ranges in v1.
 The discard pattern `_` is valid in any `for` binder position:
 `for _ in 1..=n` (iterate n times, ignore the index), `for (_, v) in s`
 (value-only over a slice), `for (k, _) in m` (keys-only over a map).
+
+**`break` and `continue`.** Inside any `for` or `while` loop:
+
+- `continue` — skip to the next iteration of the enclosing loop.
+- `break`    — exit the enclosing loop.
+
+There is no labelled / multi-level form in v1. Inside a `select` case
+body, `continue` and `break` refer to the enclosing loop (not the
+select).
 
 `defer expr` queues `expr` (typically a method call) to run when the
 enclosing **function** returns, in LIFO order. Function-scoped, not

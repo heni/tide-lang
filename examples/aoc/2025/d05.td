@@ -52,7 +52,7 @@ func collapse(ranges: []Range): []Range {
   for i in 1..sorted.len() {
     let r = sorted[i]
     if cur.1 >= r.0 {
-      let merged: int = if cur.1 > r.1 { cur.1 } else { r.1 }
+      let merged = if cur.1 > r.1 { cur.1 } else { r.1 }
       cur = (cur.0, merged)
     } else {
       out = out.push(cur)

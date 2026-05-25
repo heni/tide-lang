@@ -8,8 +8,9 @@
 //     chunk repeated identically (so 122122122 is bad, 12122 is not).
 // Sum the bad IDs.
 //
-// Forces: line + range parsing, string slicing `s[a:b]` (G45), Stack-
-// free iteration, generic predicates, sorting strings.
+// Forces: line + range parsing, string slicing `s[a:b]` (G45), tuple
+// type alias `type Range = (int, int)`, sorting `[]string`, and a
+// `(string) => bool` first-class function value passed as `check`.
 
 import fmt
 import os

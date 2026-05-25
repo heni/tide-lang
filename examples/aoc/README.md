@@ -11,10 +11,10 @@ gap, it lands as a new G-entry in the spec audit log.
 
 | Day | Puzzle | Forces (notable) |
 |---|---|---|
-| d01 | rotation/modulo over a 100-position dial | `string slicing s[a:b]` (G45), `strconv.atoi`, modular arithmetic |
-| d02 | bad-ID predicates over comma-separated ranges | sort over `[]string`, slice-of-substrings, generic `(string) => bool` predicate |
-| d03 | monotonic-stack DP for largest L-digit subsequence | `for (idx, d) in line` (G25), slice slicing `s[a:b]` |
-| d05 | merge sorted intervals, two-section parser | tuple `(int, int)` (G24), `t.0`/`t.1` field access, sort-by-key |
+| d01 | rotation/modulo over a 100-position dial | string slicing `s[a:b]` (G45), `strconv.atoi`, modular arithmetic, `continue` (G46) |
+| d02 | bad-ID predicates over comma-separated ranges | `(string) => bool` first-class function value, `type Range = (int, int)` tuple alias, `sort.sorted` over `[]string`, `continue` (G46) |
+| d03 | monotonic-stack DP for largest L-digit subsequence | `for (idx, d) in line` (G25), slice slicing `xs[a:b]`, `&&` short-circuit (G47), `continue` (G46) |
+| d05 | merge sorted intervals, two-section parser | tuple `(int, int)` (G24), `t.0`/`t.1` field access, sort by comparator, `&&` short-circuit (G47), `continue` (G46) |
 
 ## Pending
 
