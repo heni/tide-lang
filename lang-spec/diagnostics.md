@@ -58,6 +58,7 @@ severity column.
 | E0109 | E | Malformed numeric literal | `grammar.ebnf` IntLit / FloatLit | A digit is missing or invalid for the radix (e.g. `0o9`, `0x`, bare `1e`). |
 | E0110 | E | Malformed escape sequence | `grammar.ebnf` EscapeChar | Use one of the v1 escapes: `\n \t \r \\ \" \' \0 \xNN \uNNNN`. |
 | E0111 | E | Malformed rune literal | `grammar.ebnf` RuneLit | A rune literal must contain exactly one character or escape sequence between single quotes. |
+| E0112 | E | Unexpected token | `grammar.ebnf` syntactic part | The parser was looking for a different shape; check the surrounding construct. |
 
 ### E02xx — Type system
 

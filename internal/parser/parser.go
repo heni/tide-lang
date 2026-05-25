@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/heni/tide-lang/internal/ast"
 	"github.com/heni/tide-lang/internal/lexer"
@@ -95,7 +96,7 @@ func (p *parser) advance() lexer.Token {
 func (p *parser) expect(k lexer.Kind, lex string) (lexer.Token, *Diag) {
 	t := p.peek()
 	if t.Kind != k || (lex != "" && t.Lexeme != lex) {
-		return t, p.diag("E0101", fmt.Sprintf("expected %s %q, got %s %q",
+		return t, p.diag("E0112", fmt.Sprintf("expected %s %q, got %s %q",
 			k, lex, t.Kind, t.Lexeme), t.Line, t.Col)
 	}
 	p.pos++
@@ -132,7 +133,7 @@ func (p *parser) parseFile() (*ast.File, *Diag) {
 		p.skipNewlines()
 	}
 	if len(f.Decls) == 0 {
-		return nil, p.diag("E0101", "File has no declarations", 1, 1)
+		return nil, p.diag("E0112", "File has no declarations", 1, 1)
 	}
 	eof := p.peek()
 	f.Span = ast.Span{
@@ -144,24 +145,25 @@ func (p *parser) parseFile() (*ast.File, *Diag) {
 
 func (p *parser) parseImport() (*ast.Import, *Diag) {
 	kw := p.advance() // consume 'import'
-	// Path is either a single Ident or a dotted chain. PR-B keeps
-	// the path verbatim by joining identifiers / dots back into a
-	// string.
+	// Path is one-or-more identifiers separated by `/` per
+	// grammar.ebnf PackagePath = Ident ("/" Ident)*. Dots are not
+	// admitted (member access on a package is the field operator
+	// `.`, not part of the import path).
 	var parts []string
 	end := kw
 	if !p.at(lexer.KindIdent) {
 		t := p.peek()
-		return nil, p.diag("E0101", "expected identifier after `import`", t.Line, t.Col)
+		return nil, p.diag("E0112", "expected identifier after `import`", t.Line, t.Col)
 	}
 	t := p.advance()
 	parts = append(parts, t.Lexeme)
 	end = t
-	for p.at(lexer.KindPunct, ".") || p.at(lexer.KindPunct, "/") {
+	for p.at(lexer.KindOp, "/") {
 		sep := p.advance()
 		parts = append(parts, sep.Lexeme)
 		if !p.at(lexer.KindIdent) {
 			t = p.peek()
-			return nil, p.diag("E0101", "expected identifier in import path", t.Line, t.Col)
+			return nil, p.diag("E0112", "expected identifier in import path", t.Line, t.Col)
 		}
 		next := p.advance()
 		parts = append(parts, next.Lexeme)
@@ -170,7 +172,7 @@ func (p *parser) parseImport() (*ast.Import, *Diag) {
 	return &ast.Import{
 		Span: ast.Span{
 			StartLine: kw.Line, StartCol: kw.Col,
-			EndLine: end.Line, EndCol: end.Col + len(end.Lexeme),
+			EndLine: end.Line, EndCol: end.Col + utf8.RuneCountInString(end.Lexeme),
 		},
 		Path: strings.Join(parts, ""),
 	}, nil
@@ -181,7 +183,7 @@ func (p *parser) parseDecl() (ast.Decl, *Diag) {
 		return p.parseFuncDecl()
 	}
 	t := p.peek()
-	return nil, p.diag("E0101",
+	return nil, p.diag("E0112",
 		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
 		t.Line, t.Col)
 }
@@ -231,13 +233,13 @@ func (p *parser) parseBlock() (*ast.Block, *Diag) {
 		blk.Stmts = append(blk.Stmts, s)
 		p.skipNewlines()
 	}
-	close, err := p.expect(lexer.KindPunct, "}")
+	closeTok, err := p.expect(lexer.KindPunct, "}")
 	if err != nil {
 		return nil, err
 	}
 	blk.Span = ast.Span{
 		StartLine: open.Line, StartCol: open.Col,
-		EndLine: close.Line, EndCol: close.Col + 1,
+		EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
 	}
 	return blk, nil
 }
@@ -303,7 +305,7 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 	kw := p.advance() // consume 'for'
 	if !p.at(lexer.KindIdent) {
 		t := p.peek()
-		return nil, p.diag("E0101", "expected loop variable name", t.Line, t.Col)
+		return nil, p.diag("E0112", "expected loop variable name", t.Line, t.Col)
 	}
 	id := p.advance()
 	var pat ast.Pattern = &ast.IdentPat{
@@ -335,8 +337,9 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 
 // parseIterable parses the right-hand side of `for x in <here>`.
 // A RangeExpr (a..b / a..=b) is detected by looking for the range
-// operator after the first sub-expression; any other Expr is
-// wrapped in IterExpr to satisfy the Iterable interface.
+// operator after the first sub-expression. Any other Expr is
+// returned directly — Iterable is just `Node`, so both *RangeExpr
+// and any concrete Expr satisfy it.
 func (p *parser) parseIterable() (ast.Iterable, *Diag) {
 	low, err := p.parseAddSubExpr()
 	if err != nil {
@@ -358,7 +361,7 @@ func (p *parser) parseIterable() (ast.Iterable, *Diag) {
 			Inclusive: op.Lexeme == "..=",
 		}, nil
 	}
-	return &ast.IterExpr{Inner: low}, nil
+	return low, nil
 }
 
 // ---- expressions (precedence climbing) ----
@@ -379,11 +382,21 @@ func (p *parser) parseLogicalOr() (ast.Expr, *Diag) {
 }
 
 func (p *parser) parseLogicalAnd() (ast.Expr, *Diag) {
-	return p.parseBinaryL(p.parseCompare, []string{"&&"})
+	return p.parseBinaryL(p.parseEq, []string{"&&"})
 }
 
-func (p *parser) parseCompare() (ast.Expr, *Diag) {
-	return p.parseBinaryL(p.parseAddSubExpr, []string{"==", "!=", "<", "<=", ">", ">="})
+// parseEq admits a SINGLE optional `==`/`!=` operator over parseCmp,
+// matching grammar.ebnf EqExpr = CmpExpr ( ("==" | "!=") CmpExpr )?
+// (non-associative).
+func (p *parser) parseEq() (ast.Expr, *Diag) {
+	return p.parseBinaryOnce(p.parseCmp, []string{"==", "!="})
+}
+
+// parseCmp admits a SINGLE optional `<`/`<=`/`>`/`>=` operator over
+// parseAddSubExpr, matching grammar.ebnf CmpExpr = AddExpr
+// ( ("<"|"<="|">"|">=") AddExpr )? (non-associative).
+func (p *parser) parseCmp() (ast.Expr, *Diag) {
+	return p.parseBinaryOnce(p.parseAddSubExpr, []string{"<", "<=", ">", ">="})
 }
 
 func (p *parser) parseAddSubExpr() (ast.Expr, *Diag) {
@@ -430,6 +443,47 @@ func (p *parser) parseBinaryL(next func() (ast.Expr, *Diag), ops []string) (ast.
 	}
 }
 
+// parseBinaryOnce admits at most ONE operator from ops over the
+// `next` parselet (non-associative). Repeated operators at this
+// level (e.g., `a == b == c`) produce E0112.
+func (p *parser) parseBinaryOnce(next func() (ast.Expr, *Diag), ops []string) (ast.Expr, *Diag) {
+	left, err := next()
+	if err != nil {
+		return nil, err
+	}
+	for _, op := range ops {
+		if !p.at(lexer.KindOp, op) {
+			continue
+		}
+		opTok := p.advance()
+		right, err := next()
+		if err != nil {
+			return nil, err
+		}
+		result := &ast.Binary{
+			Span: ast.Span{
+				StartLine: left.NodeSpan().StartLine, StartCol: left.NodeSpan().StartCol,
+				EndLine: right.NodeSpan().EndLine, EndCol: right.NodeSpan().EndCol,
+			},
+			Op:    opTok.Lexeme,
+			Left:  left,
+			Right: right,
+		}
+		// Reject another operator at the same precedence — the
+		// production is non-associative.
+		for _, op := range ops {
+			if p.at(lexer.KindOp, op) {
+				t := p.peek()
+				return nil, p.diag("E0112",
+					fmt.Sprintf("operator %q is non-associative; parenthesise the operands", op),
+					t.Line, t.Col)
+			}
+		}
+		return result, nil
+	}
+	return left, nil
+}
+
 func (p *parser) parseUnary() (ast.Expr, *Diag) {
 	if p.at(lexer.KindOp, "!") || p.at(lexer.KindOp, "-") {
 		op := p.advance()
@@ -466,7 +520,7 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 			p.advance()
 			if !p.at(lexer.KindIdent) {
 				t := p.peek()
-				return nil, p.diag("E0101", "expected field name after `.`", t.Line, t.Col)
+				return nil, p.diag("E0112", "expected field name after `.`", t.Line, t.Col)
 			}
 			name := p.advance()
 			e = &ast.Field{
@@ -504,13 +558,13 @@ func (p *parser) parseCallSuffix(callee ast.Expr) (*ast.Call, *Diag) {
 			p.skipNewlines()
 		}
 	}
-	close, err := p.expect(lexer.KindPunct, ")")
+	closeTok, err := p.expect(lexer.KindPunct, ")")
 	if err != nil {
 		return nil, err
 	}
 	c.Span = ast.Span{
 		StartLine: callee.NodeSpan().StartLine, StartCol: callee.NodeSpan().StartCol,
-		EndLine: close.Line, EndCol: close.Col + 1,
+		EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
 	}
 	return c, nil
 }
@@ -549,7 +603,7 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			p.advance()
 			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: false}, nil
 		}
-		return nil, p.diag("E0101", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
+		return nil, p.diag("E0112", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
 	case lexer.KindIdent:
 		p.advance()
 		return &ast.Ident{Span: spanFromToken(t), Name: t.Lexeme}, nil
@@ -566,7 +620,7 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			return e, nil
 		}
 	}
-	return nil, p.diag("E0101",
+	return nil, p.diag("E0112",
 		fmt.Sprintf("expected expression, got %s %q", t.Kind, t.Lexeme),
 		t.Line, t.Col)
 }
@@ -581,12 +635,9 @@ func spanFromToken(t lexer.Token) ast.Span {
 }
 
 func tokenWidth(t lexer.Token) int {
-	// Char-counted token width. lexer guarantees Lexeme is ASCII
-	// for non-string tokens (idents are ASCII-only in v1); for
-	// strings, the lexeme contains the surrounding quotes and the
-	// raw escape sequences, so byte-length equals char-length on
-	// ASCII source and is a reasonable approximation otherwise.
-	return len(t.Lexeme)
+	// Char-counted (not byte-counted) token width — matches the
+	// lexer's column-counting convention (utf8-aware).
+	return utf8.RuneCountInString(t.Lexeme)
 }
 
 func parseIntLit(s string) (int64, error) {

@@ -47,53 +47,18 @@ type Decl interface {
 	declMarker()
 }
 
-// FuncDecl is a top-level function. type_params and return_type are
-// optional; for hello.td / fizzbuzz.td they're empty / absent.
+// FuncDecl is a top-level function. PR-B only handles the no-param
+// no-return shape produced by hello.td / fizzbuzz.td. Param,
+// TypeParams, and ReturnType slots are reserved for later PRs.
 type FuncDecl struct {
-	Span       Span
-	Name       string
-	TypeParams []string
-	Params     []*Param
-	ReturnType TypeExpr // nil ⇒ unit
-	Body       *Block
+	Span Span
+	Name string
+	Body *Block
 }
 
 func (n *FuncDecl) NodeSpan() Span   { return n.Span }
 func (n *FuncDecl) NodeKind() string { return "FuncDecl" }
 func (n *FuncDecl) declMarker()      {}
-
-// Param is one parameter in a FuncDecl / Method / ClosureLit.
-type Param struct {
-	Span     Span
-	Name     string   // "_" allowed
-	DeclType TypeExpr // nil only in short-closure params (PR-B does not parse closures)
-}
-
-func (n *Param) NodeSpan() Span   { return n.Span }
-func (n *Param) NodeKind() string { return "Param" }
-
-// ---------------------------------------------------------------
-// Type expressions
-// ---------------------------------------------------------------
-
-// TypeExpr is the sum of type-expression kinds. PR-B only emits
-// NamedType (for return types like `int` or `Result<T, E>`).
-type TypeExpr interface {
-	Node
-	typeMarker()
-}
-
-// NamedType is a possibly-qualified identifier (`int`, `fmt.Foo`,
-// `Map<K, V>`). qname has length ≥ 1.
-type NamedType struct {
-	Span  Span
-	QName []string
-	Args  []TypeExpr
-}
-
-func (n *NamedType) NodeSpan() Span   { return n.Span }
-func (n *NamedType) NodeKind() string { return "NamedType" }
-func (n *NamedType) typeMarker()      {}
 
 // ---------------------------------------------------------------
 // Statements
@@ -140,10 +105,12 @@ func (n *ForStmt) NodeSpan() Span   { return n.Span }
 func (n *ForStmt) NodeKind() string { return "ForStmt" }
 func (n *ForStmt) stmtMarker()      {}
 
-// Iterable is RangeExpr or any Expr.
+// Iterable marks the type of values legal at the right-hand side
+// of `for x in ...`. Per ast.md §Iterable, the cases are
+// `RangeExpr | Expr`; both *RangeExpr and any concrete Expr type
+// satisfy this interface because they all implement Node.
 type Iterable interface {
 	Node
-	iterMarker()
 }
 
 // ---------------------------------------------------------------
@@ -166,7 +133,9 @@ func (n *Block) NodeKind() string { return "Block" }
 // ---------------------------------------------------------------
 
 // Pattern is the sum of pattern kinds. PR-B only emits IdentPat
-// (for loop variables) and WildcardPat (for `_`).
+// (for loop variables); WildcardPat / TuplePat / VariantPat /
+// RecordPat / AltPat land in later PRs together with their
+// fixtures.
 type Pattern interface {
 	Node
 	patternMarker()
@@ -181,15 +150,6 @@ type IdentPat struct {
 func (n *IdentPat) NodeSpan() Span   { return n.Span }
 func (n *IdentPat) NodeKind() string { return "IdentPat" }
 func (n *IdentPat) patternMarker()   {}
-
-// WildcardPat matches anything and binds nothing.
-type WildcardPat struct {
-	Span Span
-}
-
-func (n *WildcardPat) NodeSpan() Span   { return n.Span }
-func (n *WildcardPat) NodeKind() string { return "WildcardPat" }
-func (n *WildcardPat) patternMarker()   {}
 
 // ---------------------------------------------------------------
 // Expressions
@@ -246,12 +206,13 @@ func (n *Ident) NodeSpan() Span   { return n.Span }
 func (n *Ident) NodeKind() string { return "Ident" }
 func (n *Ident) exprMarker()      {}
 
-// Call is an application: callee(args).
+// Call is an application: callee(args). Explicit type arguments
+// (callee<T1, T2>(args)) are not parsed in PR-B; the slot will
+// land with the parser pass that adds generics.
 type Call struct {
-	Span     Span
-	Callee   Expr
-	TypeArgs []TypeExpr // empty in PR-B
-	Args     []Expr
+	Span   Span
+	Callee Expr
+	Args   []Expr
 }
 
 func (n *Call) NodeSpan() Span   { return n.Span }
@@ -293,7 +254,9 @@ func (n *Unary) NodeKind() string { return "Unary" }
 func (n *Unary) exprMarker()      {}
 
 // RangeExpr is `low..high` (exclusive) or `low..=high` (inclusive).
-// RangeExpr is both an Expr and an Iterable in the spec.
+// Per ast.md, RangeExpr is iterable-position-only; it is NOT an
+// Expr (it does not appear in the Expr sum). It satisfies the
+// Iterable interface by implementing Node.
 type RangeExpr struct {
 	Span      Span
 	Low       Expr
@@ -303,16 +266,3 @@ type RangeExpr struct {
 
 func (n *RangeExpr) NodeSpan() Span   { return n.Span }
 func (n *RangeExpr) NodeKind() string { return "RangeExpr" }
-func (n *RangeExpr) exprMarker()      {}
-func (n *RangeExpr) iterMarker()      {}
-
-// Plain Expr values are also Iterables (when used after `in`).
-// To avoid every concrete Expr type repeating an iterMarker method,
-// the parser wraps non-RangeExpr iterables in IterExpr.
-type IterExpr struct {
-	Inner Expr
-}
-
-func (n *IterExpr) NodeSpan() Span   { return n.Inner.NodeSpan() }
-func (n *IterExpr) NodeKind() string { return n.Inner.NodeKind() }
-func (n *IterExpr) iterMarker()      {}

@@ -101,6 +101,38 @@ func TestParseFile_FilePrefix(t *testing.T) {
 	}
 }
 
+func TestComparisonNonAssociative(t *testing.T) {
+	// grammar.ebnf separates EqExpr (== !=) and CmpExpr (< <= > >=)
+	// as non-associative single-operator productions. Chained
+	// applications at the same level must be rejected.
+	cases := []string{
+		`func main() { if a == b == c { } }`,
+		`func main() { if a != b != c { } }`,
+		`func main() { if a < b < c { } }`,
+		`func main() { if a <= b > c { } }`,
+	}
+	for _, src := range cases {
+		toks, _ := lexer.Lex(src)
+		_, err := Parse(toks)
+		if err == nil {
+			t.Errorf("expected E0112 on %q; got no error", src)
+			continue
+		}
+		if err.Code != "E0112" {
+			t.Errorf("for %q want E0112; got %s", src, err.Code)
+		}
+	}
+}
+
+func TestEqAndCmpMixedNests(t *testing.T) {
+	// `a == b && c < d` is fine — different precedence levels.
+	src := `func main() { if a == b && c < d { } }`
+	toks, _ := lexer.Lex(src)
+	if _, err := Parse(toks); err != nil {
+		t.Errorf("unexpected error on %q: %v", src, err)
+	}
+}
+
 func TestCanonicalSerialisationStable(t *testing.T) {
 	src := `import fmt
 

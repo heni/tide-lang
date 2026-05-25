@@ -57,37 +57,9 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		writeIndent(b, depth+1)
-		b.WriteString("(params")
-		for _, p := range v.Params {
-			b.WriteByte('\n')
-			write(b, p, depth+2)
-		}
-		b.WriteByte(')')
-		if v.ReturnType != nil {
-			b.WriteByte('\n')
-			writeIndent(b, depth+1)
-			b.WriteString("(return\n")
-			write(b, v.ReturnType, depth+2)
-			b.WriteByte(')')
-		}
+		b.WriteString("(params)")
 		b.WriteByte('\n')
 		write(b, v.Body, depth+1)
-	case *Param:
-		b.WriteByte(' ')
-		writeQuoted(b, v.Name)
-		writeSpan(b, v.Span)
-		if v.DeclType != nil {
-			b.WriteByte('\n')
-			write(b, v.DeclType, depth+1)
-		}
-	case *NamedType:
-		b.WriteByte(' ')
-		writeQuoted(b, strings.Join(v.QName, "."))
-		writeSpan(b, v.Span)
-		for _, a := range v.Args {
-			b.WriteByte('\n')
-			write(b, a, depth+1)
-		}
 	case *Block:
 		writeSpan(b, v.Span)
 		for _, s := range v.Stmts {
@@ -129,8 +101,6 @@ func write(b *strings.Builder, n Node, depth int) {
 	case *IdentPat:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
-		writeSpan(b, v.Span)
-	case *WildcardPat:
 		writeSpan(b, v.Span)
 	case *IntLitExpr:
 		b.WriteByte(' ')
@@ -191,17 +161,6 @@ func write(b *strings.Builder, n Node, depth int) {
 		write(b, v.Low, depth+1)
 		b.WriteByte('\n')
 		write(b, v.High, depth+1)
-	case *IterExpr:
-		// IterExpr is a thin wrapper; serialise as its inner node.
-		// First reset the opening bracket we wrote.
-		// Easier: special-case here by overwriting.
-		// We can't undo the partial write, so instead append the
-		// inner node's body inline.
-		// Implementation note: we emit IterExpr's NodeKind which
-		// is the inner node's NodeKind anyway (see ast.go).
-		writeSpan(b, n.NodeSpan())
-		b.WriteString(" ; iter-wrap of:\n")
-		write(b, v.Inner, depth+1)
 	default:
 		b.WriteString(" ; <unhandled-node-kind>")
 	}

@@ -1,0 +1,12 @@
+--- TITLE ---
+E0112: `==` is non-associative; `a == b == c` is rejected
+
+--- INPUT ---
+func main() {
+  if a == b == c {
+    print(1)
+  }
+}
+
+--- ERRORS ---
+src.td:2:13: error[E0112]: operator "==" is non-associative; parenthesise the operands
