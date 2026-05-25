@@ -16,7 +16,7 @@ On disagreement these files win, per D17.
 | `ast.md` | Canonical AST node schema (fields, invariants, source spans) | ✓ |
 | `name-resolution.md` | Scoping, implicit receiver, shadow rules | ✓ |
 | `type-system.md` | Inference rules in sequent notation | ✓ |
-| `builtins.md` | Predeclared identifiers with full signatures | forthcoming |
+| `builtins.md` | Predeclared identifiers with full signatures | ✓ |
 | `desugaring.md` | Tide AST → simpler IR (match arms, scope+spawn, try) | forthcoming |
 | `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | forthcoming |
 | `diagnostics.md` | Numbered error-code catalog (`E0103 Unknown name`, …) | forthcoming |
