@@ -1,0 +1,24 @@
+--- TITLE ---
+BoolLitExpr — `true` lowers to Go `true`
+
+--- INPUT ---
+import fmt
+
+func main() {
+  fmt.println(true)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(true)
+}
+
+--- STDOUT ---
+true
+
+--- EXIT ---
+0

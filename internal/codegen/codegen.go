@@ -31,7 +31,11 @@ func Emit(f *ast.File, file string) (string, error) {
 	// §Output formatting).
 	out, err := format.Source([]byte(g.b.String()))
 	if err != nil {
-		return "", fmt.Errorf("codegen: emitted Go does not parse: %w\n--- raw ---\n%s", err, g.b.String())
+		// E0801 internal: codegen emitted malformed Go. This
+		// should never reach a user under correct sema; if it
+		// does, it's a compiler bug and the raw buffer is
+		// included for compiler-developer triage only.
+		return "", fmt.Errorf("internal[E0801]: codegen produced unparseable Go (please file a bug): %w\n--- raw output ---\n%s", err, g.b.String())
 	}
 	return string(out), nil
 }
@@ -168,6 +172,11 @@ func (g *gen) emitIfStmt(s *ast.IfStmt) error {
 // It does NOT write a leading newline or indent — the caller has
 // already emitted those.
 func (g *gen) emitElseIf(s *ast.IfStmt) error {
+	// //line directive maps the nested if's condition back to the
+	// source position the developer typed `else if` on, not the
+	// outer if's line. lowering-go.md §Source maps requires the
+	// directive at every statement boundary.
+	g.line(s.Span.StartLine)
 	g.b.WriteString("if ")
 	if err := g.emitExpr(s.Cond); err != nil {
 		return err

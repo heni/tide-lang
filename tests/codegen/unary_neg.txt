@@ -1,0 +1,24 @@
+--- TITLE ---
+Unary "-" — prefix negation on an IntLit
+
+--- INPUT ---
+import fmt
+
+func main() {
+  fmt.println(-42)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(-42)
+}
+
+--- STDOUT ---
+-42
+
+--- EXIT ---
+0

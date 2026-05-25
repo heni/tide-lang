@@ -14,6 +14,11 @@ import (
 
 func emitString(t *testing.T, src string) string {
 	t.Helper()
+	return emitWithFile(t, src, "")
+}
+
+func emitWithFile(t *testing.T, src, file string) string {
+	t.Helper()
 	toks, lerr := lexer.Lex(src)
 	if lerr != nil {
 		t.Fatalf("lex error: %v", lerr)
@@ -22,7 +27,7 @@ func emitString(t *testing.T, src string) string {
 	if perr != nil {
 		t.Fatalf("parse error: %v", perr)
 	}
-	out, err := Emit(f, "")
+	out, err := Emit(f, file)
 	if err != nil {
 		t.Fatalf("emit error: %v", err)
 	}
@@ -145,6 +150,68 @@ func main() {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Errorf("go build failed: %v\n%s", err, out)
+	}
+}
+
+// TestEmitWithFilePath exercises the load-bearing //line path
+// (D8 / lowering-go.md §Source maps). Verifies (a) the directives
+// appear, (b) the output remains gofmt-stable, (c) Go still
+// compiles it.
+func TestEmitWithFilePath(t *testing.T) {
+	src := `import fmt
+
+func main() {
+  for i in 1..=3 {
+    if i == 1 {
+      fmt.println("a")
+    } else if i == 2 {
+      fmt.println("b")
+    } else {
+      fmt.println("c")
+    }
+  }
+}
+`
+	out := emitWithFile(t, src, "src.td")
+	// Must contain //line directives — at least one per
+	// top-level statement, and one for each else-if's nested
+	// condition.
+	if !strings.Contains(out, "//line src.td:3:1") {
+		t.Errorf("missing //line for func main: %s", out)
+	}
+	if !strings.Contains(out, "//line src.td:4:1") {
+		t.Errorf("missing //line for the for-loop: %s", out)
+	}
+	if !strings.Contains(out, "//line src.td:5:1") {
+		t.Errorf("missing //line for the if condition: %s", out)
+	}
+	if !strings.Contains(out, "//line src.td:7:1") {
+		t.Errorf("missing //line for else-if at line 7: %s", out)
+	}
+	// gofmt-stability — Emit already pipes through go/format, so
+	// it should be byte-stable. Confirm.
+	formatted, err := format.Source([]byte(out))
+	if err != nil {
+		t.Fatalf("emit-with-//line failed to parse: %v", err)
+	}
+	if string(formatted) != out {
+		t.Errorf("emit-with-//line is not gofmt-stable:\n--- emit ---\n%s\n--- gofmt ---\n%s", out, formatted)
+	}
+	// Compile sanity.
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available; skip compile check")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(out), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module tide-codegen-test\n\ngo 1.22\n"), 0644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	cmd := exec.Command("go", "build", "-o", "/dev/null", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Errorf("emit-with-//line failed to compile: %v\n%s", err, out)
 	}
 }
 
