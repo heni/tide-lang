@@ -1,7 +1,7 @@
 // Command tide is the compiler and toolchain for the Tide programming language.
 //
-// Tide is pre-alpha. PR-D wires the lexer / parser / codegen pipeline
-// behind two subcommands:
+// Tide is pre-alpha. Two subcommands wire the lexer / parser / codegen
+// pipeline:
 //
 //	tide build <file.td>   compile to a Go binary in ./<basename>
 //	tide run   <file.td>   compile and execute (stdout / stderr passed
@@ -122,15 +122,20 @@ func compileToTempGo(path string) (*compiledSource, error) {
 		return nil, fmt.Errorf("tide: cannot read %s: %w", path, err)
 	}
 	src := string(srcBytes)
-	file := filepath.Base(path)
+	// Pass the path verbatim into diagnostics and //line
+	// directives. test-contract.md §File paths requires
+	// repo-relative paths so two files with the same basename
+	// (e.g., examples/aoc/2025/d01.td vs examples/aoc/2026/d01.td)
+	// remain distinguishable in panic traces and diagnostics.
+	file := path
 
 	toks, lerr := lexer.LexFile(src, file)
 	if lerr != nil {
-		return nil, fmt.Errorf("%s", lerr.Error())
+		return nil, lerr
 	}
 	tree, perr := parser.ParseFile(toks, file)
 	if perr != nil {
-		return nil, fmt.Errorf("%s", perr.Error())
+		return nil, perr
 	}
 	goSrc, err := codegen.Emit(tree, file)
 	if err != nil {

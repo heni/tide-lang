@@ -61,10 +61,13 @@ func TestFixtures(t *testing.T) {
 			}
 
 			// STDOUT / EXIT execution (optional sections). Only
-			// runs when both are present; skips silently when the
-			// `go` toolchain is missing.
+			// runs when at least one is present; skips silently
+			// when the `go` toolchain is missing.
 			wantOut, hasOut := sections["STDOUT"]
 			wantExit, hasExit := sections["EXIT"]
+			if _, has := sections["STDERR"]; has {
+				t.Fatalf("%s: STDERR section not yet supported by the fixture runner", name)
+			}
 			if !hasOut && !hasExit {
 				return
 			}
@@ -81,13 +84,20 @@ func TestFixtures(t *testing.T) {
 			}
 			cmd := exec.Command("go", "run", "./...")
 			cmd.Dir = dir
-			gotOutBytes, runErr := cmd.Output()
-			gotOut := string(gotOutBytes)
+			var outBuf, errBuf strings.Builder
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			gotOut := outBuf.String()
 			gotExit := 0
 			if ee, ok := runErr.(*exec.ExitError); ok {
 				gotExit = ee.ExitCode()
 			} else if runErr != nil {
-				t.Fatalf("%s: go run failed unexpectedly: %v", name, runErr)
+				t.Fatalf("%s: go run failed unexpectedly: %v\nstderr:\n%s",
+					name, runErr, errBuf.String())
+			}
+			if gotExit != 0 && errBuf.Len() > 0 {
+				t.Logf("%s: go run stderr (exit %d):\n%s", name, gotExit, errBuf.String())
 			}
 			if hasOut {
 				if strings.TrimRight(gotOut, "\n") != strings.TrimRight(wantOut, "\n") {
