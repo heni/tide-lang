@@ -12,6 +12,7 @@
 // are classes, so structural equality goes through a helper).
 
 import fmt
+import strconv
 
 func union(a: Set<int>, b: Set<int>): Set<int> {
   let out = Set<int>{}
@@ -64,14 +65,11 @@ func render(s: Set<int>): string {
   var first = true
   for x in s {
     if !first { out = out + ", " }
-    out = out + intStr(x)
+    out = out + strconv.itoa(x)
     first = false
   }
   return out + "}"
 }
-
-import strconv
-func intStr(n: int): string { return strconv.itoa(n) }
 
 func main() {
   let a = Set<int>{ 1, 2, 3, 4 }

@@ -27,9 +27,18 @@ type StepInfo = {
 
 type Step =
   | Idle
-  | Move(StepInfo)
+  | Move(info: StepInfo)
   | Pause(reason: string)
-  | Abort(StepInfo, cause: string)
+  | Abort(info: StepInfo, cause: string)
+
+func dirName(d: Direction): string {
+  return match d {
+    North => "N",
+    South => "S",
+    East  => "E",
+    West  => "W",
+  }
+}
 
 func summarise(s: Step): string {
   return match s {
@@ -53,15 +62,6 @@ func summarise(s: Step): string {
     // discarding fields we don't need.
     Abort(StepInfo{ at: (x, y), heading: _, remaining: _ }, cause) =>
       "abort at (" + strconv.itoa(x) + "," + strconv.itoa(y) + "): " + cause,
-  }
-}
-
-func dirName(d: Direction): string {
-  return match d {
-    North => "N",
-    South => "S",
-    East  => "E",
-    West  => "W",
   }
 }
 

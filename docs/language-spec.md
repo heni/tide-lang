@@ -356,6 +356,18 @@ so `(T, error)`-returning Go functions bind directly to `Result<T,
 error>`. The built-in `error(msg: string): error` constructs a basic
 error. A `class` may declare `implements error` for typed errors.
 
+Note: a `class implements error` must define `error(): string` to
+satisfy the interface — that method shares its identifier with the
+free-function constructor `error(msg: string): error`. Inside the
+class method body, a bare `error(...)` call resolves to the method
+on `this` (it's an instance method); the free constructor is reached
+either before the class declaration introduces the shadow, or, from
+inside the method, by reading the fully-qualified built-in. In
+practice user code constructs typed errors via the class literal
+(`ParseError{ ... }`) and only uses the free `error("msg")`
+constructor from outside class bodies — so the collision rarely
+bites.
+
 `try e` propagates the error arm early:
 
 - In a `Result<_, E>`-returning function: `try e` where `e: Result<T,
