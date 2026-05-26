@@ -111,13 +111,17 @@ func (n *FieldDecl) NodeKind() string { return "FieldDecl" }
 
 // ClassDecl — `class Name { fields, methods }`. PR-F4 admits
 // only the non-generic, non-implements shape: no `<T>` type
-// parameters, no `implements Foo`. Generics and interfaces
-// land later.
+// parameters, no `implements Foo`. TypeParams and Implements
+// are present as required-but-empty slots per ast.md §ClassDecl
+// so future generics / interface PRs can populate them without
+// changing the struct shape (or its canonical serialisation).
 type ClassDecl struct {
-	Span    Span
-	Name    string
-	Fields  []*ClassField
-	Methods []*Method
+	Span       Span
+	Name       string
+	TypeParams []string   // empty for PR-F4; populated by generics PR
+	Implements []TypeExpr // empty for PR-F4; populated by interfaces PR
+	Fields     []*ClassField
+	Methods    []*Method
 }
 
 func (n *ClassDecl) NodeSpan() Span   { return n.Span }
