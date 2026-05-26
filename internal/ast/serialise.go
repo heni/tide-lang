@@ -157,7 +157,7 @@ func write(b *strings.Builder, n Node, depth int) {
 		write(b, v.Receiver, depth+1)
 		b.WriteByte('\n')
 		write(b, v.Idx, depth+1)
-	case *SliceExpr:
+	case *Slice:
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Receiver, depth+1)

@@ -958,7 +958,7 @@ func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
 		if err != nil {
 			return nil, err
 		}
-		return &ast.SliceExpr{
+		return &ast.Slice{
 			Span: ast.Span{
 				StartLine: recv.NodeSpan().StartLine, StartCol: recv.NodeSpan().StartCol,
 				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
@@ -986,7 +986,7 @@ func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
 		if err != nil {
 			return nil, err
 		}
-		return &ast.SliceExpr{
+		return &ast.Slice{
 			Span: ast.Span{
 				StartLine: recv.NodeSpan().StartLine, StartCol: recv.NodeSpan().StartCol,
 				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,

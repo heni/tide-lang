@@ -522,18 +522,18 @@ func (n *Index) NodeSpan() Span   { return n.Span }
 func (n *Index) NodeKind() string { return "Index" }
 func (n *Index) exprMarker()      {}
 
-// SliceExpr — `receiver[low:high]`. Low / High may be nil
-// for `[:hi]` or `[lo:]` forms.
-type SliceExpr struct {
+// Slice — `receiver[low:high]`. Low / High may be nil for
+// `[:hi]` or `[lo:]` forms. Spelling matches ast.md:269.
+type Slice struct {
 	Span     Span
 	Receiver Expr
 	Low      Expr
 	High     Expr
 }
 
-func (n *SliceExpr) NodeSpan() Span   { return n.Span }
-func (n *SliceExpr) NodeKind() string { return "SliceExpr" }
-func (n *SliceExpr) exprMarker()      {}
+func (n *Slice) NodeSpan() Span   { return n.Span }
+func (n *Slice) NodeKind() string { return "Slice" }
+func (n *Slice) exprMarker()      {}
 
 // MatchExpr — `match subject { pat1 => body1, pat2 => body2 }`.
 // Arms count ≥ 1 (parser enforces).

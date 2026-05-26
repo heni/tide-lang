@@ -658,7 +658,7 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		}
 		g.b.WriteByte(']')
 		return nil
-	case *ast.SliceExpr:
+	case *ast.Slice:
 		if err := g.emitExpr(v.Receiver); err != nil {
 			return err
 		}

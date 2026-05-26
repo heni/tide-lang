@@ -1,5 +1,5 @@
 --- TITLE ---
-Slice ops — SliceType, SliceLit annotated, Index, SliceExpr
+Slice ops — SliceType, SliceLit annotated, Index, Slice
 
 --- INPUT ---
 func main() {
@@ -36,7 +36,7 @@ func main() {
           (IntLitExpr 0 @4:14-4:15)))
       (LetStmt @5:3-5:20
         (IdentPat "mid" @5:7-5:10)
-        (SliceExpr @5:13-5:20
+        (Slice @5:13-5:20
           (Ident "xs" @5:13-5:15)
           (low
             (IntLitExpr 1 @5:16-5:17))

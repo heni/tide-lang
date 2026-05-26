@@ -353,7 +353,7 @@ func TestSliceTypeAndLit(t *testing.T) {
 	}
 }
 
-func TestIndexAndSliceExpr(t *testing.T) {
+func TestIndexAndSlice(t *testing.T) {
 	src := `func main() {
   let v = xs[0]
   let mid = xs[1:3]
@@ -368,16 +368,16 @@ func TestIndexAndSliceExpr(t *testing.T) {
 	}
 	// Slice forms
 	for i := 1; i < 4; i++ {
-		if _, ok := stmts[i].(*ast.LetStmt).Value.(*ast.SliceExpr); !ok {
-			t.Errorf("stmt[%d] value = %T; want SliceExpr", i, stmts[i].(*ast.LetStmt).Value)
+		if _, ok := stmts[i].(*ast.LetStmt).Value.(*ast.Slice); !ok {
+			t.Errorf("stmt[%d] value = %T; want Slice", i, stmts[i].(*ast.LetStmt).Value)
 		}
 	}
 	// `xs[1:]` — High is nil
-	if se := stmts[2].(*ast.LetStmt).Value.(*ast.SliceExpr); se.High != nil {
+	if se := stmts[2].(*ast.LetStmt).Value.(*ast.Slice); se.High != nil {
 		t.Errorf("xs[1:] has non-nil High")
 	}
 	// `xs[:3]` — Low is nil
-	if se := stmts[3].(*ast.LetStmt).Value.(*ast.SliceExpr); se.Low != nil {
+	if se := stmts[3].(*ast.LetStmt).Value.(*ast.Slice); se.Low != nil {
 		t.Errorf("xs[:3] has non-nil Low")
 	}
 }
