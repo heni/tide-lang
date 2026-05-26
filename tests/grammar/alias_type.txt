@@ -1,0 +1,11 @@
+--- TITLE ---
+AliasBody — `type Age = int` lowers TypeDecl to AliasBody
+
+--- INPUT ---
+type Age = int
+
+--- AST ---
+(File @1:1-1:15
+  (TypeDecl "Age" @1:1-1:15
+    (AliasBody @1:12-1:15
+      (PrimitiveType "int" @1:12-1:15))))

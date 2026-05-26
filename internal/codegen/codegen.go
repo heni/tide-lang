@@ -14,15 +14,15 @@ import (
 // file is the source path embedded into //line directives;
 // pass "" to suppress them.
 func Emit(f *ast.File, file string) (string, error) {
-	g := &gen{file: file, variantOwner: map[string]string{}}
+	g := &gen{file: file, variant: map[string]variantInfo{}}
 	// First pass — register sum-type variants so later
 	// expression / pattern lowering can qualify Variant idents
-	// to their Go-side constants.
+	// to their Go-side constants and tag numbers.
 	for _, d := range f.Decls {
 		if td, ok := d.(*ast.TypeDecl); ok {
 			if sb, ok := td.Body.(*ast.SumTypeBody); ok {
-				for _, v := range sb.Variants {
-					g.variantOwner[v.Name] = td.Name
+				for i, v := range sb.Variants {
+					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i}
 				}
 			}
 		}
@@ -64,12 +64,17 @@ type gen struct {
 	// has most recently been written, so we avoid emitting the
 	// same directive twice in a row.
 	emittedLine int
-	// variantOwner maps a variant identifier (e.g. "Red") to its
-	// enclosing sum-type name (e.g. "Color"), populated during
-	// the first decl pass in Emit. Used to qualify variant
-	// idents in expressions and patterns to their Go-side
-	// constants (`ColorRed` etc.).
-	variantOwner map[string]string
+	// variant maps a variant identifier (e.g. "Red") to its
+	// owning sum-type and declaration-order tag (per
+	// lowering-go.md §Variant-tag numbering). Populated during
+	// the first decl pass in Emit and consumed by expression /
+	// pattern lowering.
+	variant map[string]variantInfo
+}
+
+type variantInfo struct {
+	owner string // owning sum-type name (e.g. "Color")
+	tag   int    // declaration order, used for the Tag field
 }
 
 func (g *gen) writeHeader(f *ast.File) {
@@ -127,21 +132,25 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 					td.Name, v.Name)
 			}
 		}
+		// Lower to a tagged struct, matching the Option / Result
+		// shape from lowering-go.md §Container types. Nullary
+		// variants are constants of the struct type; their tag
+		// is the declaration order (§Variant-tag numbering).
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
-		g.b.WriteString(" int\n")
-		g.b.WriteString("const (\n")
+		g.b.WriteString(" struct {\n\tTag uint8\n}\n")
+		g.b.WriteString("var (\n")
 		for i, v := range body.Variants {
 			g.b.WriteByte('\t')
 			g.b.WriteString(goIdent(td.Name))
 			g.b.WriteString(goIdent(v.Name))
-			if i == 0 {
-				g.b.WriteByte(' ')
-				g.b.WriteString(goIdent(td.Name))
-				g.b.WriteString(" = iota")
-			}
-			g.b.WriteByte('\n')
+			g.b.WriteString(" = ")
+			g.b.WriteString(goIdent(td.Name))
+			g.b.WriteByte('{')
+			g.b.WriteString("Tag: ")
+			g.b.WriteString(strconv.Itoa(i))
+			g.b.WriteString("}\n")
 		}
 		g.b.WriteString(")\n")
 		return nil
@@ -288,20 +297,46 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 
 // emitMatchAsStmt lowers a MatchExpr at statement position to a
 // Go `switch` whose `case` arms run the arm body as a statement.
-// PR-F2 supports IdentPat (variant lookup), WildcardPat, and
-// the three literal-pattern kinds (Int/String/Bool).
+// Per lowering-go.md §MatchIR, the case head varies by pattern
+// shape:
+//   - VariantPat / IdentPat-bound-to-variant → `case <tag-int>:`
+//     of `switch subject.Tag`.
+//   - Literal patterns → `case <literal>:` of `switch subject`.
+//   - WildcardPat → `default:`.
+// PR-F2 uses one of the two switch forms based on whether the
+// arm set is variant-based or literal-based; mixing is not
+// reached by the corpus and rejected.
 func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
+	hasVariant, hasLiteral := false, false
+	for _, arm := range m.Arms {
+		switch p := arm.Pattern.(type) {
+		case *ast.VariantPat:
+			hasVariant = true
+			_ = p
+		case *ast.IdentPat:
+			if _, ok := g.variant[p.Name]; ok {
+				hasVariant = true
+			}
+		case *ast.IntLitPat, *ast.StringLitPat, *ast.BoolLitPat:
+			hasLiteral = true
+		}
+	}
+	if hasVariant && hasLiteral {
+		return fmt.Errorf("codegen: mixing variant and literal patterns in one match — not yet supported")
+	}
 	g.line(m.Span.StartLine)
 	g.writeIndent()
 	g.b.WriteString("switch ")
 	if err := g.emitExpr(m.Subject); err != nil {
 		return err
 	}
+	if hasVariant {
+		g.b.WriteString(".Tag")
+	}
 	g.b.WriteString(" {\n")
 	for _, arm := range m.Arms {
 		g.writeIndent()
-		isDefault, err := g.emitMatchArmHeader(arm.Pattern)
-		if err != nil {
+		if err := g.emitMatchArmHeader(arm.Pattern); err != nil {
 			return err
 		}
 		g.b.WriteString(":\n")
@@ -310,28 +345,26 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 			return err
 		}
 		g.indent--
-		_ = isDefault
 	}
 	g.writeIndent()
 	g.b.WriteString("}\n")
 	return nil
 }
 
-// emitMatchArmHeader writes either `case <expr>` or `default`,
-// returning true iff the pattern is a wildcard.
-func (g *gen) emitMatchArmHeader(p ast.Pattern) (bool, error) {
+// emitMatchArmHeader writes either `case <expr>` or `default`.
+func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
 	switch pat := p.(type) {
 	case *ast.WildcardPat:
 		g.b.WriteString("default")
-		return true, nil
+		return nil
 	case *ast.IntLitPat:
 		g.b.WriteString("case ")
 		g.b.WriteString(strconv.FormatInt(pat.Value, 10))
-		return false, nil
+		return nil
 	case *ast.StringLitPat:
 		g.b.WriteString("case ")
 		g.b.WriteString(strconv.Quote(pat.Value))
-		return false, nil
+		return nil
 	case *ast.BoolLitPat:
 		g.b.WriteString("case ")
 		if pat.Value {
@@ -339,34 +372,36 @@ func (g *gen) emitMatchArmHeader(p ast.Pattern) (bool, error) {
 		} else {
 			g.b.WriteString("false")
 		}
-		return false, nil
+		return nil
 	case *ast.VariantPat:
-		// PR-F2 only handles nullary variants; payload sub-patterns
-		// land with PR-F3.
+		// PR-F2 only handles nullary variants; payload
+		// sub-patterns land with PR-F3.
 		if len(pat.Sub) > 0 {
-			return false, fmt.Errorf("codegen: payload variant pattern %s(...) not yet supported", pat.Name)
+			return fmt.Errorf("codegen: payload variant pattern %s(...) not yet supported", lastSeg(pat.QName))
 		}
-		owner, ok := g.variantOwner[pat.Name]
+		info, ok := g.variant[lastSeg(pat.QName)]
 		if !ok {
-			return false, fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", pat.Name)
+			return fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", lastSeg(pat.QName))
 		}
 		g.b.WriteString("case ")
-		g.b.WriteString(goIdent(owner))
-		g.b.WriteString(goIdent(pat.Name))
-		return false, nil
+		g.b.WriteString(strconv.Itoa(info.tag))
+		return nil
 	case *ast.IdentPat:
-		// Could be a variant reference parsed as IdentPat (lower-case
-		// names that happen to match a declared variant) or a fresh
-		// binding. PR-F2 disambiguates only the variant case.
-		if owner, ok := g.variantOwner[pat.Name]; ok {
+		if info, ok := g.variant[pat.Name]; ok {
 			g.b.WriteString("case ")
-			g.b.WriteString(goIdent(owner))
-			g.b.WriteString(goIdent(pat.Name))
-			return false, nil
+			g.b.WriteString(strconv.Itoa(info.tag))
+			return nil
 		}
-		return false, fmt.Errorf("codegen: IdentPat %q in match arm is a fresh binding — only supported for variant patterns in PR-F2", pat.Name)
+		return fmt.Errorf("codegen: IdentPat %q in match arm is a fresh binding — only variant patterns supported in PR-F2", pat.Name)
 	}
-	return false, fmt.Errorf("codegen: unsupported pattern %T", p)
+	return fmt.Errorf("codegen: unsupported pattern %T", p)
+}
+
+func lastSeg(q []string) string {
+	if len(q) == 0 {
+		return ""
+	}
+	return q[len(q)-1]
 }
 
 // emitMatchArmBody emits the arm body as a Go statement. The
@@ -540,10 +575,10 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return nil
 	case *ast.Ident:
 		// Variant identifiers (declared in any sum type in the
-		// same file) get qualified to their Go-side const:
+		// same file) get qualified to their Go-side variable:
 		// `Red` → `ColorRed`.
-		if owner, ok := g.variantOwner[v.Name]; ok {
-			g.b.WriteString(goIdent(owner))
+		if info, ok := g.variant[v.Name]; ok {
+			g.b.WriteString(goIdent(info.owner))
 			g.b.WriteString(goIdent(v.Name))
 			return nil
 		}

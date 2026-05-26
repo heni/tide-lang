@@ -198,7 +198,7 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 	case *VariantPat:
 		b.WriteByte(' ')
-		writeQuoted(b, v.Name)
+		writeQuoted(b, strings.Join(v.QName, "."))
 		writeSpan(b, v.Span)
 		for _, s := range v.Sub {
 			b.WriteByte('\n')

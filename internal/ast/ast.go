@@ -372,12 +372,14 @@ func (n *BoolLitPat) NodeSpan() Span   { return n.Span }
 func (n *BoolLitPat) NodeKind() string { return "BoolLitPat" }
 func (n *BoolLitPat) patternMarker()   {}
 
-// VariantPat — `V` (nullary) or `V(sub1, sub2)` (with payload).
-// Resolver checks Name against an in-scope sum-type variant.
+// VariantPat — `V` (nullary), `V(sub1, sub2)` (with payload), or
+// `Type.V` (qualified). QName has length ≥ 1; the last segment
+// is the variant name, earlier segments are the qualifying
+// type / module path.
 type VariantPat struct {
-	Span Span
-	Name string
-	Sub  []Pattern
+	Span  Span
+	QName []string
+	Sub   []Pattern
 }
 
 func (n *VariantPat) NodeSpan() Span   { return n.Span }

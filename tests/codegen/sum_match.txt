@@ -1,5 +1,5 @@
 --- TITLE ---
-sum type + match — full pipeline, prints "red"
+sum type (tagged-struct shape) + match (switch on .Tag) — prints "red"
 
 --- INPUT ---
 import fmt
@@ -20,22 +20,24 @@ package main
 
 import "fmt"
 
-type Color int
+type Color struct {
+	Tag uint8
+}
 
-const (
-	ColorRed Color = iota
-	ColorGreen
-	ColorBlue
+var (
+	ColorRed   = Color{Tag: 0}
+	ColorGreen = Color{Tag: 1}
+	ColorBlue  = Color{Tag: 2}
 )
 
 func main() {
 	var c Color = ColorRed
-	switch c {
-	case ColorRed:
+	switch c.Tag {
+	case 0:
 		fmt.Println("red")
-	case ColorGreen:
+	case 1:
 		fmt.Println("green")
-	case ColorBlue:
+	case 2:
 		fmt.Println("blue")
 	}
 }

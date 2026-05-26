@@ -301,8 +301,8 @@ func TestVariantPatWithPayload(t *testing.T) {
 	if !ok {
 		t.Fatalf("arm[0] not VariantPat: %T", m.Arms[0].Pattern)
 	}
-	if vp.Name != "Some" || len(vp.Sub) != 1 {
-		t.Errorf("Some(x) parsed as %s with %d sub-patterns", vp.Name, len(vp.Sub))
+	if len(vp.QName) != 1 || vp.QName[0] != "Some" || len(vp.Sub) != 1 {
+		t.Errorf("Some(x) parsed as %v with %d sub-patterns", vp.QName, len(vp.Sub))
 	}
 	if _, ok := vp.Sub[0].(*ast.IdentPat); !ok {
 		t.Errorf("Some sub-pattern = %T; want IdentPat", vp.Sub[0])

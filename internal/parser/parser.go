@@ -298,8 +298,10 @@ func (p *parser) parseSumTypeBody() (*ast.SumTypeBody, *Diag) {
 		variants = append(variants, v)
 		p.skipNewlines()
 	}
-	if len(variants) == 0 {
-		return nil, p.diag("E0112", "sum type must have at least one variant", startTok.Line, startTok.Col)
+	if len(variants) < 2 {
+		// ast.md:111 — SumTypeBody requires variants.len() >= 2.
+		// A single-variant "sum" should be a class or a struct.
+		return nil, p.diag("E0112", "sum type must have at least two variants", startTok.Line, startTok.Col)
 	}
 	last := variants[len(variants)-1]
 	return &ast.SumTypeBody{
@@ -1136,12 +1138,22 @@ func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 			Pattern: pat,
 			Body:    body,
 		})
-		// Arms separated by comma (optional trailing).
 		p.skipNewlines()
-		if p.at(lexer.KindPunct, ",") {
-			p.advance()
-			p.skipNewlines()
+		// Per grammar.ebnf:512 — comma separates arms; an
+		// optional trailing comma is admitted after the last
+		// arm. So: if next is `}` we're done; otherwise a
+		// comma must follow.
+		if p.at(lexer.KindPunct, "}") {
+			break
 		}
+		if !p.at(lexer.KindPunct, ",") {
+			t := p.peek()
+			return nil, p.diag("E0112",
+				"expected `,` between match arms (or `}` to close)",
+				t.Line, t.Col)
+		}
+		p.advance() // consume ','
+		p.skipNewlines()
 	}
 	closeTok, err := p.expect(lexer.KindPunct, "}")
 	if err != nil {
@@ -1168,19 +1180,35 @@ func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 	t := p.peek()
 	switch t.Kind {
 	case lexer.KindIdent:
-		// Could be IdentPat or VariantPat. Heuristic: capitalised
-		// first letter signals a VariantPat candidate. The
-		// resolver makes the final call (per ast.md notes), but
-		// parser-time we admit both shapes and use capitalisation
-		// + optional payload `(` to disambiguate.
+		// Could be IdentPat or VariantPat. PR-F2 uses
+		// capitalisation as a parser-time proxy for the
+		// resolution-time check documented in
+		// name-resolution.md §Variant constructors (which
+		// notes that the canonical algorithm is resolution-
+		// time, not parser-commit). A VariantPat may also be
+		// qualified: `Type.V`. The resolver may later reclass
+		// IdentPat as VariantPat for in-scope variants —
+		// parser only commits the shape based on syntax.
 		nameTok := p.advance()
-		if isCapitalised(nameTok.Lexeme) || p.at(lexer.KindPunct, "(") {
+		qname := []string{nameTok.Lexeme}
+		endLine, endCol := nameTok.Line, nameTok.Col+utf8.RuneCountInString(nameTok.Lexeme)
+		for p.at(lexer.KindPunct, ".") {
+			p.advance() // consume '.'
+			if !p.at(lexer.KindIdent) {
+				t := p.peek()
+				return nil, p.diag("E0112", "expected identifier after `.` in pattern", t.Line, t.Col)
+			}
+			next := p.advance()
+			qname = append(qname, next.Lexeme)
+			endLine, endCol = next.Line, next.Col+utf8.RuneCountInString(next.Lexeme)
+		}
+		if isCapitalised(nameTok.Lexeme) || len(qname) > 1 || p.at(lexer.KindPunct, "(") {
 			vp := &ast.VariantPat{
 				Span: ast.Span{
 					StartLine: nameTok.Line, StartCol: nameTok.Col,
-					EndLine: nameTok.Line, EndCol: nameTok.Col + utf8.RuneCountInString(nameTok.Lexeme),
+					EndLine: endLine, EndCol: endCol,
 				},
-				Name: nameTok.Lexeme,
+				QName: qname,
 			}
 			if p.at(lexer.KindPunct, "(") {
 				p.advance() // consume '('
