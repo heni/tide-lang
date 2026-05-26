@@ -114,16 +114,20 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	return nil
 }
 
-// emitTypeExpr lowers a TypeExpr to its Go form. PR-F1 only
-// handles NamedType; future PRs add SliceType / TupleType /
-// FuncType / InlineInterface.
+// emitTypeExpr lowers a TypeExpr to its Go form. PR-F1 handles
+// PrimitiveType and NamedType; SliceType / TupleType / FuncType /
+// InlineInterface land with later PRs.
 func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 	switch v := t.(type) {
+	case *ast.PrimitiveType:
+		// Tide primitive names map 1:1 onto Go's by spec
+		// (lowering-go.md §Primitive type lowering); the only
+		// transform is `unit` → an internal struct, which PR-F1
+		// doesn't yet emit because no function returns unit at
+		// the source level.
+		g.b.WriteString(v.Name)
+		return nil
 	case *ast.NamedType:
-		// PR-F1 only deals with bare primitives + dotted
-		// stdlib references. Generic parameters carry through
-		// as-is (Go-generic forms emerge once we lower
-		// Result/Option in PR-E5).
 		g.b.WriteString(strings.Join(v.QName, "."))
 		if len(v.Args) > 0 {
 			g.b.WriteByte('[')
@@ -159,6 +163,23 @@ func (g *gen) emitBlockBody(b *ast.Block) error {
 func (g *gen) emitStmt(s ast.Stmt) error {
 	switch v := s.(type) {
 	case *ast.ExprStmt:
+		// Special-case ReturnExpr (DivergingExpr per ast.md):
+		// in Go it must lower to a `return` statement, not to a
+		// value-position expression.
+		if r, ok := v.Expr.(*ast.ReturnExpr); ok {
+			g.line(v.Span.StartLine)
+			g.writeIndent()
+			if r.Value == nil {
+				g.b.WriteString("return\n")
+				return nil
+			}
+			g.b.WriteString("return ")
+			if err := g.emitExpr(r.Value); err != nil {
+				return err
+			}
+			g.b.WriteByte('\n')
+			return nil
+		}
 		g.line(v.Span.StartLine)
 		g.writeIndent()
 		if err := g.emitExpr(v.Expr); err != nil {
@@ -171,7 +192,13 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.ForStmt:
 		return g.emitForStmt(v)
 	case *ast.LetStmt:
-		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
+		// PR-F1 admits only IdentPat at let position (parser
+		// enforced). Pattern destructuring lands later.
+		idPat, ok := v.Pattern.(*ast.IdentPat)
+		if !ok {
+			return fmt.Errorf("codegen: only IdentPat in `let` for PR-F1, got %T", v.Pattern)
+		}
+		return g.emitLetOrVar(v.Span, idPat.Name, v.DeclType, v.Value)
 	case *ast.VarStmt:
 		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
 	case *ast.AssignStmt:
@@ -181,19 +208,6 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 			return err
 		}
 		g.b.WriteString(" = ")
-		if err := g.emitExpr(v.Value); err != nil {
-			return err
-		}
-		g.b.WriteByte('\n')
-		return nil
-	case *ast.ReturnStmt:
-		g.line(v.Span.StartLine)
-		g.writeIndent()
-		if v.Value == nil {
-			g.b.WriteString("return\n")
-			return nil
-		}
-		g.b.WriteString("return ")
 		if err := g.emitExpr(v.Value); err != nil {
 			return err
 		}
@@ -382,6 +396,14 @@ func (g *gen) emitExpr(e ast.Expr) error {
 	case *ast.Unary:
 		g.b.WriteString(v.Op)
 		return g.emitExpr(v.Operand)
+	case *ast.ReturnExpr:
+		// ReturnExpr is a DivergingExpr; in Go it must appear as
+		// a statement (`return [value]`), not in an expression
+		// context. The ExprStmt wrapper emitter writes the
+		// statement form via emitReturnAsStatement directly, so
+		// reaching this branch means a misuse (return in a
+		// non-statement context) — emit clearly.
+		return fmt.Errorf("codegen: return-expression used outside statement position")
 	}
 	return fmt.Errorf("codegen: unhandled expression %T", e)
 }

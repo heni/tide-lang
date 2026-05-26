@@ -151,16 +151,20 @@ func TestFuncWithParamsAndReturn(t *testing.T) {
 	if fn.ReturnType == nil {
 		t.Fatal("expected non-nil return type")
 	}
-	nt, ok := fn.ReturnType.(*ast.NamedType)
-	if !ok || nt.QName[0] != "int" {
-		t.Errorf("return type = %v; want NamedType(int)", fn.ReturnType)
+	pt, ok := fn.ReturnType.(*ast.PrimitiveType)
+	if !ok || pt.Name != "int" {
+		t.Errorf("return type = %T %v; want PrimitiveType(int)", fn.ReturnType, fn.ReturnType)
 	}
-	// Body has one ReturnStmt.
+	// Body has one ExprStmt wrapping a ReturnExpr.
 	if len(fn.Body.Stmts) != 1 {
 		t.Fatalf("body stmts = %d; want 1", len(fn.Body.Stmts))
 	}
-	if _, ok := fn.Body.Stmts[0].(*ast.ReturnStmt); !ok {
-		t.Errorf("first stmt is not ReturnStmt: %T", fn.Body.Stmts[0])
+	es, ok := fn.Body.Stmts[0].(*ast.ExprStmt)
+	if !ok {
+		t.Fatalf("first stmt is not ExprStmt: %T", fn.Body.Stmts[0])
+	}
+	if _, ok := es.Expr.(*ast.ReturnExpr); !ok {
+		t.Errorf("first stmt's expr is not ReturnExpr: %T", es.Expr)
 	}
 }
 
@@ -176,8 +180,10 @@ func TestLetVarAssign(t *testing.T) {
 	if len(stmts) != 3 {
 		t.Fatalf("expected 3 stmts; got %d", len(stmts))
 	}
-	if let, ok := stmts[0].(*ast.LetStmt); !ok || let.Name != "x" {
-		t.Errorf("stmt[0] = %T %v; want LetStmt x", stmts[0], stmts[0])
+	if let, ok := stmts[0].(*ast.LetStmt); !ok {
+		t.Errorf("stmt[0] = %T %v; want LetStmt", stmts[0], stmts[0])
+	} else if id, ok := let.Pattern.(*ast.IdentPat); !ok || id.Name != "x" {
+		t.Errorf("LetStmt pattern = %T %v; want IdentPat x", let.Pattern, let.Pattern)
 	}
 	if v, ok := stmts[1].(*ast.VarStmt); !ok || v.Name != "y" || v.DeclType == nil {
 		t.Errorf("stmt[1] = %T %v; want VarStmt y with type", stmts[1], stmts[1])
@@ -196,9 +202,13 @@ func TestBareReturn(t *testing.T) {
 	if len(fn.Body.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt; got %d", len(fn.Body.Stmts))
 	}
-	ret, ok := fn.Body.Stmts[0].(*ast.ReturnStmt)
+	es, ok := fn.Body.Stmts[0].(*ast.ExprStmt)
 	if !ok {
-		t.Fatalf("not ReturnStmt: %T", fn.Body.Stmts[0])
+		t.Fatalf("not ExprStmt: %T", fn.Body.Stmts[0])
+	}
+	ret, ok := es.Expr.(*ast.ReturnExpr)
+	if !ok {
+		t.Fatalf("not ReturnExpr: %T", es.Expr)
 	}
 	if ret.Value != nil {
 		t.Errorf("bare return has non-nil value: %v", ret.Value)

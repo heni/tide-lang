@@ -91,9 +91,9 @@ func write(b *strings.Builder, n Node, depth int) {
 			write(b, a, depth+1)
 		}
 	case *LetStmt:
-		b.WriteByte(' ')
-		writeQuoted(b, v.Name)
 		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Pattern, depth+1)
 		if v.DeclType != nil {
 			b.WriteByte('\n')
 			writeIndent(b, depth+1)
@@ -114,20 +114,26 @@ func write(b *strings.Builder, n Node, depth int) {
 			write(b, v.DeclType, depth+2)
 			b.WriteByte(')')
 		}
-		b.WriteByte('\n')
-		write(b, v.Value, depth+1)
+		if v.Value != nil {
+			b.WriteByte('\n')
+			write(b, v.Value, depth+1)
+		}
 	case *AssignStmt:
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.LValue, depth+1)
 		b.WriteByte('\n')
 		write(b, v.Value, depth+1)
-	case *ReturnStmt:
+	case *ReturnExpr:
 		writeSpan(b, v.Span)
 		if v.Value != nil {
 			b.WriteByte('\n')
 			write(b, v.Value, depth+1)
 		}
+	case *PrimitiveType:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
 	case *Block:
 		writeSpan(b, v.Span)
 		for _, s := range v.Stmts {

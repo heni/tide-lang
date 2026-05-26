@@ -1,5 +1,5 @@
 --- TITLE ---
-LetStmt, VarStmt, AssignStmt — typed and untyped local bindings
+LetStmt (pattern-bound), VarStmt, AssignStmt — typed and untyped locals
 
 --- INPUT ---
 func main() {
@@ -13,11 +13,12 @@ func main() {
   (FuncDecl "main" @1:1-5:2
     (params)
     (Block @1:13-5:2
-      (LetStmt "x" @2:3-2:13
+      (LetStmt @2:3-2:13
+        (IdentPat "x" @2:7-2:8)
         (IntLitExpr 42 @2:11-2:13))
       (VarStmt "y" @3:3-3:17
         (type
-          (NamedType "int" @3:10-3:13))
+          (PrimitiveType "int" @3:10-3:13))
         (IntLitExpr 7 @3:16-3:17))
       (AssignStmt @4:3-4:12
         (Ident "y" @4:3-4:4)

@@ -77,18 +77,51 @@ func (n *Param) NodeKind() string { return "Param" }
 // Type expressions
 // ---------------------------------------------------------------
 
-// TypeExpr is the sum of type-expression kinds. PR-F1 only emits
-// NamedType; SliceType / TupleType / FuncType / InlineInterface
-// land with later PRs.
+// TypeExpr is the sum of type-expression kinds. PR-F1 emits
+// PrimitiveType (for the closed primitive-name set per
+// ast.md PrimitiveName) and NamedType (everything else).
+// SliceType / TupleType / FuncType / InlineInterface land
+// with later PRs.
 type TypeExpr interface {
 	Node
 	typeMarker()
 }
 
-// NamedType is a possibly-qualified identifier
-// (`int`, `Result`, `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1.
-// Args is empty when the type carries no generic arguments
-// (e.g. `int`, plain `string`).
+// PrimitiveType is one of the closed PrimitiveName tokens per
+// ast.md §Type expressions:
+//
+//	bool int int8..int64 uint..uint64 float32 float64
+//	byte rune string unit
+//
+// The parser commits to PrimitiveType only for exact matches; any
+// other identifier becomes a NamedType with Args.len() == 0.
+type PrimitiveType struct {
+	Span Span
+	Name string
+}
+
+func (n *PrimitiveType) NodeSpan() Span   { return n.Span }
+func (n *PrimitiveType) NodeKind() string { return "PrimitiveType" }
+func (n *PrimitiveType) typeMarker()      {}
+
+// PrimitiveNames is the closed set of primitive type names per
+// ast.md §PrimitiveName.
+var PrimitiveNames = map[string]bool{
+	"bool":    true,
+	"int":     true,
+	"int8":    true, "int16": true, "int32": true, "int64": true,
+	"uint":    true,
+	"uint8":   true, "uint16": true, "uint32": true, "uint64": true,
+	"float32": true, "float64": true,
+	"byte":    true,
+	"rune":    true,
+	"string":  true,
+	"unit":    true,
+}
+
+// NamedType is a possibly-qualified identifier (`Result`,
+// `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1. Args is empty
+// when the type carries no generic arguments.
 type NamedType struct {
 	Span  Span
 	QName []string
@@ -119,10 +152,13 @@ func (n *ExprStmt) NodeSpan() Span   { return n.Span }
 func (n *ExprStmt) NodeKind() string { return "ExprStmt" }
 func (n *ExprStmt) stmtMarker()      {}
 
-// LetStmt — `let name [: T] = value`. Immutable binding.
+// LetStmt — `let <pattern> [: T] = value`. Per ast.md the
+// left-hand side is a Pattern (IdentPat for the common case,
+// TuplePat / RecordPat / VariantPat for destructure forms in
+// later PRs). Immutable binding.
 type LetStmt struct {
 	Span     Span
-	Name     string // "_" admitted by `let _ = expr` for side-effects
+	Pattern  Pattern
 	DeclType TypeExpr
 	Value    Expr
 }
@@ -131,14 +167,16 @@ func (n *LetStmt) NodeSpan() Span   { return n.Span }
 func (n *LetStmt) NodeKind() string { return "LetStmt" }
 func (n *LetStmt) stmtMarker()      {}
 
-// VarStmt — `var name [: T] = value`. Mutable binding. PR-F1
-// requires an initialiser (G1 — bare uninitialised `var x: T`
-// is rejected upstream).
+// VarStmt — `var name [: T] [= value]`. Mutable binding. Per
+// ast.md `value: Option<Expr>` — initialiser optional at the
+// AST level. The sema decision about whether bare
+// `var x: T` is admitted (G1 says no) is handled by sema, not
+// the parser.
 type VarStmt struct {
 	Span     Span
 	Name     string
 	DeclType TypeExpr
-	Value    Expr
+	Value    Expr // nil ⇒ uninitialised (sema E0202 in v1)
 }
 
 func (n *VarStmt) NodeSpan() Span   { return n.Span }
@@ -158,15 +196,8 @@ func (n *AssignStmt) NodeSpan() Span   { return n.Span }
 func (n *AssignStmt) NodeKind() string { return "AssignStmt" }
 func (n *AssignStmt) stmtMarker()      {}
 
-// ReturnStmt — `return` (Value nil) or `return expr`.
-type ReturnStmt struct {
-	Span  Span
-	Value Expr // nil ⇒ bare return
-}
-
-func (n *ReturnStmt) NodeSpan() Span   { return n.Span }
-func (n *ReturnStmt) NodeKind() string { return "ReturnStmt" }
-func (n *ReturnStmt) stmtMarker()      {}
+// (Return is an Expr — see ReturnExpr below. The parser wraps
+// it in an ExprStmt when it appears in statement position.)
 
 // IfStmt — statement form. else_branch is nil, a nested *IfStmt
 // (for "else if"), or a *Block (for plain "else { }").
@@ -340,6 +371,19 @@ type Unary struct {
 func (n *Unary) NodeSpan() Span   { return n.Span }
 func (n *Unary) NodeKind() string { return "Unary" }
 func (n *Unary) exprMarker()      {}
+
+// ReturnExpr — `return` (Value nil) or `return expr`. Per ast.md
+// §Expr, Return is a DivergingExpr — it has type Never and may
+// appear anywhere an Expr is expected, including statement
+// position via ExprStmt-wrapping.
+type ReturnExpr struct {
+	Span  Span
+	Value Expr // nil ⇒ bare return
+}
+
+func (n *ReturnExpr) NodeSpan() Span   { return n.Span }
+func (n *ReturnExpr) NodeKind() string { return "ReturnExpr" }
+func (n *ReturnExpr) exprMarker()      {}
 
 // RangeExpr is `low..high` (exclusive) or `low..=high` (inclusive).
 // Per ast.md, RangeExpr is iterable-position-only; it is NOT an
