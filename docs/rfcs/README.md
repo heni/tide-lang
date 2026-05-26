@@ -12,6 +12,10 @@ This directory holds:
 - **`0001-v01-baseline.md`** — the v0.1 language-surface
   baseline (pre-alpha). Every later RFC extends or amends this
   baseline.
+- **`0002-multi-file-programs.md`** — package model
+  (Go-style: package = directory) plus an optional
+  `tide.toml` manifest for projects spanning multiple
+  packages.
 - **`NNNN-<kebab-name>.md`** — individual proposals.
 
 ## Index
@@ -20,6 +24,7 @@ This directory holds:
 |---|---|---|
 | 0000 | accepted | RFC process |
 | 0001 | accepted | v0.1 baseline |
+| 0002 | draft | Multi-file Tide programs |
 
 ## How to write an RFC
 
