@@ -47,6 +47,68 @@ type Decl interface {
 	declMarker()
 }
 
+// TypeDecl — `type Name = TypeBody`. TypeBody is the sum of
+// AliasBody, TupleAliasBody, RecordTypeBody, SumTypeBody.
+type TypeDecl struct {
+	Span Span
+	Name string
+	Body TypeBody
+}
+
+func (n *TypeDecl) NodeSpan() Span   { return n.Span }
+func (n *TypeDecl) NodeKind() string { return "TypeDecl" }
+func (n *TypeDecl) declMarker()      {}
+
+// TypeBody is the sum of type-declaration bodies.
+type TypeBody interface {
+	Node
+	typeBodyMarker()
+}
+
+// AliasBody — `type T = OtherType`.
+type AliasBody struct {
+	Span    Span
+	Aliased TypeExpr
+}
+
+func (n *AliasBody) NodeSpan() Span   { return n.Span }
+func (n *AliasBody) NodeKind() string { return "AliasBody" }
+func (n *AliasBody) typeBodyMarker()  {}
+
+// SumTypeBody — `type T = | V1 | V2(...) | ...`. PR-F2 admits
+// only nullary variants (no payload); payload variants land
+// with PR-F3 (Result/Option) or earlier as the corpus demands.
+type SumTypeBody struct {
+	Span     Span
+	Variants []*Variant
+}
+
+func (n *SumTypeBody) NodeSpan() Span   { return n.Span }
+func (n *SumTypeBody) NodeKind() string { return "SumTypeBody" }
+func (n *SumTypeBody) typeBodyMarker()  {}
+
+// Variant is one constructor of a sum type. Fields empty
+// ⇒ nullary; non-empty ⇒ tagged-payload variant.
+type Variant struct {
+	Span   Span
+	Name   string
+	Fields []*FieldDecl
+}
+
+func (n *Variant) NodeSpan() Span   { return n.Span }
+func (n *Variant) NodeKind() string { return "Variant" }
+
+// FieldDecl is a named field with a declared type. Used by
+// Variant payload, RecordTypeBody, and ClassDecl fields.
+type FieldDecl struct {
+	Span     Span
+	Name     string
+	DeclType TypeExpr
+}
+
+func (n *FieldDecl) NodeSpan() Span   { return n.Span }
+func (n *FieldDecl) NodeKind() string { return "FieldDecl" }
+
 // FuncDecl is a top-level function. PR-F1 covers the
 // non-generic shape with typed parameters and an optional
 // return type. Generic type parameters land with later PRs.
@@ -270,6 +332,58 @@ func (n *IdentPat) NodeSpan() Span   { return n.Span }
 func (n *IdentPat) NodeKind() string { return "IdentPat" }
 func (n *IdentPat) patternMarker()   {}
 
+// WildcardPat — `_`. Matches anything, binds nothing.
+type WildcardPat struct {
+	Span Span
+}
+
+func (n *WildcardPat) NodeSpan() Span   { return n.Span }
+func (n *WildcardPat) NodeKind() string { return "WildcardPat" }
+func (n *WildcardPat) patternMarker()   {}
+
+// IntLitPat — match against a literal integer.
+type IntLitPat struct {
+	Span    Span
+	RawText string
+	Value   int64
+}
+
+func (n *IntLitPat) NodeSpan() Span   { return n.Span }
+func (n *IntLitPat) NodeKind() string { return "IntLitPat" }
+func (n *IntLitPat) patternMarker()   {}
+
+// StringLitPat — match against a literal string.
+type StringLitPat struct {
+	Span  Span
+	Value string
+}
+
+func (n *StringLitPat) NodeSpan() Span   { return n.Span }
+func (n *StringLitPat) NodeKind() string { return "StringLitPat" }
+func (n *StringLitPat) patternMarker()   {}
+
+// BoolLitPat — match against `true` or `false`.
+type BoolLitPat struct {
+	Span  Span
+	Value bool
+}
+
+func (n *BoolLitPat) NodeSpan() Span   { return n.Span }
+func (n *BoolLitPat) NodeKind() string { return "BoolLitPat" }
+func (n *BoolLitPat) patternMarker()   {}
+
+// VariantPat — `V` (nullary) or `V(sub1, sub2)` (with payload).
+// Resolver checks Name against an in-scope sum-type variant.
+type VariantPat struct {
+	Span Span
+	Name string
+	Sub  []Pattern
+}
+
+func (n *VariantPat) NodeSpan() Span   { return n.Span }
+func (n *VariantPat) NodeKind() string { return "VariantPat" }
+func (n *VariantPat) patternMarker()   {}
+
 // ---------------------------------------------------------------
 // Expressions
 // ---------------------------------------------------------------
@@ -371,6 +485,28 @@ type Unary struct {
 func (n *Unary) NodeSpan() Span   { return n.Span }
 func (n *Unary) NodeKind() string { return "Unary" }
 func (n *Unary) exprMarker()      {}
+
+// MatchExpr — `match subject { pat1 => body1, pat2 => body2 }`.
+// Arms count ≥ 1 (parser enforces).
+type MatchExpr struct {
+	Span    Span
+	Subject Expr
+	Arms    []*MatchArm
+}
+
+func (n *MatchExpr) NodeSpan() Span   { return n.Span }
+func (n *MatchExpr) NodeKind() string { return "MatchExpr" }
+func (n *MatchExpr) exprMarker()      {}
+
+// MatchArm — `pattern => body`.
+type MatchArm struct {
+	Span    Span
+	Pattern Pattern
+	Body    Expr
+}
+
+func (n *MatchArm) NodeSpan() Span   { return n.Span }
+func (n *MatchArm) NodeKind() string { return "MatchArm" }
 
 // ReturnExpr — `return` (Value nil) or `return expr`. Per ast.md
 // §Expr, Return is a DivergingExpr — it has type Never and may

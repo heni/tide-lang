@@ -1,0 +1,47 @@
+--- TITLE ---
+sum type + match — full pipeline, prints "red"
+
+--- INPUT ---
+import fmt
+
+type Color = | Red | Green | Blue
+
+func main() {
+  let c: Color = Red
+  match c {
+    Red => fmt.println("red"),
+    Green => fmt.println("green"),
+    Blue => fmt.println("blue"),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Color int
+
+const (
+	ColorRed Color = iota
+	ColorGreen
+	ColorBlue
+)
+
+func main() {
+	var c Color = ColorRed
+	switch c {
+	case ColorRed:
+		fmt.Println("red")
+	case ColorGreen:
+		fmt.Println("green")
+	case ColorBlue:
+		fmt.Println("blue")
+	}
+}
+
+--- STDOUT ---
+red
+
+--- EXIT ---
+0

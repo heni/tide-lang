@@ -134,6 +134,76 @@ func write(b *strings.Builder, n Node, depth int) {
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
 		writeSpan(b, v.Span)
+	case *TypeDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
+	case *AliasBody:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Aliased, depth+1)
+	case *SumTypeBody:
+		writeSpan(b, v.Span)
+		for _, vr := range v.Variants {
+			b.WriteByte('\n')
+			write(b, vr, depth+1)
+		}
+	case *Variant:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		for _, f := range v.Fields {
+			b.WriteByte('\n')
+			write(b, f, depth+1)
+		}
+	case *FieldDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.DeclType, depth+1)
+	case *MatchExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Subject, depth+1)
+		for _, arm := range v.Arms {
+			b.WriteByte('\n')
+			write(b, arm, depth+1)
+		}
+	case *MatchArm:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Pattern, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
+	case *WildcardPat:
+		writeSpan(b, v.Span)
+	case *IntLitPat:
+		b.WriteByte(' ')
+		b.WriteString(strconv.FormatInt(v.Value, 10))
+		writeSpan(b, v.Span)
+	case *StringLitPat:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Value)
+		writeSpan(b, v.Span)
+	case *BoolLitPat:
+		b.WriteByte(' ')
+		if v.Value {
+			b.WriteString("true")
+		} else {
+			b.WriteString("false")
+		}
+		writeSpan(b, v.Span)
+	case *VariantPat:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		for _, s := range v.Sub {
+			b.WriteByte('\n')
+			write(b, s, depth+1)
+		}
 	case *Block:
 		writeSpan(b, v.Span)
 		for _, s := range v.Stmts {

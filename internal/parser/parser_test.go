@@ -232,6 +232,97 @@ func TestGenericTypeArgs(t *testing.T) {
 	}
 }
 
+func TestSumTypeNullary(t *testing.T) {
+	src := `type Color = | Red | Green | Blue`
+	f := parseString(t, src)
+	td, ok := f.Decls[0].(*ast.TypeDecl)
+	if !ok {
+		t.Fatalf("decl[0] = %T; want TypeDecl", f.Decls[0])
+	}
+	if td.Name != "Color" {
+		t.Errorf("type name = %q; want Color", td.Name)
+	}
+	sb, ok := td.Body.(*ast.SumTypeBody)
+	if !ok {
+		t.Fatalf("body = %T; want SumTypeBody", td.Body)
+	}
+	if len(sb.Variants) != 3 {
+		t.Errorf("variants = %d; want 3", len(sb.Variants))
+	}
+	for i, want := range []string{"Red", "Green", "Blue"} {
+		if sb.Variants[i].Name != want {
+			t.Errorf("variant[%d] = %q; want %q", i, sb.Variants[i].Name, want)
+		}
+		if len(sb.Variants[i].Fields) != 0 {
+			t.Errorf("nullary variant has fields: %v", sb.Variants[i].Fields)
+		}
+	}
+}
+
+func TestMatchExpression(t *testing.T) {
+	src := `func main() {
+  match x {
+    Red => 1,
+    _ => 0,
+  }
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	es, ok := fn.Body.Stmts[0].(*ast.ExprStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T; want ExprStmt", fn.Body.Stmts[0])
+	}
+	m, ok := es.Expr.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("expr = %T; want MatchExpr", es.Expr)
+	}
+	if len(m.Arms) != 2 {
+		t.Fatalf("arms = %d; want 2", len(m.Arms))
+	}
+	if _, ok := m.Arms[0].Pattern.(*ast.VariantPat); !ok {
+		t.Errorf("arm[0] pattern = %T; want VariantPat", m.Arms[0].Pattern)
+	}
+	if _, ok := m.Arms[1].Pattern.(*ast.WildcardPat); !ok {
+		t.Errorf("arm[1] pattern = %T; want WildcardPat", m.Arms[1].Pattern)
+	}
+}
+
+func TestVariantPatWithPayload(t *testing.T) {
+	src := `func f() {
+  match v {
+    Some(x) => x,
+    None => 0,
+  }
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	m := fn.Body.Stmts[0].(*ast.ExprStmt).Expr.(*ast.MatchExpr)
+	vp, ok := m.Arms[0].Pattern.(*ast.VariantPat)
+	if !ok {
+		t.Fatalf("arm[0] not VariantPat: %T", m.Arms[0].Pattern)
+	}
+	if vp.Name != "Some" || len(vp.Sub) != 1 {
+		t.Errorf("Some(x) parsed as %s with %d sub-patterns", vp.Name, len(vp.Sub))
+	}
+	if _, ok := vp.Sub[0].(*ast.IdentPat); !ok {
+		t.Errorf("Some sub-pattern = %T; want IdentPat", vp.Sub[0])
+	}
+}
+
+func TestAliasTypeDecl(t *testing.T) {
+	src := `type Age = int`
+	f := parseString(t, src)
+	td := f.Decls[0].(*ast.TypeDecl)
+	ab, ok := td.Body.(*ast.AliasBody)
+	if !ok {
+		t.Fatalf("body = %T; want AliasBody", td.Body)
+	}
+	pt, ok := ab.Aliased.(*ast.PrimitiveType)
+	if !ok || pt.Name != "int" {
+		t.Errorf("aliased = %T %v; want PrimitiveType(int)", ab.Aliased, ab.Aliased)
+	}
+}
+
 func TestCanonicalSerialisationStable(t *testing.T) {
 	src := `import fmt
 

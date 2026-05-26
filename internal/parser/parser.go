@@ -182,10 +182,133 @@ func (p *parser) parseDecl() (ast.Decl, *Diag) {
 	if p.at(lexer.KindKeyword, "func") {
 		return p.parseFuncDecl()
 	}
+	if p.at(lexer.KindKeyword, "type") {
+		return p.parseTypeDecl()
+	}
 	t := p.peek()
 	return nil, p.diag("E0112",
 		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
 		t.Line, t.Col)
+}
+
+// parseTypeDecl parses `type Name = TypeBody`. PR-F2 supports
+// SumTypeBody (nullary variants) and AliasBody. RecordTypeBody
+// and TupleAliasBody land with later PRs.
+func (p *parser) parseTypeDecl() (*ast.TypeDecl, *Diag) {
+	kw := p.advance() // consume 'type'
+	nameTok, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindOp, "="); err != nil {
+		return nil, err
+	}
+	p.skipNewlines()
+	var body ast.TypeBody
+	// SumTypeBody iff the body starts with `|`.
+	if p.at(lexer.KindOp, "|") {
+		sb, err := p.parseSumTypeBody()
+		if err != nil {
+			return nil, err
+		}
+		body = sb
+	} else {
+		// AliasBody — single TypeExpr.
+		startLine, startCol := p.peek().Line, p.peek().Col
+		ty, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		body = &ast.AliasBody{
+			Span: ast.Span{
+				StartLine: startLine, StartCol: startCol,
+				EndLine: ty.NodeSpan().EndLine, EndCol: ty.NodeSpan().EndCol,
+			},
+			Aliased: ty,
+		}
+	}
+	return &ast.TypeDecl{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.NodeSpan().EndLine, EndCol: body.NodeSpan().EndCol,
+		},
+		Name: nameTok.Lexeme,
+		Body: body,
+	}, nil
+}
+
+// parseSumTypeBody expects the cursor at the leading `|`.
+func (p *parser) parseSumTypeBody() (*ast.SumTypeBody, *Diag) {
+	startTok := p.peek()
+	var variants []*ast.Variant
+	for p.at(lexer.KindOp, "|") {
+		p.advance() // consume '|'
+		p.skipNewlines()
+		if !p.at(lexer.KindIdent) {
+			t := p.peek()
+			return nil, p.diag("E0112", "expected variant name after `|`", t.Line, t.Col)
+		}
+		vnTok := p.advance()
+		v := &ast.Variant{
+			Span: ast.Span{
+				StartLine: vnTok.Line, StartCol: vnTok.Col,
+				EndLine: vnTok.Line, EndCol: vnTok.Col + utf8.RuneCountInString(vnTok.Lexeme),
+			},
+			Name: vnTok.Lexeme,
+		}
+		// Optional payload: `(name: T, name: T, ...)`.
+		if p.at(lexer.KindPunct, "(") {
+			p.advance() // consume '('
+			p.skipNewlines()
+			for !p.at(lexer.KindPunct, ")") {
+				if !p.at(lexer.KindIdent) {
+					t := p.peek()
+					return nil, p.diag("E0112", "expected field name in variant payload", t.Line, t.Col)
+				}
+				fnTok := p.advance()
+				if _, err := p.expect(lexer.KindPunct, ":"); err != nil {
+					return nil, err
+				}
+				ft, err := p.parseTypeExpr()
+				if err != nil {
+					return nil, err
+				}
+				v.Fields = append(v.Fields, &ast.FieldDecl{
+					Span: ast.Span{
+						StartLine: fnTok.Line, StartCol: fnTok.Col,
+						EndLine: ft.NodeSpan().EndLine, EndCol: ft.NodeSpan().EndCol,
+					},
+					Name:     fnTok.Lexeme,
+					DeclType: ft,
+				})
+				p.skipNewlines()
+				if !p.at(lexer.KindPunct, ",") {
+					break
+				}
+				p.advance() // consume ','
+				p.skipNewlines()
+			}
+			closeTok, err := p.expect(lexer.KindPunct, ")")
+			if err != nil {
+				return nil, err
+			}
+			v.Span.EndLine = closeTok.Line
+			v.Span.EndCol = closeTok.Col + 1
+		}
+		variants = append(variants, v)
+		p.skipNewlines()
+	}
+	if len(variants) == 0 {
+		return nil, p.diag("E0112", "sum type must have at least one variant", startTok.Line, startTok.Col)
+	}
+	last := variants[len(variants)-1]
+	return &ast.SumTypeBody{
+		Span: ast.Span{
+			StartLine: startTok.Line, StartCol: startTok.Col,
+			EndLine: last.Span.EndLine, EndCol: last.Span.EndCol,
+		},
+		Variants: variants,
+	}, nil
 }
 
 func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
@@ -853,6 +976,8 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		case "false":
 			p.advance()
 			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: false}, nil
+		case "match":
+			return p.parseMatchExpr()
 		}
 		return nil, p.diag("E0112", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
 	case lexer.KindIdent:
@@ -973,4 +1098,172 @@ func decodeStringLit(s string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+// ---- match expression + patterns ----
+
+// parseMatchExpr expects the cursor at the `match` keyword.
+// Form: `match Subject { Pat => Body (,|nl) ... }`.
+func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
+	kw := p.advance() // consume 'match'
+	subject, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
+		return nil, err
+	}
+	p.skipNewlines()
+	var arms []*ast.MatchArm
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		armStart := p.peek()
+		pat, err := p.parsePattern()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
+			return nil, err
+		}
+		body, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		arms = append(arms, &ast.MatchArm{
+			Span: ast.Span{
+				StartLine: armStart.Line, StartCol: armStart.Col,
+				EndLine: body.NodeSpan().EndLine, EndCol: body.NodeSpan().EndCol,
+			},
+			Pattern: pat,
+			Body:    body,
+		})
+		// Arms separated by comma (optional trailing).
+		p.skipNewlines()
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+			p.skipNewlines()
+		}
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	if len(arms) == 0 {
+		return nil, p.diag("E0112", "match needs at least one arm", kw.Line, kw.Col)
+	}
+	return &ast.MatchExpr{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Subject: subject,
+		Arms:    arms,
+	}, nil
+}
+
+// parsePattern admits IdentPat, WildcardPat (`_`),
+// IntLitPat, StringLitPat, BoolLitPat, and VariantPat (with
+// optional payload subpatterns). Tuple, record, AltPat land
+// later.
+func (p *parser) parsePattern() (ast.Pattern, *Diag) {
+	t := p.peek()
+	switch t.Kind {
+	case lexer.KindIdent:
+		// Could be IdentPat or VariantPat. Heuristic: capitalised
+		// first letter signals a VariantPat candidate. The
+		// resolver makes the final call (per ast.md notes), but
+		// parser-time we admit both shapes and use capitalisation
+		// + optional payload `(` to disambiguate.
+		nameTok := p.advance()
+		if isCapitalised(nameTok.Lexeme) || p.at(lexer.KindPunct, "(") {
+			vp := &ast.VariantPat{
+				Span: ast.Span{
+					StartLine: nameTok.Line, StartCol: nameTok.Col,
+					EndLine: nameTok.Line, EndCol: nameTok.Col + utf8.RuneCountInString(nameTok.Lexeme),
+				},
+				Name: nameTok.Lexeme,
+			}
+			if p.at(lexer.KindPunct, "(") {
+				p.advance() // consume '('
+				p.skipNewlines()
+				for !p.at(lexer.KindPunct, ")") {
+					sp, err := p.parsePattern()
+					if err != nil {
+						return nil, err
+					}
+					vp.Sub = append(vp.Sub, sp)
+					p.skipNewlines()
+					if !p.at(lexer.KindPunct, ",") {
+						break
+					}
+					p.advance() // consume ','
+					p.skipNewlines()
+				}
+				closeTok, err := p.expect(lexer.KindPunct, ")")
+				if err != nil {
+					return nil, err
+				}
+				vp.Span.EndLine = closeTok.Line
+				vp.Span.EndCol = closeTok.Col + 1
+			}
+			return vp, nil
+		}
+		// Lower-case → IdentPat. `_` is handled as WildcardPat
+		// via the Ident path; intercept here.
+		if nameTok.Lexeme == "_" {
+			return &ast.WildcardPat{
+				Span: ast.Span{
+					StartLine: nameTok.Line, StartCol: nameTok.Col,
+					EndLine: nameTok.Line, EndCol: nameTok.Col + 1,
+				},
+			}, nil
+		}
+		return &ast.IdentPat{
+			Span: ast.Span{
+				StartLine: nameTok.Line, StartCol: nameTok.Col,
+				EndLine: nameTok.Line, EndCol: nameTok.Col + utf8.RuneCountInString(nameTok.Lexeme),
+			},
+			Name: nameTok.Lexeme,
+		}, nil
+	case lexer.KindIntLit:
+		p.advance()
+		v, err := parseIntLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0109", "Malformed numeric literal", t.Line, t.Col)
+		}
+		return &ast.IntLitPat{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   v,
+		}, nil
+	case lexer.KindStringLit:
+		p.advance()
+		val, err := decodeStringLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0110", "Malformed escape sequence", t.Line, t.Col)
+		}
+		return &ast.StringLitPat{
+			Span:  spanFromToken(t),
+			Value: val,
+		}, nil
+	case lexer.KindKeyword:
+		switch t.Lexeme {
+		case "true":
+			p.advance()
+			return &ast.BoolLitPat{Span: spanFromToken(t), Value: true}, nil
+		case "false":
+			p.advance()
+			return &ast.BoolLitPat{Span: spanFromToken(t), Value: false}, nil
+		}
+	}
+	return nil, p.diag("E0112",
+		fmt.Sprintf("expected pattern, got %s %q", t.Kind, t.Lexeme),
+		t.Line, t.Col)
+}
+
+func isCapitalised(s string) bool {
+	if s == "" {
+		return false
+	}
+	r := s[0]
+	return r >= 'A' && r <= 'Z'
 }
