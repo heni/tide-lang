@@ -133,6 +133,95 @@ func TestEqAndCmpMixedNests(t *testing.T) {
 	}
 }
 
+func TestFuncWithParamsAndReturn(t *testing.T) {
+	src := `func add(a: int, b: int): int {
+  return a + b
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	if fn.Name != "add" {
+		t.Errorf("func name = %q; want add", fn.Name)
+	}
+	if len(fn.Params) != 2 {
+		t.Fatalf("params count = %d; want 2", len(fn.Params))
+	}
+	if fn.Params[0].Name != "a" || fn.Params[1].Name != "b" {
+		t.Errorf("param names = [%q, %q]; want [a, b]", fn.Params[0].Name, fn.Params[1].Name)
+	}
+	if fn.ReturnType == nil {
+		t.Fatal("expected non-nil return type")
+	}
+	nt, ok := fn.ReturnType.(*ast.NamedType)
+	if !ok || nt.QName[0] != "int" {
+		t.Errorf("return type = %v; want NamedType(int)", fn.ReturnType)
+	}
+	// Body has one ReturnStmt.
+	if len(fn.Body.Stmts) != 1 {
+		t.Fatalf("body stmts = %d; want 1", len(fn.Body.Stmts))
+	}
+	if _, ok := fn.Body.Stmts[0].(*ast.ReturnStmt); !ok {
+		t.Errorf("first stmt is not ReturnStmt: %T", fn.Body.Stmts[0])
+	}
+}
+
+func TestLetVarAssign(t *testing.T) {
+	src := `func main() {
+  let x = 42
+  var y: int = 7
+  y = y + x
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	stmts := fn.Body.Stmts
+	if len(stmts) != 3 {
+		t.Fatalf("expected 3 stmts; got %d", len(stmts))
+	}
+	if let, ok := stmts[0].(*ast.LetStmt); !ok || let.Name != "x" {
+		t.Errorf("stmt[0] = %T %v; want LetStmt x", stmts[0], stmts[0])
+	}
+	if v, ok := stmts[1].(*ast.VarStmt); !ok || v.Name != "y" || v.DeclType == nil {
+		t.Errorf("stmt[1] = %T %v; want VarStmt y with type", stmts[1], stmts[1])
+	}
+	if _, ok := stmts[2].(*ast.AssignStmt); !ok {
+		t.Errorf("stmt[2] = %T; want AssignStmt", stmts[2])
+	}
+}
+
+func TestBareReturn(t *testing.T) {
+	src := `func foo() {
+  return
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	if len(fn.Body.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt; got %d", len(fn.Body.Stmts))
+	}
+	ret, ok := fn.Body.Stmts[0].(*ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("not ReturnStmt: %T", fn.Body.Stmts[0])
+	}
+	if ret.Value != nil {
+		t.Errorf("bare return has non-nil value: %v", ret.Value)
+	}
+}
+
+func TestGenericTypeArgs(t *testing.T) {
+	// Type-arg parsing exists even though no PR-F1 corpus uses it;
+	// `Map<string, int>` should round-trip through the parser.
+	src := `func lookup(m: Map<string, int>, k: string): int {
+  return 0
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	mapTy, ok := fn.Params[0].DeclType.(*ast.NamedType)
+	if !ok {
+		t.Fatalf("first param type is not NamedType: %T", fn.Params[0].DeclType)
+	}
+	if mapTy.QName[0] != "Map" || len(mapTy.Args) != 2 {
+		t.Errorf("Map<string, int> mis-parsed: qname=%v args=%d", mapTy.QName, len(mapTy.Args))
+	}
+}
+
 func TestCanonicalSerialisationStable(t *testing.T) {
 	src := `import fmt
 

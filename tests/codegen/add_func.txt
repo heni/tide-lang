@@ -1,0 +1,33 @@
+--- TITLE ---
+function with parameters + return + let — full pipeline through stdout
+
+--- INPUT ---
+import fmt
+
+func add(a: int, b: int): int {
+  return a + b
+}
+
+func main() {
+  let x = add(2, 3)
+  fmt.println(x)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func add(a int, b int) int {
+	return a + b
+}
+func main() {
+	var x = add(2, 3)
+	fmt.Println(x)
+}
+
+--- STDOUT ---
+5
+
+--- EXIT ---
+0

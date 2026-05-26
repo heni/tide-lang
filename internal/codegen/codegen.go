@@ -86,7 +86,25 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	g.line(fn.Span.StartLine)
 	g.b.WriteString("func ")
 	g.b.WriteString(goIdent(fn.Name))
-	g.b.WriteString("() {\n")
+	g.b.WriteByte('(')
+	for i, p := range fn.Params {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		g.b.WriteString(goIdent(p.Name))
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(p.DeclType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte(')')
+	if fn.ReturnType != nil {
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(fn.ReturnType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteString(" {\n")
 	g.indent++
 	if err := g.emitBlockBody(fn.Body); err != nil {
 		return err
@@ -94,6 +112,34 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	g.indent--
 	g.b.WriteString("}\n")
 	return nil
+}
+
+// emitTypeExpr lowers a TypeExpr to its Go form. PR-F1 only
+// handles NamedType; future PRs add SliceType / TupleType /
+// FuncType / InlineInterface.
+func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
+	switch v := t.(type) {
+	case *ast.NamedType:
+		// PR-F1 only deals with bare primitives + dotted
+		// stdlib references. Generic parameters carry through
+		// as-is (Go-generic forms emerge once we lower
+		// Result/Option in PR-E5).
+		g.b.WriteString(strings.Join(v.QName, "."))
+		if len(v.Args) > 0 {
+			g.b.WriteByte('[')
+			for i, a := range v.Args {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitTypeExpr(a); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte(']')
+		}
+		return nil
+	}
+	return fmt.Errorf("codegen: unhandled type expression %T", t)
 }
 
 func (g *gen) emitBlockBody(b *ast.Block) error {
@@ -124,8 +170,59 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		return g.emitIfStmt(v)
 	case *ast.ForStmt:
 		return g.emitForStmt(v)
+	case *ast.LetStmt:
+		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
+	case *ast.VarStmt:
+		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
+	case *ast.AssignStmt:
+		g.line(v.Span.StartLine)
+		g.writeIndent()
+		if err := g.emitExpr(v.LValue); err != nil {
+			return err
+		}
+		g.b.WriteString(" = ")
+		if err := g.emitExpr(v.Value); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		return nil
+	case *ast.ReturnStmt:
+		g.line(v.Span.StartLine)
+		g.writeIndent()
+		if v.Value == nil {
+			g.b.WriteString("return\n")
+			return nil
+		}
+		g.b.WriteString("return ")
+		if err := g.emitExpr(v.Value); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		return nil
 	}
 	return fmt.Errorf("codegen: unhandled stmt %T", s)
+}
+
+// emitLetOrVar lowers both `let` and `var` to Go's `var name [T] = value`.
+// Immutability of `let` is a sema concern (not yet implemented); the
+// generated Go is identical for both keywords.
+func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, value ast.Expr) error {
+	g.line(span.StartLine)
+	g.writeIndent()
+	g.b.WriteString("var ")
+	g.b.WriteString(goIdent(name))
+	if declType != nil {
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(declType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteString(" = ")
+	if err := g.emitExpr(value); err != nil {
+		return err
+	}
+	g.b.WriteByte('\n')
+	return nil
 }
 
 func (g *gen) emitIfStmt(s *ast.IfStmt) error {

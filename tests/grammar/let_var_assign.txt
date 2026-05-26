@@ -1,0 +1,26 @@
+--- TITLE ---
+LetStmt, VarStmt, AssignStmt — typed and untyped local bindings
+
+--- INPUT ---
+func main() {
+  let x = 42
+  var y: int = 7
+  y = y + x
+}
+
+--- AST ---
+(File @1:1-5:2
+  (FuncDecl "main" @1:1-5:2
+    (params)
+    (Block @1:13-5:2
+      (LetStmt "x" @2:3-2:13
+        (IntLitExpr 42 @2:11-2:13))
+      (VarStmt "y" @3:3-3:17
+        (type
+          (NamedType "int" @3:10-3:13))
+        (IntLitExpr 7 @3:16-3:17))
+      (AssignStmt @4:3-4:12
+        (Ident "y" @4:3-4:4)
+        (Binary "+" @4:7-4:12
+          (Ident "y" @4:7-4:8)
+          (Ident "x" @4:11-4:12))))))

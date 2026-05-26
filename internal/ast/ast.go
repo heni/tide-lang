@@ -47,18 +47,57 @@ type Decl interface {
 	declMarker()
 }
 
-// FuncDecl is a top-level function. PR-B only handles the no-param
-// no-return shape produced by hello.td / fizzbuzz.td. Param,
-// TypeParams, and ReturnType slots are reserved for later PRs.
+// FuncDecl is a top-level function. PR-F1 covers the
+// non-generic shape with typed parameters and an optional
+// return type. Generic type parameters land with later PRs.
 type FuncDecl struct {
-	Span Span
-	Name string
-	Body *Block
+	Span       Span
+	Name       string
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ unit
+	Body       *Block
 }
 
 func (n *FuncDecl) NodeSpan() Span   { return n.Span }
 func (n *FuncDecl) NodeKind() string { return "FuncDecl" }
 func (n *FuncDecl) declMarker()      {}
+
+// Param is one parameter of a FuncDecl. DeclType is required at
+// FuncDecl position (closures may omit it; not parsed in PR-F1).
+type Param struct {
+	Span     Span
+	Name     string // "_" allowed
+	DeclType TypeExpr
+}
+
+func (n *Param) NodeSpan() Span   { return n.Span }
+func (n *Param) NodeKind() string { return "Param" }
+
+// ---------------------------------------------------------------
+// Type expressions
+// ---------------------------------------------------------------
+
+// TypeExpr is the sum of type-expression kinds. PR-F1 only emits
+// NamedType; SliceType / TupleType / FuncType / InlineInterface
+// land with later PRs.
+type TypeExpr interface {
+	Node
+	typeMarker()
+}
+
+// NamedType is a possibly-qualified identifier
+// (`int`, `Result`, `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1.
+// Args is empty when the type carries no generic arguments
+// (e.g. `int`, plain `string`).
+type NamedType struct {
+	Span  Span
+	QName []string
+	Args  []TypeExpr
+}
+
+func (n *NamedType) NodeSpan() Span   { return n.Span }
+func (n *NamedType) NodeKind() string { return "NamedType" }
+func (n *NamedType) typeMarker()      {}
 
 // ---------------------------------------------------------------
 // Statements
@@ -79,6 +118,55 @@ type ExprStmt struct {
 func (n *ExprStmt) NodeSpan() Span   { return n.Span }
 func (n *ExprStmt) NodeKind() string { return "ExprStmt" }
 func (n *ExprStmt) stmtMarker()      {}
+
+// LetStmt — `let name [: T] = value`. Immutable binding.
+type LetStmt struct {
+	Span     Span
+	Name     string // "_" admitted by `let _ = expr` for side-effects
+	DeclType TypeExpr
+	Value    Expr
+}
+
+func (n *LetStmt) NodeSpan() Span   { return n.Span }
+func (n *LetStmt) NodeKind() string { return "LetStmt" }
+func (n *LetStmt) stmtMarker()      {}
+
+// VarStmt — `var name [: T] = value`. Mutable binding. PR-F1
+// requires an initialiser (G1 — bare uninitialised `var x: T`
+// is rejected upstream).
+type VarStmt struct {
+	Span     Span
+	Name     string
+	DeclType TypeExpr
+	Value    Expr
+}
+
+func (n *VarStmt) NodeSpan() Span   { return n.Span }
+func (n *VarStmt) NodeKind() string { return "VarStmt" }
+func (n *VarStmt) stmtMarker()      {}
+
+// AssignStmt — `lvalue = value`. Value-position to value-position
+// assignment. Sema restricts which expressions are valid lvalues;
+// the parser accepts any expression on the left and defers.
+type AssignStmt struct {
+	Span   Span
+	LValue Expr
+	Value  Expr
+}
+
+func (n *AssignStmt) NodeSpan() Span   { return n.Span }
+func (n *AssignStmt) NodeKind() string { return "AssignStmt" }
+func (n *AssignStmt) stmtMarker()      {}
+
+// ReturnStmt — `return` (Value nil) or `return expr`.
+type ReturnStmt struct {
+	Span  Span
+	Value Expr // nil ⇒ bare return
+}
+
+func (n *ReturnStmt) NodeSpan() Span   { return n.Span }
+func (n *ReturnStmt) NodeKind() string { return "ReturnStmt" }
+func (n *ReturnStmt) stmtMarker()      {}
 
 // IfStmt — statement form. else_branch is nil, a nested *IfStmt
 // (for "else if"), or a *Block (for plain "else { }").

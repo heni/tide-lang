@@ -57,9 +57,77 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		writeIndent(b, depth+1)
-		b.WriteString("(params)")
+		if len(v.Params) == 0 {
+			b.WriteString("(params)")
+		} else {
+			b.WriteString("(params")
+			for _, p := range v.Params {
+				b.WriteByte('\n')
+				write(b, p, depth+2)
+			}
+			b.WriteByte(')')
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
 		b.WriteByte('\n')
 		write(b, v.Body, depth+1)
+	case *Param:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.DeclType, depth+1)
+	case *NamedType:
+		b.WriteByte(' ')
+		writeQuoted(b, strings.Join(v.QName, "."))
+		writeSpan(b, v.Span)
+		for _, a := range v.Args {
+			b.WriteByte('\n')
+			write(b, a, depth+1)
+		}
+	case *LetStmt:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		if v.DeclType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(type\n")
+			write(b, v.DeclType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+	case *VarStmt:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		if v.DeclType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(type\n")
+			write(b, v.DeclType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+	case *AssignStmt:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.LValue, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+	case *ReturnStmt:
+		writeSpan(b, v.Span)
+		if v.Value != nil {
+			b.WriteByte('\n')
+			write(b, v.Value, depth+1)
+		}
 	case *Block:
 		writeSpan(b, v.Span)
 		for _, s := range v.Stmts {
