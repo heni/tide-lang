@@ -1,0 +1,46 @@
+--- TITLE ---
+slices end-to-end — push, len, indexing, slicing
+
+--- INPUT ---
+import fmt
+
+func main() {
+  var out: []int = []int{}
+  out = out.push(1)
+  out = out.push(2)
+  out = out.push(3)
+  fmt.println(out.len())
+  for i in 0..out.len() {
+    fmt.println(out[i])
+  }
+  let mid = out[1:3]
+  fmt.println(mid.len())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var out []int = []int{}
+	out = append(out, 1)
+	out = append(out, 2)
+	out = append(out, 3)
+	fmt.Println(len(out))
+	for i := 0; i < len(out); i++ {
+		fmt.Println(out[i])
+	}
+	var mid = out[1:3]
+	fmt.Println(len(mid))
+}
+
+--- STDOUT ---
+3
+1
+2
+3
+2
+
+--- EXIT ---
+0

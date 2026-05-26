@@ -203,6 +203,9 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 		// the source level.
 		g.b.WriteString(v.Name)
 		return nil
+	case *ast.SliceType:
+		g.b.WriteString("[]")
+		return g.emitTypeExpr(v.Elem)
 	case *ast.NamedType:
 		g.b.WriteString(strings.Join(v.QName, "."))
 		if len(v.Args) > 0 {
@@ -397,6 +400,24 @@ func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
 	return fmt.Errorf("codegen: unsupported pattern %T", p)
 }
 
+// inferSliceElemType returns the Go-side element type for an
+// inferred slice literal. PR-F3 supports Int / String / Bool
+// literal elements; anything else returns an error.
+func inferSliceElemType(items []ast.Expr) (string, error) {
+	if len(items) == 0 {
+		return "", fmt.Errorf("codegen: empty inferred-type slice literal — annotate with `[]T{}`")
+	}
+	switch items[0].(type) {
+	case *ast.IntLitExpr:
+		return "int", nil
+	case *ast.StringLitExpr:
+		return "string", nil
+	case *ast.BoolLitExpr:
+		return "bool", nil
+	}
+	return "", fmt.Errorf("codegen: cannot infer element type from %T — annotate the slice literal", items[0])
+}
+
 func lastSeg(q []string) string {
 	if len(q) == 0 {
 		return ""
@@ -544,7 +565,21 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 		g.b.WriteString(goIdent(idPat.Name))
 		g.b.WriteString("++ {\n")
 	default:
-		return fmt.Errorf("codegen: only RangeExpr iterables in PR-C, got %T", s.Iterable)
+		// Any other Iterable is a slice / map / set / channel
+		// per builtins.md §IterElem. PR-F3 supports slice
+		// iteration (`for x in xs` over `[]T`). Maps / sets /
+		// channels land in later PRs.
+		iterExpr, ok := iter.(ast.Expr)
+		if !ok {
+			return fmt.Errorf("codegen: unsupported iterable %T", iter)
+		}
+		g.b.WriteString("for _, ")
+		g.b.WriteString(goIdent(idPat.Name))
+		g.b.WriteString(" := range ")
+		if err := g.emitExpr(iterExpr); err != nil {
+			return err
+		}
+		g.b.WriteString(" {\n")
 	}
 	g.indent++
 	if err := g.emitBlockBody(s.Body); err != nil {
@@ -583,6 +618,63 @@ func (g *gen) emitExpr(e ast.Expr) error {
 			return nil
 		}
 		g.b.WriteString(goIdent(v.Name))
+		return nil
+	case *ast.SliceLit:
+		// Annotated form `[]T{...}` → `[]T{...}` directly.
+		// Inferred form `[e_1, ..., e_n]` → `[]TInferred{...}`.
+		// PR-F3 infers from the first element when it's an Int /
+		// String / Bool literal; otherwise rejects (no sema yet).
+		if v.ElemType != nil {
+			g.b.WriteString("[]")
+			if err := g.emitTypeExpr(v.ElemType); err != nil {
+				return err
+			}
+		} else {
+			elem, err := inferSliceElemType(v.Items)
+			if err != nil {
+				return err
+			}
+			g.b.WriteString("[]")
+			g.b.WriteString(elem)
+		}
+		g.b.WriteByte('{')
+		for i, it := range v.Items {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitExpr(it); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte('}')
+		return nil
+	case *ast.Index:
+		if err := g.emitExpr(v.Receiver); err != nil {
+			return err
+		}
+		g.b.WriteByte('[')
+		if err := g.emitExpr(v.Idx); err != nil {
+			return err
+		}
+		g.b.WriteByte(']')
+		return nil
+	case *ast.SliceExpr:
+		if err := g.emitExpr(v.Receiver); err != nil {
+			return err
+		}
+		g.b.WriteByte('[')
+		if v.Low != nil {
+			if err := g.emitExpr(v.Low); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(':')
+		if v.High != nil {
+			if err := g.emitExpr(v.High); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(']')
 		return nil
 	case *ast.MatchExpr:
 		// PR-F2 only supports match in statement position; the
@@ -627,6 +719,41 @@ func (g *gen) emitField(f *ast.Field) error {
 }
 
 func (g *gen) emitCall(c *ast.Call) error {
+	// Slice method shortcuts per builtins.md §Slice methods:
+	//   xs.push(e) → append(xs, e)
+	//   xs.len()   → len(xs)
+	// Triggered when the callee is a Field access whose receiver
+	// is NOT a known stdlib namespace (e.g. fmt, os, strings).
+	// Without sema this is a heuristic: any `.push`/`.len` on a
+	// non-namespace receiver is a slice method. Sema'll tighten.
+	if f, ok := c.Callee.(*ast.Field); ok && !isStdlibNamespace(f.Receiver) {
+		switch f.Name {
+		case "push":
+			if len(c.Args) != 1 {
+				return fmt.Errorf("codegen: .push expects exactly one argument, got %d", len(c.Args))
+			}
+			g.b.WriteString("append(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteString(", ")
+			if err := g.emitExpr(c.Args[0]); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
+		case "len":
+			if len(c.Args) != 0 {
+				return fmt.Errorf("codegen: .len takes no arguments, got %d", len(c.Args))
+			}
+			g.b.WriteString("len(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
+		}
+	}
 	if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
@@ -641,6 +768,23 @@ func (g *gen) emitCall(c *ast.Call) error {
 	}
 	g.b.WriteByte(')')
 	return nil
+}
+
+// isStdlibNamespace reports whether expr is an Ident whose name
+// is in the hardcoded stdlib binding registry. Used by emitCall
+// to keep `fmt.println` from being interpreted as a slice
+// method call.
+func isStdlibNamespace(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	switch id.Name {
+	case "fmt", "os", "strings", "strconv", "bufio", "context",
+		"time", "sync", "io", "log", "net", "encoding", "math":
+		return true
+	}
+	return false
 }
 
 // mapFieldName is the PR-C shortcut for binding calls. Tide

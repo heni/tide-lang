@@ -181,6 +181,16 @@ var PrimitiveNames = map[string]bool{
 	"unit":    true,
 }
 
+// SliceType — `[]T`. Per ast.md §TypeExpr.
+type SliceType struct {
+	Span Span
+	Elem TypeExpr
+}
+
+func (n *SliceType) NodeSpan() Span   { return n.Span }
+func (n *SliceType) NodeKind() string { return "SliceType" }
+func (n *SliceType) typeMarker()      {}
+
 // NamedType is a possibly-qualified identifier (`Result`,
 // `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1. Args is empty
 // when the type carries no generic arguments.
@@ -487,6 +497,43 @@ type Unary struct {
 func (n *Unary) NodeSpan() Span   { return n.Span }
 func (n *Unary) NodeKind() string { return "Unary" }
 func (n *Unary) exprMarker()      {}
+
+// SliceLit — `[e_1, ..., e_n]` (inferred element type) or
+// `[]T{e_1, ..., e_n}` (annotated). ElemType is nil for the
+// inferred form; Items may be empty when ElemType is set.
+type SliceLit struct {
+	Span     Span
+	ElemType TypeExpr // nil ⇒ inferred from items
+	Items    []Expr
+}
+
+func (n *SliceLit) NodeSpan() Span   { return n.Span }
+func (n *SliceLit) NodeKind() string { return "SliceLit" }
+func (n *SliceLit) exprMarker()      {}
+
+// Index — `receiver[i]`.
+type Index struct {
+	Span     Span
+	Receiver Expr
+	Idx      Expr
+}
+
+func (n *Index) NodeSpan() Span   { return n.Span }
+func (n *Index) NodeKind() string { return "Index" }
+func (n *Index) exprMarker()      {}
+
+// SliceExpr — `receiver[low:high]`. Low / High may be nil
+// for `[:hi]` or `[lo:]` forms.
+type SliceExpr struct {
+	Span     Span
+	Receiver Expr
+	Low      Expr
+	High     Expr
+}
+
+func (n *SliceExpr) NodeSpan() Span   { return n.Span }
+func (n *SliceExpr) NodeKind() string { return "SliceExpr" }
+func (n *SliceExpr) exprMarker()      {}
 
 // MatchExpr — `match subject { pat1 => body1, pat2 => body2 }`.
 // Arms count ≥ 1 (parser enforces).

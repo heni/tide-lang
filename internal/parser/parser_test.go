@@ -323,6 +323,83 @@ func TestAliasTypeDecl(t *testing.T) {
 	}
 }
 
+func TestSliceTypeAndLit(t *testing.T) {
+	src := `func main() {
+  var xs: []int = []int{1, 2, 3}
+}`
+	f := parseString(t, src)
+	fn := f.Decls[0].(*ast.FuncDecl)
+	vs, ok := fn.Body.Stmts[0].(*ast.VarStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T; want VarStmt", fn.Body.Stmts[0])
+	}
+	st, ok := vs.DeclType.(*ast.SliceType)
+	if !ok {
+		t.Fatalf("decl type = %T; want SliceType", vs.DeclType)
+	}
+	pt, ok := st.Elem.(*ast.PrimitiveType)
+	if !ok || pt.Name != "int" {
+		t.Errorf("elem = %T %v; want PrimitiveType(int)", st.Elem, st.Elem)
+	}
+	sl, ok := vs.Value.(*ast.SliceLit)
+	if !ok {
+		t.Fatalf("value = %T; want SliceLit", vs.Value)
+	}
+	if sl.ElemType == nil {
+		t.Errorf("annotated SliceLit lost ElemType")
+	}
+	if len(sl.Items) != 3 {
+		t.Errorf("items = %d; want 3", len(sl.Items))
+	}
+}
+
+func TestIndexAndSliceExpr(t *testing.T) {
+	src := `func main() {
+  let v = xs[0]
+  let mid = xs[1:3]
+  let suf = xs[1:]
+  let pre = xs[:3]
+}`
+	f := parseString(t, src)
+	stmts := f.Decls[0].(*ast.FuncDecl).Body.Stmts
+	// First: Index
+	if _, ok := stmts[0].(*ast.LetStmt).Value.(*ast.Index); !ok {
+		t.Errorf("stmt[0] value = %T; want Index", stmts[0].(*ast.LetStmt).Value)
+	}
+	// Slice forms
+	for i := 1; i < 4; i++ {
+		if _, ok := stmts[i].(*ast.LetStmt).Value.(*ast.SliceExpr); !ok {
+			t.Errorf("stmt[%d] value = %T; want SliceExpr", i, stmts[i].(*ast.LetStmt).Value)
+		}
+	}
+	// `xs[1:]` — High is nil
+	if se := stmts[2].(*ast.LetStmt).Value.(*ast.SliceExpr); se.High != nil {
+		t.Errorf("xs[1:] has non-nil High")
+	}
+	// `xs[:3]` — Low is nil
+	if se := stmts[3].(*ast.LetStmt).Value.(*ast.SliceExpr); se.Low != nil {
+		t.Errorf("xs[:3] has non-nil Low")
+	}
+}
+
+func TestInferredSliceLit(t *testing.T) {
+	src := `func main() {
+  let xs = [10, 20, 30]
+}`
+	f := parseString(t, src)
+	let := f.Decls[0].(*ast.FuncDecl).Body.Stmts[0].(*ast.LetStmt)
+	sl, ok := let.Value.(*ast.SliceLit)
+	if !ok {
+		t.Fatalf("value = %T; want SliceLit", let.Value)
+	}
+	if sl.ElemType != nil {
+		t.Errorf("inferred SliceLit unexpectedly has ElemType")
+	}
+	if len(sl.Items) != 3 {
+		t.Errorf("items = %d; want 3", len(sl.Items))
+	}
+}
+
 func TestCanonicalSerialisationStable(t *testing.T) {
 	src := `import fmt
 

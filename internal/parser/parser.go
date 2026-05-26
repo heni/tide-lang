@@ -393,8 +393,8 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 }
 
 // parseTypeExpr emits PrimitiveType for the closed PrimitiveName
-// set (per ast.md §PrimitiveName) and NamedType for everything
-// else. Form:
+// set, SliceType for `[]T`, and NamedType for everything else.
+// Form:
 //
 //	TypeExpr = PrimitiveType
 //	         | NamedType
@@ -404,6 +404,24 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 // `Map<string, int>` parse cleanly), even though the only
 // type-bearing positions in PR-F1's corpus use bare primitives.
 func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
+	// SliceType: `[]T`.
+	if p.at(lexer.KindPunct, "[") {
+		openTok := p.advance() // consume '['
+		if _, err := p.expect(lexer.KindPunct, "]"); err != nil {
+			return nil, err
+		}
+		elem, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SliceType{
+			Span: ast.Span{
+				StartLine: openTok.Line, StartCol: openTok.Col,
+				EndLine: elem.NodeSpan().EndLine, EndCol: elem.NodeSpan().EndCol,
+			},
+			Elem: elem,
+		}, nil
+	}
 	if !p.at(lexer.KindIdent) {
 		t := p.peek()
 		return nil, p.diag("E0112",
@@ -907,10 +925,89 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 				Receiver: e,
 				Name:     name.Lexeme,
 			}
+		case p.at(lexer.KindPunct, "["):
+			next, err := p.parseIndexOrSlice(e)
+			if err != nil {
+				return nil, err
+			}
+			e = next
 		default:
 			return e, nil
 		}
 	}
+}
+
+// parseIndexOrSlice parses the postfix `[i]` or `[lo:hi]` /
+// `[lo:]` / `[:hi]` form. Cursor at `[`.
+func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
+	openTok := p.advance() // consume '['
+	_ = openTok
+	// `[:hi]` — leading colon.
+	if p.at(lexer.KindPunct, ":") {
+		p.advance() // consume ':'
+		// `[:]` is a copy slice; `[:hi]` has High.
+		var high ast.Expr
+		if !p.at(lexer.KindPunct, "]") {
+			h, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			high = h
+		}
+		closeTok, err := p.expect(lexer.KindPunct, "]")
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SliceExpr{
+			Span: ast.Span{
+				StartLine: recv.NodeSpan().StartLine, StartCol: recv.NodeSpan().StartCol,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+			},
+			Receiver: recv,
+			Low:      nil,
+			High:     high,
+		}, nil
+	}
+	first, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.KindPunct, ":") {
+		p.advance() // consume ':'
+		var high ast.Expr
+		if !p.at(lexer.KindPunct, "]") {
+			h, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			high = h
+		}
+		closeTok, err := p.expect(lexer.KindPunct, "]")
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SliceExpr{
+			Span: ast.Span{
+				StartLine: recv.NodeSpan().StartLine, StartCol: recv.NodeSpan().StartCol,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+			},
+			Receiver: recv,
+			Low:      first,
+			High:     high,
+		}, nil
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "]")
+	if err != nil {
+		return nil, err
+	}
+	return &ast.Index{
+		Span: ast.Span{
+			StartLine: recv.NodeSpan().StartLine, StartCol: recv.NodeSpan().StartCol,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Receiver: recv,
+		Idx:      first,
+	}, nil
 }
 
 func (p *parser) parseCallSuffix(callee ast.Expr) (*ast.Call, *Diag) {
@@ -996,6 +1093,9 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 				return nil, err
 			}
 			return e, nil
+		}
+		if t.Lexeme == "[" {
+			return p.parseSliceLit()
 		}
 	}
 	return nil, p.diag("E0112",
@@ -1294,4 +1394,78 @@ func isCapitalised(s string) bool {
 	}
 	r := s[0]
 	return r >= 'A' && r <= 'Z'
+}
+
+// parseSliceLit parses either of:
+//   - `[expr, expr, ...]`         — inferred-element-type form
+//   - `[]T{}` or `[]T{e1, ...}`   — annotated-type form
+// The cursor is at the leading `[`.
+func (p *parser) parseSliceLit() (*ast.SliceLit, *Diag) {
+	openTok := p.advance() // consume '['
+	// Annotated form: `[` immediately followed by `]` is the
+	// SliceType prefix; the following `{...}` carries the items.
+	if p.at(lexer.KindPunct, "]") {
+		p.advance() // consume ']'
+		// Element type follows.
+		elem, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
+			return nil, err
+		}
+		p.skipNewlines()
+		var items []ast.Expr
+		for !p.at(lexer.KindPunct, "}") {
+			it, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, it)
+			p.skipNewlines()
+			if !p.at(lexer.KindPunct, ",") {
+				break
+			}
+			p.advance() // consume ','
+			p.skipNewlines()
+		}
+		closeTok, err := p.expect(lexer.KindPunct, "}")
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SliceLit{
+			Span: ast.Span{
+				StartLine: openTok.Line, StartCol: openTok.Col,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+			},
+			ElemType: elem,
+			Items:    items,
+		}, nil
+	}
+	// Inferred form: `[e1, e2, ...]`. At least one element.
+	var items []ast.Expr
+	for {
+		it, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+		p.skipNewlines()
+		if !p.at(lexer.KindPunct, ",") {
+			break
+		}
+		p.advance() // consume ','
+		p.skipNewlines()
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "]")
+	if err != nil {
+		return nil, err
+	}
+	return &ast.SliceLit{
+		Span: ast.Span{
+			StartLine: openTok.Line, StartCol: openTok.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Items: items,
+	}, nil
 }

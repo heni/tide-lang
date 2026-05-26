@@ -134,6 +134,51 @@ func write(b *strings.Builder, n Node, depth int) {
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
 		writeSpan(b, v.Span)
+	case *SliceType:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Elem, depth+1)
+	case *SliceLit:
+		writeSpan(b, v.Span)
+		if v.ElemType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(elem-type\n")
+			write(b, v.ElemType, depth+2)
+			b.WriteByte(')')
+		}
+		for _, it := range v.Items {
+			b.WriteByte('\n')
+			write(b, it, depth+1)
+		}
+	case *Index:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Receiver, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Idx, depth+1)
+	case *SliceExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Receiver, depth+1)
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if v.Low == nil {
+			b.WriteString("(low nil)")
+		} else {
+			b.WriteString("(low\n")
+			write(b, v.Low, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if v.High == nil {
+			b.WriteString("(high nil)")
+		} else {
+			b.WriteString("(high\n")
+			write(b, v.High, depth+2)
+			b.WriteByte(')')
+		}
 	case *TypeDecl:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
