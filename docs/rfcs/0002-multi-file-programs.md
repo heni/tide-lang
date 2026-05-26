@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Number | 0002 |
-| Status | draft |
+| Status | accepted |
 | Created | 2026-05-26 |
 | Supersedes | — |
 | Target | `lang-spec/grammar.ebnf` (import production), `lang-spec/name-resolution.md` (cross-package visibility), `lang-spec/lowering-go.md` (multi-package output tree), new `lang-spec/manifest.md` (project file), `internal/parser` + `internal/codegen` + `cmd/tide` (resolver and bundler) |
@@ -351,4 +351,11 @@ Not part of the RFC contract, but useful to size the work:
    sourced JSON / TOML; bindings/<pkg>.go emitted instead of
    the hardcoded `fmt.Println` shortcut.
 4. PR-E4: cross-package visibility (capitalisation rule).
-5. PR-E5: E0114 / E0115 diagnostics with fixtures.
+5. PR-E5: E0113 / E0114 / E0115 diagnostics with fixtures.
+
+## History
+
+- 2026-05-26 — draft opened (PR #32).
+- 2026-05-26 — accepted (post-review tightening on visibility,
+  output-tree consistency, resolution edge cases, E-code
+  allocations).
