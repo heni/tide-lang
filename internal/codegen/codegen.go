@@ -14,10 +14,16 @@ import (
 // file is the source path embedded into //line directives;
 // pass "" to suppress them.
 func Emit(f *ast.File, file string) (string, error) {
-	g := &gen{file: file, variant: map[string]variantInfo{}}
+	g := &gen{
+		file:    file,
+		variant: map[string]variantInfo{},
+		class:   map[string]classInfo{},
+	}
 	// First pass — register sum-type variants so later
 	// expression / pattern lowering can qualify Variant idents
-	// to their Go-side constants and tag numbers.
+	// to their Go-side constants and tag numbers. Also register
+	// classes (PR-F4) so Call/Field lowering can detect
+	// constructor calls and static-method calls.
 	for _, d := range f.Decls {
 		if td, ok := d.(*ast.TypeDecl); ok {
 			if sb, ok := td.Body.(*ast.SumTypeBody); ok {
@@ -25,6 +31,15 @@ func Emit(f *ast.File, file string) (string, error) {
 					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i}
 				}
 			}
+		}
+		if cd, ok := d.(*ast.ClassDecl); ok {
+			ci := classInfo{statics: map[string]bool{}}
+			for _, m := range cd.Methods {
+				if m.IsStatic {
+					ci.statics[m.Name] = true
+				}
+			}
+			g.class[cd.Name] = ci
 		}
 	}
 	g.writeHeader(f)
@@ -36,6 +51,10 @@ func Emit(f *ast.File, file string) (string, error) {
 			}
 		case *ast.TypeDecl:
 			if err := g.emitTypeDecl(v); err != nil {
+				return "", err
+			}
+		case *ast.ClassDecl:
+			if err := g.emitClassDecl(v); err != nil {
 				return "", err
 			}
 		default:
@@ -70,11 +89,21 @@ type gen struct {
 	// the first decl pass in Emit and consumed by expression /
 	// pattern lowering.
 	variant map[string]variantInfo
+	// class maps a class name (e.g. "Counter") to its static
+	// methods. Populated during the first decl pass in Emit.
+	// emitCall uses this to detect constructor calls
+	// (`Counter(...)` → `&Counter{...}`) and static-method
+	// calls (`Counter.make(...)` → `counterMake(...)`).
+	class map[string]classInfo
 }
 
 type variantInfo struct {
 	owner string // owning sum-type name (e.g. "Color")
 	tag   int    // declaration order, used for the Tag field
+}
+
+type classInfo struct {
+	statics map[string]bool // names of `static` methods
 }
 
 func (g *gen) writeHeader(f *ast.File) {
@@ -158,6 +187,89 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 	return fmt.Errorf("codegen: unhandled TypeBody %T", td.Body)
 }
 
+// emitClassDecl lowers a ClassDecl per lowering-go.md
+// §Implicit receiver. v1 always uses a pointer receiver for
+// instance methods (§"For v1 every class uses a pointer
+// receiver unconditionally"). Static methods lower to
+// package-level functions named `<class-lowercase> + Cap(method)`.
+func (g *gen) emitClassDecl(cd *ast.ClassDecl) error {
+	g.line(cd.Span.StartLine)
+	g.b.WriteString("type ")
+	g.b.WriteString(goIdent(cd.Name))
+	g.b.WriteString(" struct {\n")
+	for _, f := range cd.Fields {
+		g.b.WriteByte('\t')
+		g.b.WriteString(goIdent(f.Name))
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(f.DeclType); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+	}
+	g.b.WriteString("}\n")
+	for _, m := range cd.Methods {
+		if err := g.emitMethod(cd.Name, m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *gen) emitMethod(className string, m *ast.Method) error {
+	g.line(m.Span.StartLine)
+	g.b.WriteString("func ")
+	if !m.IsStatic {
+		g.b.WriteString("(t *")
+		g.b.WriteString(goIdent(className))
+		g.b.WriteString(") ")
+		g.b.WriteString(goIdent(m.Name))
+	} else {
+		g.b.WriteString(staticMethodName(className, m.Name))
+	}
+	g.b.WriteByte('(')
+	for i, p := range m.Params {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		g.b.WriteString(goIdent(p.Name))
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(p.DeclType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte(')')
+	if m.ReturnType != nil {
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(m.ReturnType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBlockBody(m.Body); err != nil {
+		return err
+	}
+	g.indent--
+	g.b.WriteString("}\n")
+	return nil
+}
+
+// staticMethodName returns the package-level Go name for a
+// static method per lowering-go.md §Generics: `<className>` in
+// camelCase + capitalised method name (`Counter.make` →
+// `counterMake`).
+func staticMethodName(className, methodName string) string {
+	if className == "" {
+		return methodName
+	}
+	cn := strings.ToLower(className[:1]) + className[1:]
+	if methodName == "" {
+		return cn
+	}
+	mn := strings.ToUpper(methodName[:1]) + methodName[1:]
+	return cn + mn
+}
+
 func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	g.line(fn.Span.StartLine)
 	g.b.WriteString("func ")
@@ -207,6 +319,15 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 		g.b.WriteString("[]")
 		return g.emitTypeExpr(v.Elem)
 	case *ast.NamedType:
+		// Per G16 / lowering-go.md §Implicit receiver, classes
+		// are reference types — a NamedType naming a class in
+		// scope lowers to `*ClassName` in Go so that field
+		// mutation through methods is visible to all aliases.
+		if len(v.QName) == 1 {
+			if _, isClass := g.class[v.QName[0]]; isClass {
+				g.b.WriteByte('*')
+			}
+		}
 		g.b.WriteString(strings.Join(v.QName, "."))
 		if len(v.Args) > 0 {
 			g.b.WriteByte('[')
@@ -608,6 +729,11 @@ func (g *gen) emitExpr(e ast.Expr) error {
 			g.b.WriteString("false")
 		}
 		return nil
+	case *ast.ThisExpr:
+		// lowering-go.md §Implicit receiver — the receiver is
+		// named `t` consistently in generated method bodies.
+		g.b.WriteString("t")
+		return nil
 	case *ast.Ident:
 		// Variant identifiers (declared in any sum type in the
 		// same file) get qualified to their Go-side variable:
@@ -719,6 +845,48 @@ func (g *gen) emitField(f *ast.Field) error {
 }
 
 func (g *gen) emitCall(c *ast.Call) error {
+	// Class constructor shim — `ClassName(args)` in source lowers
+	// to `&ClassName{args...}` (positional fields). Per
+	// lowering-go.md §Implicit receiver, class instances are
+	// pointer-typed; instantiation produces a *ClassName.
+	if id, ok := c.Callee.(*ast.Ident); ok {
+		if _, isClass := g.class[id.Name]; isClass {
+			g.b.WriteByte('&')
+			g.b.WriteString(goIdent(id.Name))
+			g.b.WriteByte('{')
+			for i, a := range c.Args {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitExpr(a); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte('}')
+			return nil
+		}
+	}
+	// Static method call — `ClassName.method(args)` lowers to
+	// package-level `<className>Method(args)` per
+	// lowering-go.md §Generics.
+	if f, ok := c.Callee.(*ast.Field); ok {
+		if recvID, ok := f.Receiver.(*ast.Ident); ok {
+			if ci, isClass := g.class[recvID.Name]; isClass && ci.statics[f.Name] {
+				g.b.WriteString(staticMethodName(recvID.Name, f.Name))
+				g.b.WriteByte('(')
+				for i, a := range c.Args {
+					if i > 0 {
+						g.b.WriteString(", ")
+					}
+					if err := g.emitExpr(a); err != nil {
+						return err
+					}
+				}
+				g.b.WriteByte(')')
+				return nil
+			}
+		}
+	}
 	// Slice method shortcuts per builtins.md §Slice methods:
 	//   xs.push(e) → append(xs, e)
 	//   xs.len()   → len(xs)

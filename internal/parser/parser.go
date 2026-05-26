@@ -185,6 +185,9 @@ func (p *parser) parseDecl() (ast.Decl, *Diag) {
 	if p.at(lexer.KindKeyword, "type") {
 		return p.parseTypeDecl()
 	}
+	if p.at(lexer.KindKeyword, "class") {
+		return p.parseClassDecl()
+	}
 	t := p.peek()
 	return nil, p.diag("E0112",
 		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
@@ -310,6 +313,128 @@ func (p *parser) parseSumTypeBody() (*ast.SumTypeBody, *Diag) {
 			EndLine: last.Span.EndLine, EndCol: last.Span.EndCol,
 		},
 		Variants: variants,
+	}, nil
+}
+
+// parseClassDecl parses `class Name { fields, methods }`. PR-F4
+// scope: no type parameters, no `implements`. A class member is
+// either `let|var name: T` (field) or `[static] name(params)? body`
+// (method); the parser commits based on the leading keyword.
+func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
+	kw := p.advance() // consume 'class'
+	nameTok, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.KindKeyword, "implements") || p.at(lexer.KindOp, "<") {
+		t := p.peek()
+		return nil, p.diag("E0112", "PR-F4 admits only plain `class Name { ... }` — no generics or `implements` yet", t.Line, t.Col)
+	}
+	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
+		return nil, err
+	}
+	p.skipNewlines()
+	var fields []*ast.ClassField
+	var methods []*ast.Method
+	for !p.at(lexer.KindPunct, "}") {
+		if p.at(lexer.KindKeyword, "let") || p.at(lexer.KindKeyword, "var") {
+			f, err := p.parseClassField()
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, f)
+		} else {
+			m, err := p.parseMethod()
+			if err != nil {
+				return nil, err
+			}
+			methods = append(methods, m)
+		}
+		p.skipNewlines()
+	}
+	closeTok := p.advance() // consume '}'
+	return &ast.ClassDecl{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Name:    nameTok.Lexeme,
+		Fields:  fields,
+		Methods: methods,
+	}, nil
+}
+
+func (p *parser) parseClassField() (*ast.ClassField, *Diag) {
+	kw := p.advance() // 'let' or 'var'
+	mut := "Let"
+	if kw.Lexeme == "var" {
+		mut = "Var"
+	}
+	nameTok, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, ":"); err != nil {
+		return nil, err
+	}
+	ty, err := p.parseTypeExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.ClassField{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: ty.NodeSpan().EndLine, EndCol: ty.NodeSpan().EndCol,
+		},
+		Name:       nameTok.Lexeme,
+		DeclType:   ty,
+		Mutability: mut,
+	}, nil
+}
+
+func (p *parser) parseMethod() (*ast.Method, *Diag) {
+	startTok := p.peek()
+	isStatic := false
+	if p.at(lexer.KindKeyword, "static") {
+		p.advance()
+		isStatic = true
+	}
+	nameTok, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+		return nil, err
+	}
+	params, err := p.parseParamList()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+		return nil, err
+	}
+	var retType ast.TypeExpr
+	if p.at(lexer.KindPunct, ":") {
+		p.advance()
+		retType, err = p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.Method{
+		Span: ast.Span{
+			StartLine: startTok.Line, StartCol: startTok.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Name:       nameTok.Lexeme,
+		IsStatic:   isStatic,
+		Params:     params,
+		ReturnType: retType,
+		Body:       body,
 	}, nil
 }
 
@@ -1077,6 +1202,9 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: false}, nil
 		case "match":
 			return p.parseMatchExpr()
+		case "this":
+			p.advance()
+			return &ast.ThisExpr{Span: spanFromToken(t)}, nil
 		}
 		return nil, p.diag("E0112", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
 	case lexer.KindIdent:

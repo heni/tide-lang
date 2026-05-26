@@ -1,0 +1,61 @@
+--- TITLE ---
+class end-to-end — fields, instance method, static method, implicit `this`
+
+--- INPUT ---
+import fmt
+
+class Counter {
+  var n: int
+
+  static make(start: int): Counter {
+    return Counter(start)
+  }
+
+  bump() {
+    this.n = this.n + 1
+  }
+
+  get(): int {
+    return this.n
+  }
+}
+
+func main() {
+  let c = Counter.make(10)
+  c.bump()
+  c.bump()
+  c.bump()
+  fmt.println(c.get())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Counter struct {
+	n int
+}
+
+func counterMake(start int) *Counter {
+	return &Counter{start}
+}
+func (t *Counter) bump() {
+	t.n = t.n + 1
+}
+func (t *Counter) get() int {
+	return t.n
+}
+func main() {
+	var c = counterMake(10)
+	c.bump()
+	c.bump()
+	c.bump()
+	fmt.Println(c.get())
+}
+
+--- STDOUT ---
+13
+
+--- EXIT ---
+0

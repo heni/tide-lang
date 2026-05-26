@@ -1,0 +1,16 @@
+--- TITLE ---
+ClassField with `var` mutability
+
+--- INPUT ---
+class Counter {
+  var n: int
+}
+
+--- AST ---
+(File @1:1-3:2
+  (ClassDecl "Counter" @1:1-3:2
+    (type-params)
+    (implements)
+    (ClassField "n" Var @2:3-2:13
+      (PrimitiveType "int" @2:10-2:13))
+    (methods)))

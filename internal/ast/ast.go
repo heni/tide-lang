@@ -109,6 +109,51 @@ type FieldDecl struct {
 func (n *FieldDecl) NodeSpan() Span   { return n.Span }
 func (n *FieldDecl) NodeKind() string { return "FieldDecl" }
 
+// ClassDecl — `class Name { fields, methods }`. PR-F4 admits
+// only the non-generic, non-implements shape: no `<T>` type
+// parameters, no `implements Foo`. TypeParams and Implements
+// are present as required-but-empty slots per ast.md §ClassDecl
+// so future generics / interface PRs can populate them without
+// changing the struct shape (or its canonical serialisation).
+type ClassDecl struct {
+	Span       Span
+	Name       string
+	TypeParams []string   // empty for PR-F4; populated by generics PR
+	Implements []TypeExpr // empty for PR-F4; populated by interfaces PR
+	Fields     []*ClassField
+	Methods    []*Method
+}
+
+func (n *ClassDecl) NodeSpan() Span   { return n.Span }
+func (n *ClassDecl) NodeKind() string { return "ClassDecl" }
+func (n *ClassDecl) declMarker()      {}
+
+// ClassField is one field of a ClassDecl. Mutability is
+// "Let" or "Var" matching ast.md §Mutability.
+type ClassField struct {
+	Span       Span
+	Name       string
+	DeclType   TypeExpr
+	Mutability string // "Let" or "Var"
+}
+
+func (n *ClassField) NodeSpan() Span   { return n.Span }
+func (n *ClassField) NodeKind() string { return "ClassField" }
+
+// Method is one method of a ClassDecl. IsStatic distinguishes
+// `static foo(): T { ... }` from `foo(): T { ... }`.
+type Method struct {
+	Span       Span
+	Name       string
+	IsStatic   bool
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ unit
+	Body       *Block
+}
+
+func (n *Method) NodeSpan() Span   { return n.Span }
+func (n *Method) NodeKind() string { return "Method" }
+
 // FuncDecl is a top-level function. PR-F1 covers the
 // non-generic shape with typed parameters and an optional
 // return type. Generic type parameters land with later PRs.
@@ -440,6 +485,17 @@ type BoolLitExpr struct {
 func (n *BoolLitExpr) NodeSpan() Span   { return n.Span }
 func (n *BoolLitExpr) NodeKind() string { return "BoolLitExpr" }
 func (n *BoolLitExpr) exprMarker()      {}
+
+// ThisExpr — `this` inside an instance method. Sema attaches
+// the enclosing class type; codegen lowers to the Go receiver
+// name (`t`, per lowering-go.md §Implicit receiver).
+type ThisExpr struct {
+	Span Span
+}
+
+func (n *ThisExpr) NodeSpan() Span   { return n.Span }
+func (n *ThisExpr) NodeKind() string { return "ThisExpr" }
+func (n *ThisExpr) exprMarker()      {}
 
 // Ident references a name in scope.
 type Ident struct {

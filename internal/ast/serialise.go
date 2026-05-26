@@ -51,6 +51,92 @@ func write(b *strings.Builder, n Node, depth int) {
 		b.WriteByte(' ')
 		writeQuoted(b, v.Path)
 		writeSpan(b, v.Span)
+	case *ClassDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.TypeParams) == 0 {
+			b.WriteString("(type-params)")
+		} else {
+			b.WriteString("(type-params")
+			for _, tp := range v.TypeParams {
+				b.WriteByte(' ')
+				writeQuoted(b, tp)
+			}
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.Implements) == 0 {
+			b.WriteString("(implements)")
+		} else {
+			b.WriteString("(implements")
+			for _, it := range v.Implements {
+				b.WriteByte('\n')
+				write(b, it, depth+2)
+			}
+			b.WriteByte(')')
+		}
+		if len(v.Fields) == 0 {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(fields)")
+		} else {
+			for _, f := range v.Fields {
+				b.WriteByte('\n')
+				write(b, f, depth+1)
+			}
+		}
+		if len(v.Methods) == 0 {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(methods)")
+		} else {
+			for _, m := range v.Methods {
+				b.WriteByte('\n')
+				write(b, m, depth+1)
+			}
+		}
+	case *ClassField:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		b.WriteByte(' ')
+		b.WriteString(v.Mutability)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.DeclType, depth+1)
+	case *Method:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		if v.IsStatic {
+			b.WriteString(" static")
+		} else {
+			b.WriteString(" instance")
+		}
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.Params) == 0 {
+			b.WriteString("(params)")
+		} else {
+			b.WriteString("(params")
+			for _, p := range v.Params {
+				b.WriteByte('\n')
+				write(b, p, depth+2)
+			}
+			b.WriteByte(')')
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
 	case *FuncDecl:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
@@ -306,6 +392,8 @@ func write(b *strings.Builder, n Node, depth int) {
 		} else {
 			b.WriteString("false")
 		}
+		writeSpan(b, v.Span)
+	case *ThisExpr:
 		writeSpan(b, v.Span)
 	case *Ident:
 		b.WriteByte(' ')
