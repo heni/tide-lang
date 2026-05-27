@@ -1,0 +1,55 @@
+--- TITLE ---
+match in value position — IIFE-wrapped switch returning the arm result
+
+--- INPUT ---
+import fmt
+
+type Color = | Red | Green | Blue
+
+func main() {
+  let c = Green
+  let label = match c {
+    Red => "stop",
+    Green => "go",
+    Blue => "wait",
+  }
+  fmt.println(label)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Color struct {
+	Tag uint8
+}
+
+var (
+	ColorRed   = Color{Tag: 0}
+	ColorGreen = Color{Tag: 1}
+	ColorBlue  = Color{Tag: 2}
+)
+
+func main() {
+	var c = ColorGreen
+	var label = func() string {
+		switch c.Tag {
+		case 0:
+			return "stop"
+		case 1:
+			return "go"
+		case 2:
+			return "wait"
+		}
+		var __zero string
+		return __zero
+	}()
+	fmt.Println(label)
+}
+
+--- STDOUT ---
+go
+
+--- EXIT ---
+0

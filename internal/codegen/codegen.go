@@ -1597,6 +1597,108 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 	return nil
 }
 
+// emitMatchAsExpr lowers a MatchExpr in value position to a Go
+// IIFE: `func() T { switch subject.Tag { case N: return arm_N; … }; var z T; return z }()`.
+// The trailing zero-value return is unreachable when the match
+// is exhaustive but Go's type checker insists on it for any
+// non-terminating branch.
+//
+// T is inferred from the first arm body — sum-variant references
+// resolve to their owner sum type, primitive literals to their
+// natural Go type. Without sema this covers the common case
+// (state-machine transitions like `match s { Special => Usual, … }`).
+// Payload-binding patterns in expression-position match aren't
+// supported yet — the few use cases that need them can fall back
+// to the statement-position form with an explicit temporary.
+func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
+	if len(m.Arms) == 0 {
+		return fmt.Errorf("codegen: match expression has no arms")
+	}
+	resultType, err := g.inferArmResultType(m.Arms[0].Body)
+	if err != nil {
+		return fmt.Errorf("codegen: match-as-expression: %w", err)
+	}
+	hasVariant, hasLiteral := false, false
+	for _, arm := range m.Arms {
+		switch p := arm.Pattern.(type) {
+		case *ast.VariantPat:
+			hasVariant = true
+			if len(p.Sub) > 0 {
+				return fmt.Errorf("codegen: match-as-expression with payload-binding patterns not yet supported — use a statement-position match")
+			}
+		case *ast.IdentPat:
+			if _, ok := g.variant[p.Name]; ok {
+				hasVariant = true
+			}
+		case *ast.IntLitPat, *ast.StringLitPat, *ast.BoolLitPat:
+			hasLiteral = true
+		}
+	}
+	if hasVariant && hasLiteral {
+		return fmt.Errorf("codegen: mixing variant and literal patterns in one match — not yet supported")
+	}
+	g.b.WriteString("func() ")
+	g.b.WriteString(resultType)
+	g.b.WriteString(" { switch ")
+	if err := g.emitExpr(m.Subject); err != nil {
+		return err
+	}
+	if hasVariant {
+		g.b.WriteString(".Tag")
+	}
+	g.b.WriteString(" {")
+	for _, arm := range m.Arms {
+		g.b.WriteByte(' ')
+		if err := g.emitMatchArmHeader(arm.Pattern); err != nil {
+			return err
+		}
+		g.b.WriteString(": return ")
+		if err := g.emitExpr(arm.Body); err != nil {
+			return err
+		}
+		g.b.WriteByte(';')
+	}
+	g.b.WriteString(" }; var __zero ")
+	g.b.WriteString(resultType)
+	g.b.WriteString("; return __zero }()")
+	return nil
+}
+
+// inferArmResultType returns the Go-side type name for an
+// expression at a match arm position. Covers sum-variant refs
+// (owner sum-type), variant constructor calls, primitive
+// literals, and Ident references to bindings whose Go type can
+// be looked up via varKind. Returns an error for shapes the
+// codegen can't peek into without sema.
+func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
+	switch v := e.(type) {
+	case *ast.Ident:
+		if info, ok := g.variant[v.Name]; ok {
+			return goIdent(info.owner), nil
+		}
+		if k, ok := g.varKind[v.Name]; ok {
+			return k, nil
+		}
+		return "", fmt.Errorf("cannot infer type from identifier %q (annotate match's surrounding binding)", v.Name)
+	case *ast.Call:
+		if id, ok := v.Callee.(*ast.Ident); ok {
+			if info, ok := g.variant[id.Name]; ok {
+				return goIdent(info.owner), nil
+			}
+		}
+		return "", fmt.Errorf("cannot infer type from call expression")
+	case *ast.IntLitExpr:
+		return "int", nil
+	case *ast.StringLitExpr:
+		return "string", nil
+	case *ast.BoolLitExpr:
+		return "bool", nil
+	case *ast.RuneLitExpr:
+		return "rune", nil
+	}
+	return "", fmt.Errorf("cannot infer type from %T expression in first arm — annotate the surrounding binding", e)
+}
+
 // emitPayloadBindings writes one `b := <subject>.<PayloadField>`
 // line per sub-pattern of a VariantPat. IdentPat sub-patterns
 // produce a binding; WildcardPat sub-patterns emit nothing.
@@ -2191,11 +2293,7 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		g.b.WriteByte(']')
 		return nil
 	case *ast.MatchExpr:
-		// PR-F2 only supports match in statement position; the
-		// statement emitter for ExprStmt handles the wrap and
-		// arm-body emission. Reaching MatchExpr in pure
-		// expression position is not supported yet.
-		return fmt.Errorf("codegen: match expression in value position not yet supported")
+		return g.emitMatchAsExpr(v)
 	case *ast.Field:
 		return g.emitField(v)
 	case *ast.Call:
