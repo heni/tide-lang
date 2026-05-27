@@ -137,6 +137,16 @@ type is admissible — `try` requires the inner `E` to equal the
 enclosing function's declared error type (G11, no implicit
 conversion).
 
+**Default error parameter.** When `E` is omitted from a written
+type — `Result<T>` rather than `Result<T, E>` — the second
+parameter defaults to `error`. The full form `Result<T, error>`
+and the shorthand `Result<T>` denote the same type. The default
+applies anywhere a `Result` type appears (declarations, return
+types, parameter types, generic arguments, including in spec
+files such as `type-system.md` §Dynamic and §reflect below).
+Writing `Result<T, E>` with an explicit `E` is required when
+`E ≠ error`.
+
 `Ok` / `Err` are predeclared variants, unqualified usable.
 
 ## Slice methods (`[]T`)
@@ -311,6 +321,12 @@ programs that import `reflect` ship the descriptor registry and
 boxing helpers in their binary; reflection-free programs are
 unaffected.
 
+Unlike the container builtins above (`Map`, `Set`, `Stack`,
+`Channel`), `reflect` is a module of free functions rather than
+a class — the surface is documented as **Types**, **Functions**,
+and **Constraints** subsections below rather than as a single
+`class` block.
+
 ### Types
 
 ```
@@ -376,6 +392,13 @@ fieldValue(v: Dynamic, name: string): Result<Dynamic>   // Err: no such field, o
 variantOf(v: Dynamic): Result<VariantInfo>              // Err: v is not a sum value
 elementType(t: Type): Result<Type>                      // Err: t has no single element type
 ```
+
+`elementType` is defined for `Slice` `Kind` only — it returns
+the slice's element type wrapped in `Ok`. For every other
+`Kind` (`Primitive`, `Class`, `Sum`, `Function`, `Unit`) the
+call returns `Err`. Map / set values, function-return types,
+and sum-variant payloads are reached via `fields`, `methods`,
+and `variants` rather than through `elementType`.
 
 Boxing / unboxing:
 
@@ -553,7 +576,7 @@ sketch below for reviewers' orientation:
 | `RecvChan<T>` | `<-chan T` |
 | `error` | Go `error` interface |
 | `Dynamic` | `tidert.Dynamic` struct (payload + descriptor pointer); never `interface{}` alone — see D18-P3 |
-| `reflect.*` functions | calls into `tidert/reflect`; descriptors built at codegen time and registered in the runtime registry |
+| `reflect.*` functions | calls into `tidert/reflect`; descriptors built at codegen time and registered in the runtime registry *(impl: Block R)* |
 | `scope { ... }` | `errgroup.Group` + cancellable `context.Context` |
 | `spawn` | `g.Go(func() error { ... })` |
 | `makeChannel<T>(n)` | `make(chan T, n)` |
