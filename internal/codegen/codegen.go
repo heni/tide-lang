@@ -2194,12 +2194,36 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 		g.b.WriteString("++ {\n")
 	default:
 		// Any other Iterable is a slice / map / set / channel
-		// per builtins.md §IterElem. PR-F3 supports slice
-		// iteration (`for x in xs` over `[]T`). Maps / sets /
-		// channels land in later PRs.
+		// per builtins.md §IterElem.
 		iterExpr, ok := iter.(ast.Expr)
 		if !ok {
 			return fmt.Errorf("codegen: unsupported iterable %T", iter)
+		}
+		// Map iteration — `for k in m` walks the wrapper's
+		// insertion-order slice so iteration is deterministic
+		// (Go's bare `range m.m` is randomised). For now we
+		// expose keys only via this short form; tuple-form
+		// `for (k, v) in m` and `m.entries()` come later.
+		if id, ok := iterExpr.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+			g.b.WriteString("for _, ")
+			g.b.WriteString(goIdent(idPat.Name))
+			g.b.WriteString(" := range ")
+			if err := g.emitExpr(id); err != nil {
+				return err
+			}
+			g.b.WriteString(".order {\n")
+			break
+		}
+		// Set iteration — same idea against `s.order`.
+		if id, ok := iterExpr.(*ast.Ident); ok && g.varKind[id.Name] == "Set" {
+			g.b.WriteString("for _, ")
+			g.b.WriteString(goIdent(idPat.Name))
+			g.b.WriteString(" := range ")
+			if err := g.emitExpr(id); err != nil {
+				return err
+			}
+			g.b.WriteString(".order {\n")
+			break
 		}
 		g.b.WriteString("for _, ")
 		g.b.WriteString(goIdent(idPat.Name))
