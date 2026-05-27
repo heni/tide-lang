@@ -79,22 +79,10 @@ func Emit(f *ast.File, file string) (string, error) {
 	if g.usesReflect {
 		g.usesResult = true
 		g.usesOption = true
-		// Register the predeclared Kind variants per
-		// `lang-spec/builtins.md` §reflect. The owning sum type
-		// is the Tide-level `Kind` enum.
-		g.variant["Primitive"] = variantInfo{owner: "Kind", tag: 0}
-		g.variant["Class"] = variantInfo{owner: "Kind", tag: 1}
-		g.variant["Sum"] = variantInfo{owner: "Kind", tag: 2}
-		g.variant["Slice"] = variantInfo{owner: "Kind", tag: 3}
-		g.variant["Function"] = variantInfo{owner: "Kind", tag: 4}
-		g.variant["Unit"] = variantInfo{owner: "Kind", tag: 5}
 		// Pre-collect runtime descriptors for every user-declared
 		// class and sum type so the reflection-prelude emitted
 		// from writeHeader can include the init() registration
-		// block. Class/sum emit later in the pass also records
-		// descriptors but only for the descriptor-table on-the-fly
-		// path; the eager collection here is the source of truth
-		// for the prelude.
+		// block.
 		for _, d := range f.Decls {
 			switch v := d.(type) {
 			case *ast.ClassDecl:
@@ -141,6 +129,23 @@ func Emit(f *ast.File, file string) (string, error) {
 				}
 			}
 			g.class[cd.Name] = ci
+		}
+	}
+	// Register the predeclared Kind variants per
+	// `lang-spec/builtins.md` §reflect AFTER user sum decls have
+	// populated g.variant so collision is detectable. Once
+	// `import reflect` is present, the names Primitive / Class /
+	// Sum / Slice / Function / Unit are reserved at the variant
+	// namespace; user sums sharing any of them yield E0104-style
+	// ambiguity (sema PR moves this to a proper `.td`-coordinate
+	// diagnostic).
+	if g.usesReflect {
+		kindVariants := []string{"Primitive", "Class", "Sum", "Slice", "Function", "Unit"}
+		for i, name := range kindVariants {
+			if existing, ok := g.variant[name]; ok && existing.owner != "Kind" {
+				return "", fmt.Errorf("codegen: variant name %q in user sum-type %q collides with predeclared reflect.Kind.%s — rename the variant or drop `import reflect`", name, existing.owner, name)
+			}
+			g.variant[name] = variantInfo{owner: "Kind", tag: i}
 		}
 	}
 	g.writeHeader(f)
@@ -522,7 +527,15 @@ var (
 var tideDescRegistry = map[string]*TypeDescriptor{}
 
 // Primitive descriptors — registered eagerly so reflect.box on
-// any primitive value finds a descriptor.
+// any primitive value finds a descriptor. Notes:
+//   - byte is Go's alias for uint8 (reflect.TypeOf returns "uint8"
+//     for both byte and uint8 values), so we register a single
+//     descriptor for that runtime type with Name "byte".
+//   - rune is Go's alias for int32, so int32 / rune collapse to
+//     one descriptor with Name "int32".
+//   PR-Sema-2 tightens this: when sema knows the user wrote
+//   "let r: rune = ...", reflect.typeName can return "rune" via
+//   compile-time-resolved descriptor.
 var (
 	tideDesc_int     = &TypeDescriptor{Name: "int", Kind: KindPrimitive}
 	tideDesc_int64   = &TypeDescriptor{Name: "int64", Kind: KindPrimitive}
@@ -531,7 +544,6 @@ var (
 	tideDesc_bool    = &TypeDescriptor{Name: "bool", Kind: KindPrimitive}
 	tideDesc_float64 = &TypeDescriptor{Name: "float64", Kind: KindPrimitive}
 	tideDesc_byte    = &TypeDescriptor{Name: "byte", Kind: KindPrimitive}
-	tideDesc_rune    = &TypeDescriptor{Name: "rune", Kind: KindPrimitive}
 )
 
 func init() {
@@ -542,7 +554,6 @@ func init() {
 	tideDescRegistry["bool"] = tideDesc_bool
 	tideDescRegistry["float64"] = tideDesc_float64
 	tideDescRegistry["uint8"] = tideDesc_byte
-	tideDescRegistry["int32"] = tideDesc_rune
 }
 
 func tideBox[T any](v T) Dynamic {

@@ -78,7 +78,15 @@ var (
 var tideDescRegistry = map[string]*TypeDescriptor{}
 
 // Primitive descriptors — registered eagerly so reflect.box on
-// any primitive value finds a descriptor.
+// any primitive value finds a descriptor. Notes:
+//   - byte is Go's alias for uint8 (reflect.TypeOf returns "uint8"
+//     for both byte and uint8 values), so we register a single
+//     descriptor for that runtime type with Name "byte".
+//   - rune is Go's alias for int32, so int32 / rune collapse to
+//     one descriptor with Name "int32".
+//     PR-Sema-2 tightens this: when sema knows the user wrote
+//     "let r: rune = ...", reflect.typeName can return "rune" via
+//     compile-time-resolved descriptor.
 var (
 	tideDesc_int     = &TypeDescriptor{Name: "int", Kind: KindPrimitive}
 	tideDesc_int64   = &TypeDescriptor{Name: "int64", Kind: KindPrimitive}
@@ -87,7 +95,6 @@ var (
 	tideDesc_bool    = &TypeDescriptor{Name: "bool", Kind: KindPrimitive}
 	tideDesc_float64 = &TypeDescriptor{Name: "float64", Kind: KindPrimitive}
 	tideDesc_byte    = &TypeDescriptor{Name: "byte", Kind: KindPrimitive}
-	tideDesc_rune    = &TypeDescriptor{Name: "rune", Kind: KindPrimitive}
 )
 
 func init() {
@@ -98,7 +105,6 @@ func init() {
 	tideDescRegistry["bool"] = tideDesc_bool
 	tideDescRegistry["float64"] = tideDesc_float64
 	tideDescRegistry["uint8"] = tideDesc_byte
-	tideDescRegistry["int32"] = tideDesc_rune
 }
 
 func tideBox[T any](v T) Dynamic {
