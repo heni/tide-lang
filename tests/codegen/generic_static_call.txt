@@ -1,0 +1,48 @@
+--- TITLE ---
+generic static-method call — `Box<int>.make(99)` lowers to `boxMake[int](99)`
+
+--- INPUT ---
+import fmt
+
+class Box<T> {
+  var v: T
+
+  static make(x: T): Box<T> {
+    return Box<T>(x)
+  }
+
+  get(): T {
+    return this.v
+  }
+}
+
+func main() {
+  let b = Box<int>.make(99)
+  fmt.println(b.get())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box[T any] struct {
+	v T
+}
+
+func boxMake[T any](x T) *Box[T] {
+	return &Box[T]{x}
+}
+func (t *Box[T]) get() T {
+	return t.v
+}
+func main() {
+	var b = boxMake[int](99)
+	fmt.Println(b.get())
+}
+
+--- STDOUT ---
+99
+
+--- EXIT ---
+0

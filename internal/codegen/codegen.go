@@ -1066,6 +1066,21 @@ func (g *gen) emitCall(c *ast.Call) error {
 		if recvID, ok := f.Receiver.(*ast.Ident); ok {
 			if ci, isClass := g.class[recvID.Name]; isClass && ci.statics[f.Name] {
 				g.b.WriteString(staticMethodName(recvID.Name, f.Name))
+				// Thread the call-site TypeArgs onto the generated
+				// package-level Go function (per `lowering-go.md`
+				// §Generics — `Box<int>.new(...)` → `boxNew[int](...)`).
+				if len(c.TypeArgs) > 0 {
+					g.b.WriteByte('[')
+					for i, ta := range c.TypeArgs {
+						if i > 0 {
+							g.b.WriteString(", ")
+						}
+						if err := g.emitTypeExpr(ta); err != nil {
+							return err
+						}
+					}
+					g.b.WriteByte(']')
+				}
 				g.b.WriteByte('(')
 				for i, a := range c.Args {
 					if i > 0 {
