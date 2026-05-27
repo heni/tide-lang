@@ -137,7 +137,7 @@ admissible at the prompt. Coordinates use the synthetic file
 | E0902 | E | `main` is owned by the REPL | RFC-0003 §What the REPL accepts | Drop the `func main() { ... }` wrapper — paste the body directly at the prompt. The REPL synthesises `main` itself. |
 | E0903 | E | Unknown meta-command | RFC-0003 §Meta-commands | The set is `:help :quit :reset :imports :show :write[!] :type :inspect :load`. Type `:help` for the full list. |
 | E0904 | E | `:write` target file already exists | RFC-0003 §Meta-commands | Use `:write! <file.td>` to overwrite, or pick a different name. |
-| E0905 | E | Last-value binding is unbound | RFC-0003 §Auto-printing (`_` and `_error`) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
+| E0905 | E | Last-value binding is unbound | RFC-0003 §Auto-printing (`_` / `_error`) + §Open questions #2 (unbound-on-fresh-session) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
 
 ## Diagnostic formatting
 
@@ -160,6 +160,9 @@ Severity labels: `error` for E, `warning` for W, `internal` for
 I. The bracketed code is mandatory and stable; fixture
 comparison (`test-contract.md`) uses the code, not the message
 alone.
+
+For REPL inputs (codes E09xx) `<path>` is the literal string
+`repl`; `<line>:<col>` is the position within the input buffer.
 
 ## Coverage invariant
 
