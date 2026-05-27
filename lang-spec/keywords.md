@@ -21,11 +21,16 @@ names.
 ```
 import    type      class      interface
 implements          extends    static
-func      let       var        if         else
+func      let       const      var        if         else
 for       in        while      return
 match     try       defer      spawn      scope      select
 break     continue
 ```
+
+`const` is a surface alias for `let`. The two produce identical
+AST nodes and the same lowering; `const` exists so the user can
+spell "this binding is intended as a named constant" without
+the spec growing a separate semantic category.
 
 `newtype` is reserved-in-principle for nominal newtypes (D11 open
 issue — the v1 working placeholder is `newtype X = T`), but does not

@@ -372,9 +372,10 @@ Stmt         = LetStmt
              ;
 TrailingExpr = Expr ;                        // last expression of a block — its value (no Stmtterm)
 
-LetStmt      = "let" Pattern ( ":" TypeExpr )? "=" Expr ;
+LetStmt      = ( "let" | "const" ) Pattern ( ":" TypeExpr )? "=" Expr ;
 VarStmt      = "var" ( Ident | "_" ) ( ":" TypeExpr )? ( "=" Expr )? ;
-AssignStmt   = LValue "=" Expr ;
+AssignStmt   = LValue ( "=" | AssignOp ) Expr ;
+AssignOp     = "+=" | "-=" | "*=" | "/=" | "%=" ;   // desugared by parser to `lhs = lhs <op> rhs`
 LValue       = PostfixExpr ;                 // restricted by sema to writable shapes
 IfStmt       = "if" Expr Block ( "else" ( IfStmt | Block ) )? ;
 ForStmt      = "for" Pattern "in" Iterable Block ;

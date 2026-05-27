@@ -701,6 +701,13 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 		return p.parseForStmt()
 	case p.at(lexer.KindKeyword, "let"):
 		return p.parseLetOrVar(true)
+	case p.at(lexer.KindKeyword, "const"):
+		// `const` is a surface alias for `let` — both produce
+		// an immutable binding. The keyword is kept distinct in
+		// the lexer for readability of declarations the user
+		// intends as named constants; downstream nodes don't
+		// distinguish them.
+		return p.parseLetOrVar(true)
 	case p.at(lexer.KindKeyword, "var"):
 		return p.parseLetOrVar(false)
 	case p.at(lexer.KindKeyword, "return"):
@@ -737,6 +744,38 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 				LValue: e,
 				Value:  rhs,
 			}, nil
+		}
+		// Compound assignment: `lhs += rhs` desugars to
+		// `lhs = lhs + rhs` at the AST level. The LValue is
+		// reused on both sides — this is correct as long as
+		// the LValue has no side-effecting subexpression
+		// (a plain identifier or field/index path); sema will
+		// tighten this once it lands.
+		for _, op := range []string{"+=", "-=", "*=", "/=", "%="} {
+			if p.at(lexer.KindOp, op) {
+				opTok := p.advance()
+				rhs, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				binOp := op[:1]
+				return &ast.AssignStmt{
+					Span: ast.Span{
+						StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+						EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
+					},
+					LValue: e,
+					Value: &ast.Binary{
+						Span: ast.Span{
+							StartLine: opTok.Line, StartCol: opTok.Col,
+							EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
+						},
+						Op:    binOp,
+						Left:  e,
+						Right: rhs,
+					},
+				}, nil
+			}
 		}
 		return &ast.ExprStmt{Span: e.NodeSpan(), Expr: e}, nil
 	}

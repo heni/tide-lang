@@ -90,7 +90,7 @@ func (d *Diag) Error() string {
 var keywordSet = map[string]bool{
 	"import": true, "type": true, "class": true, "interface": true,
 	"implements": true, "extends": true, "static": true,
-	"func": true, "let": true, "var": true,
+	"func": true, "let": true, "const": true, "var": true,
 	"if": true, "else": true,
 	"for": true, "in": true, "while": true, "return": true,
 	"match": true, "try": true, "defer": true,
@@ -104,6 +104,7 @@ var keywordSet = map[string]bool{
 // a linear scan picks the longest match (..= before .., etc.).
 var multiCharOps = []string{
 	"..=", "...",
+	"+=", "-=", "*=", "/=", "%=",
 	"..", "==", "!=", "<=", ">=", "&&", "||", "=>", "->", "<-",
 }
 
