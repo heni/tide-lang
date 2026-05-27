@@ -282,6 +282,32 @@ multiple `case` arms over a chain of `if`. For an
 `UnreachableIR` leaf, codegen emits
 `panic("unreachable: non-exhaustive match")`.
 
+### `match` in value position
+
+A `match` whose result is consumed (LHS of an assignment, RHS of
+a `let`/`var`, argument of a call) lowers to a Go IIFE:
+
+```
+let r = match subject { p_1 => e_1, ..., p_n => e_n }
+                                       ⟿
+  r := func() T {
+    switch subject(.Tag)? {
+      case <head-1>: return e_1
+      ...
+      case <head-n>: return e_n
+    }
+    var __zero T; return __zero
+  }()
+```
+
+`T` is the unified type of the arm bodies per `T-Match`. The
+trailing zero-value return is unreachable when the match is
+exhaustive but required by Go's reachability checker for any
+switch without a `default:`. Payload-binding patterns in
+value-position match aren't supported in v1 — a value-position
+match with payload bindings must be rewritten to a
+statement-position match that assigns to a `var` from each arm.
+
 **Variant-tag numbering.** For built-in sum types the tag ints
 are fixed by `builtins.md`: `None = 0`, `Some = 1`, `Ok = 0`,
 `Err = 1`. For user-defined sum types the tag is the
