@@ -1,0 +1,32 @@
+--- TITLE ---
+TryExpr — `try expr` parses as expression with inner
+
+--- INPUT ---
+func foo(): Result<int, string> {
+  let x = try bar()
+  return Ok<int, string>(x)
+}
+
+--- AST ---
+(File @1:1-4:2
+  (FuncDecl "foo" @1:1-4:2
+    (type-params)
+    (params)
+    (return
+      (NamedType "Result" @1:13-1:32
+        (PrimitiveType "int" @1:20-1:23)
+        (PrimitiveType "string" @1:25-1:31)))
+    (Block @1:33-4:2
+      (LetStmt @2:3-2:20
+        (IdentPat "x" @2:7-2:8)
+        (TryExpr @2:11-2:20
+          (Call @2:15-2:20
+            (Ident "bar" @2:15-2:18))))
+      (ExprStmt @3:3-3:28
+        (ReturnExpr @3:3-3:28
+          (Call @3:10-3:28
+            (Ident "Ok" @3:10-3:12)
+            (type-args
+              (PrimitiveType "int" @3:13-3:16)
+              (PrimitiveType "string" @3:18-3:24))
+            (Ident "x" @3:26-3:27)))))))

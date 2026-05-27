@@ -449,6 +449,10 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Operand, depth+1)
+	case *TryExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Inner, depth+1)
 	case *RangeExpr:
 		if v.Inclusive {
 			b.WriteString(" inclusive")

@@ -1,0 +1,93 @@
+--- TITLE ---
+try expression on Result — Err propagates early; Ok unwraps to value
+
+--- INPUT ---
+import fmt
+
+func half(n: int): Result<int, string> {
+  if n == 7 {
+    return Err<int, string>("can't halve 7")
+  }
+  return Ok<int, string>(n / 2)
+}
+
+func go_three(n: int): Result<int, string> {
+  let a = try half(n)
+  let b = try half(a)
+  return Ok<int, string>(b)
+}
+
+func main() {
+  match go_three(20) {
+    Ok(v) => fmt.println("ok", v),
+    Err(e) => fmt.println("err", e),
+  }
+  match go_three(14) {
+    Ok(v) => fmt.println("ok", v),
+    Err(e) => fmt.println("err", e),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func half(n int) Result[int, string] {
+	if n == 7 {
+		return ResultErr[int, string]("can't halve 7")
+	}
+	return ResultOk[int, string](n / 2)
+}
+func go_three(n int) Result[int, string] {
+	__tide_try_1 := half(n)
+	if __tide_try_1.Tag == 1 {
+		return Result[int, string]{Tag: 1, E: __tide_try_1.E}
+	}
+	var a = __tide_try_1.V
+	__tide_try_2 := half(a)
+	if __tide_try_2.Tag == 1 {
+		return Result[int, string]{Tag: 1, E: __tide_try_2.E}
+	}
+	var b = __tide_try_2.V
+	return ResultOk[int, string](b)
+}
+func main() {
+	__tide_match_1 := go_three(20)
+	switch __tide_match_1.Tag {
+	case 0:
+		v := __tide_match_1.V
+		fmt.Println("ok", v)
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err", e)
+	}
+	__tide_match_2 := go_three(14)
+	switch __tide_match_2.Tag {
+	case 0:
+		v := __tide_match_2.V
+		fmt.Println("ok", v)
+	case 1:
+		e := __tide_match_2.E
+		fmt.Println("err", e)
+	}
+}
+
+--- STDOUT ---
+ok 5
+err can't halve 7
+
+--- EXIT ---
+0

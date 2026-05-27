@@ -156,6 +156,15 @@ type gen struct {
 	usesMap    bool
 	usesSet    bool
 	usesStack  bool
+	// curFuncReturn — the Tide return TypeExpr of the function /
+	// method currently being emitted. Consumed by TryExpr
+	// lowering to know whether the early-return target is
+	// `Option<U>` or `Result<U, E>` and to extract U / E for
+	// the wrapped return value.
+	curFuncReturn ast.TypeExpr
+	// tryTempCounter generates unique temp names for `try`
+	// emission. Same hygiene as matchTempCounter.
+	tryTempCounter int
 	// varKind tracks lexical variable names (from `let`/`var` at
 	// any statement nesting level in the current emit) to their
 	// presumed predeclared-container kind ("Map" / "Set" /
@@ -748,15 +757,18 @@ func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Meth
 	}
 	g.b.WriteString(" {\n")
 	g.indent++
+	prevRet := g.curFuncReturn
+	g.curFuncReturn = m.ReturnType
 	if err := g.emitBlockBody(m.Body); err != nil {
 		return err
 	}
+	g.curFuncReturn = prevRet
 	g.indent--
 	g.b.WriteString("}\n")
 	return nil
 }
 
-// emitTypeParamBrackets writes a Go-style type-parameter
+// emitTypeParamBrackets writes a Go-side type-parameter
 // list. With `withConstraints` it emits `[T any, U any, ...]`
 // (used on declarations); without, it emits `[T, U, ...]`
 // (used on uses like receiver types where the constraint has
@@ -819,9 +831,12 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	}
 	g.b.WriteString(" {\n")
 	g.indent++
+	prevRet := g.curFuncReturn
+	g.curFuncReturn = fn.ReturnType
 	if err := g.emitBlockBody(fn.Body); err != nil {
 		return err
 	}
+	g.curFuncReturn = prevRet
 	g.indent--
 	g.b.WriteString("}\n")
 	return nil
@@ -890,6 +905,20 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.ExprStmt:
 		// ReturnExpr (DivergingExpr): lower to Go `return` stmt.
 		if r, ok := v.Expr.(*ast.ReturnExpr); ok {
+			// `return try e` — emit the try preamble, then
+			// `return tmp.V`.
+			if try, ok := r.Value.(*ast.TryExpr); ok {
+				tmp, err := g.emitTryPreamble(try)
+				if err != nil {
+					return err
+				}
+				g.line(r.Span.StartLine)
+				g.writeIndent()
+				g.b.WriteString("return ")
+				g.b.WriteString(tmp)
+				g.b.WriteString(".V\n")
+				return nil
+			}
 			g.line(v.Span.StartLine)
 			g.writeIndent()
 			if r.Value == nil {
@@ -902,6 +931,11 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 			}
 			g.b.WriteByte('\n')
 			return nil
+		}
+		// Bare `try e` as a discarded expression statement.
+		if try, ok := v.Expr.(*ast.TryExpr); ok {
+			_, err := g.emitTryPreamble(try)
+			return err
 		}
 		// MatchExpr: lower to Go `switch` statement.
 		if m, ok := v.Expr.(*ast.MatchExpr); ok {
@@ -1071,6 +1105,77 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 	return nil
 }
 
+// emitTryPreamble lowers a `try e` at statement position per
+// `lang-spec/desugaring.md` §T-Try-Result / §T-Try-Option:
+// evaluates the inner expression into a fresh temp, then emits
+// an if-bail block that early-returns the wrapped Err / None
+// shape of the enclosing function's return type. The returned
+// Go identifier is the temp name; the caller pulls the unwrapped
+// payload via `<tmp>.V`. Bail-tag is 1 for Result (Err), 0 for
+// Option (None); determined from `g.curFuncReturn` which sema
+// (PR-Sema-2) will tighten to also account for inner-expr type.
+func (g *gen) emitTryPreamble(t *ast.TryExpr) (string, error) {
+	if g.curFuncReturn == nil {
+		return "", fmt.Errorf("codegen: `try` outside a function that returns Result/Option")
+	}
+	ret, ok := g.curFuncReturn.(*ast.NamedType)
+	if !ok || len(ret.QName) != 1 {
+		return "", fmt.Errorf("codegen: `try` requires the enclosing function's return type to be Result/Option, got %T", g.curFuncReturn)
+	}
+	var bailTag int
+	switch ret.QName[0] {
+	case "Result":
+		bailTag = 1 // Err
+	case "Option":
+		bailTag = 0 // None
+	default:
+		return "", fmt.Errorf("codegen: `try` requires the enclosing function's return type to be Result/Option, got %s", ret.QName[0])
+	}
+	g.tryTempCounter++
+	tmp := fmt.Sprintf("__tide_try_%d", g.tryTempCounter)
+	g.line(t.Span.StartLine)
+	g.writeIndent()
+	g.b.WriteString(tmp)
+	g.b.WriteString(" := ")
+	if err := g.emitExpr(t.Inner); err != nil {
+		return "", err
+	}
+	g.b.WriteByte('\n')
+	g.writeIndent()
+	g.b.WriteString("if ")
+	g.b.WriteString(tmp)
+	g.b.WriteString(".Tag == ")
+	g.b.WriteString(strconv.Itoa(bailTag))
+	g.b.WriteString(" {\n")
+	g.indent++
+	g.writeIndent()
+	g.b.WriteString("return ")
+	if err := g.emitTypeExpr(ret); err != nil {
+		return "", err
+	}
+	g.b.WriteByte('{')
+	g.b.WriteString("Tag: ")
+	g.b.WriteString(strconv.Itoa(bailTag))
+	if ret.QName[0] == "Result" {
+		g.b.WriteString(", E: ")
+		g.b.WriteString(tmp)
+		g.b.WriteString(".E")
+	}
+	g.b.WriteString("}\n")
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}\n")
+	return tmp, nil
+}
+
+// emitExpr's TryExpr arm — reachable only at unsupported
+// expression positions (binary operand, call argument, etc.).
+// Statement-position `try` is handled in emitStmt / emitLetOrVar
+// without going through emitExpr.
+func (g *gen) tryExprErr() error {
+	return fmt.Errorf("codegen: `try` in expression position not yet supported — use it at let/var/return position; full expression-position lands with PR-Sema-2 (block expressions)")
+}
+
 // nextMatchTemp returns a fresh Go identifier reserved for the
 // captured `match` subject. The `__tide_` prefix makes it
 // vanishingly unlikely to collide with a user-written name even
@@ -1185,6 +1290,28 @@ func (g *gen) emitMatchArmBody(body ast.Expr, _ ast.Span) error {
 // Immutability of `let` is a sema concern (not yet implemented); the
 // generated Go is identical for both keywords.
 func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, value ast.Expr) error {
+	// `let x = try e` / `var x = try e` — emit the try
+	// preamble, then bind the unwrapped value.
+	if try, ok := value.(*ast.TryExpr); ok {
+		tmp, err := g.emitTryPreamble(try)
+		if err != nil {
+			return err
+		}
+		g.line(span.StartLine)
+		g.writeIndent()
+		g.b.WriteString("var ")
+		g.b.WriteString(goIdent(name))
+		if declType != nil {
+			g.b.WriteByte(' ')
+			if err := g.emitTypeExpr(declType); err != nil {
+				return err
+			}
+		}
+		g.b.WriteString(" = ")
+		g.b.WriteString(tmp)
+		g.b.WriteString(".V\n")
+		return nil
+	}
 	g.line(span.StartLine)
 	g.writeIndent()
 	g.b.WriteString("var ")
@@ -1491,6 +1618,15 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// reaching this branch means a misuse (return in a
 		// non-statement context) — emit clearly.
 		return fmt.Errorf("codegen: return-expression used outside statement position")
+	case *ast.TryExpr:
+		// `try` is only supported at statement-position sites
+		// today (let / var / return value); the supporting paths
+		// in emitStmt / emitLetOrVar intercept before reaching
+		// emitExpr. Anything else (e.g., `try e + 1` inside an
+		// arithmetic expression, or `f(try e)` as a call argument)
+		// requires expression-position match-or-block lowering,
+		// deferred until sema PR.
+		return g.tryExprErr()
 	}
 	return fmt.Errorf("codegen: unhandled expression %T", e)
 }

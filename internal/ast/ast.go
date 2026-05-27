@@ -635,6 +635,22 @@ func (n *ReturnExpr) NodeSpan() Span   { return n.Span }
 func (n *ReturnExpr) NodeKind() string { return "ReturnExpr" }
 func (n *ReturnExpr) exprMarker()      {}
 
+// TryExpr — `try e`. Per `lang-spec/ast.md` §Expr and
+// `lang-spec/desugaring.md` §T-Try, evaluates the inner
+// expression (which must be of `Result<T, E>` or `Option<T>`
+// shape per sema); if the inner value is Err / None, early-
+// returns the wrapped error from the enclosing function;
+// otherwise the value of the whole `try e` is the unwrapped
+// payload.
+type TryExpr struct {
+	Span  Span
+	Inner Expr
+}
+
+func (n *TryExpr) NodeSpan() Span   { return n.Span }
+func (n *TryExpr) NodeKind() string { return "TryExpr" }
+func (n *TryExpr) exprMarker()      {}
+
 // RangeExpr is `low..high` (exclusive) or `low..=high` (inclusive).
 // Per ast.md, RangeExpr is iterable-position-only; it is NOT an
 // Expr (it does not appear in the Expr sum). It satisfies the

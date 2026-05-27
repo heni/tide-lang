@@ -1385,6 +1385,19 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		case "this":
 			p.advance()
 			return &ast.ThisExpr{Span: spanFromToken(t)}, nil
+		case "try":
+			tk := p.advance()
+			inner, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			return &ast.TryExpr{
+				Span: ast.Span{
+					StartLine: tk.Line, StartCol: tk.Col,
+					EndLine: inner.NodeSpan().EndLine, EndCol: inner.NodeSpan().EndCol,
+				},
+				Inner: inner,
+			}, nil
 		}
 		return nil, p.diag("E0112", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
 	case lexer.KindIdent:
