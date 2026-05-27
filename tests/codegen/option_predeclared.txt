@@ -1,0 +1,47 @@
+--- TITLE ---
+predeclared Option<T> — Some(x), None<T>(), match arms with payload binding
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let x = Some(42)
+  match x {
+    Some(v) => fmt.println("Some", v),
+    None => fmt.println("none"),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Option[T any] struct {
+	Tag       uint8
+	SomeValue T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, SomeValue: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+func main() {
+	var x = OptionSome(42)
+	__tide_match_1 := x
+	switch __tide_match_1.Tag {
+	case 1:
+		v := __tide_match_1.SomeValue
+		fmt.Println("Some", v)
+	case 0:
+		fmt.Println("none")
+	}
+}
+
+--- STDOUT ---
+Some 42
+
+--- EXIT ---
+0
