@@ -348,6 +348,32 @@ func (s *replSession) render() string {
 	return s.renderWith(nil)
 }
 
+// renderOriginal produces the user-facing view of the session:
+// the original Tide source the user typed, with imports and
+// decls verbatim and stmts in append order — no auto-print
+// wrap, no silence-uses. Used by `:show` so users get a
+// faithful echo of their inputs rather than the compiled
+// harness's instrumented form.
+func (s *replSession) renderOriginal() string {
+	var b strings.Builder
+	for _, imp := range s.imports {
+		b.WriteString(imp)
+		b.WriteByte('\n')
+	}
+	for _, d := range s.decls {
+		b.WriteString(d)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("func main() {\n")
+	for _, st := range s.stmts {
+		b.WriteString("  ")
+		b.WriteString(st.src)
+		b.WriteByte('\n')
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
 // renderWith is the rendering core, used by render() (no extra
 // stmts) and the metas (`:type` / `:inspect`) which append a
 // one-shot stmt to the session-derived source without mutating
@@ -578,7 +604,12 @@ func handleMeta(line string, s *replSession, stdout, stderr io.Writer) bool {
 		*s = replSession{}
 		fmt.Fprintln(stdout, "(session cleared)")
 	case ":show":
-		fmt.Fprint(stdout, s.render())
+		// `:show` is a diagnostic aid — print the original
+		// user-typed source, not the auto-print-wrapped render
+		// that the run harness sees. The wrap version belongs
+		// inside the compile harness; here we want a faithful
+		// echo of what the user has actually given the REPL.
+		fmt.Fprint(stdout, s.renderOriginal())
 	case ":imports":
 		if len(s.imports) == 0 {
 			fmt.Fprintln(stdout, "(no imports)")

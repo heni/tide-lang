@@ -349,6 +349,72 @@ func TestReplCallStatementNotAutoPrinted(t *testing.T) {
 	}
 }
 
+func TestReplAutoPrintLastOnly(t *testing.T) {
+	// Three bare expressions in sequence. Only the most-
+	// recently-entered one prints its value on the latest run;
+	// earlier auto-prints collapse to silent `let _ = (...)` so
+	// the accumulating-source rerun does not replay all three
+	// values every turn.
+	input := "1 + 2\n3 + 4\n5 + 6\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	// Each value `3`, `7`, `11` must appear exactly once — the
+	// turn it became the latest input. If the auto-print
+	// collapse to silent `let _ = (...)` were not in place,
+	// `3` would print on every subsequent rerun.
+	for _, want := range []string{"tide> 3\n", "tide> 7\n", "tide> 11\n"} {
+		if got := strings.Count(stdout, want); got != 1 {
+			t.Errorf("expected %q exactly once; got %d; stdout:\n%s", want, got, stdout)
+		}
+	}
+}
+
+func TestReplAssignmentNotAutoPrinted(t *testing.T) {
+	// `x = 5` is an assignment, not a bare expression. It must
+	// not trigger auto-print (which would wrap it as
+	// `reflect.box((x = 5))` and fail to compile).
+	input := "var x = 1\nx = 99\nx\n:quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "99") {
+		t.Errorf("expected '99' from auto-print of x after assignment; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplAutoPrintAddsFmtImport(t *testing.T) {
+	// User never typed `import fmt` or `import reflect`. The
+	// auto-print machinery must add them silently so a bare
+	// expression evaluates without further setup.
+	input := "42\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "42") {
+		t.Errorf("auto-print did not add fmt/reflect; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplShowOriginalSource(t *testing.T) {
+	// `:show` is the diagnostic aid — it must print the user's
+	// original input, NOT the wrapped auto-print rendering.
+	input := "1 + 2\n:show\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "1 + 2") {
+		t.Errorf(":show must include the user-typed expression; stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "reflect.box") {
+		t.Errorf(":show must NOT leak the auto-print wrap; stdout:\n%s", stdout)
+	}
+}
+
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
 	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
