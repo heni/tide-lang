@@ -252,6 +252,39 @@ func TestReplRollsBackCompileFailure(t *testing.T) {
 	}
 }
 
+func TestReplMultiLineDecl(t *testing.T) {
+	// A function declaration spread across continuation lines
+	// must accumulate into one decl, then be callable from a
+	// later input. Exercises balanced()'s tracking across `(` `{`.
+	input := "import fmt\n" +
+		"func multi(\n" +
+		"  a: int,\n" +
+		"  b: int\n" +
+		") {\n" +
+		"  fmt.println(a + b)\n" +
+		"}\n" +
+		"multi(2, 3)\n" +
+		":quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "5") {
+		t.Errorf("multi-line decl + call missing '5'; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplImportsListing(t *testing.T) {
+	input := "import fmt\n:imports\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "import fmt") {
+		t.Errorf(":imports did not list fmt; stdout:\n%s", stdout)
+	}
+}
+
 func TestReplMetaShowAndReset(t *testing.T) {
 	input := "import fmt\nlet x = 1\n:show\n:reset\n:show\n:quit\n"
 	stdout, _, exit := runTideStdin(t, input, "repl")

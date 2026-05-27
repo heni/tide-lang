@@ -72,10 +72,10 @@ func runRepl(stdin io.Reader, stdout, stderr io.Writer) int {
 		line := scanner.Text()
 		if buf.Len() == 0 && strings.HasPrefix(strings.TrimSpace(line), ":") {
 			// Meta-command: only valid at the start of a fresh
-			// input (a `:` mid-multi-line input is treated as
-			// ordinary source text — Tide grammar happens to
-			// have no `:`-starting tokens at outermost level
-			// today, so this is unambiguous in practice).
+			// input. The `buf.Len() == 0` guard means a `:` mid
+			// multi-line input is treated as ordinary source —
+			// where Tide's `:` punctuator (type annotations,
+			// match arms) is expected.
 			cmd := strings.TrimSpace(line)
 			if quit := handleMeta(cmd, sess, stdout, stderr); quit {
 				return 0
@@ -127,7 +127,7 @@ func (s *replSession) add(input string) error {
 	switch head {
 	case "import":
 		s.imports = append(s.imports, input)
-	case "func", "class", "type", "record", "enum", "trait":
+	case "func", "class", "type", "interface":
 		s.decls = append(s.decls, input)
 	case "if", "for", "while", "match", "return", "break", "continue":
 		return fmt.Errorf("top-level control-flow not supported in v1 — wrap it in a func")
@@ -240,11 +240,11 @@ func (s *replSession) bindingNames() []string {
 func (s *replSession) importSilences() []string {
 	var out []string
 	for _, imp := range s.imports {
-		// Strip "import " prefix.
+		// Tide grammar (grammar.ebnf §Import) is just
+		// `import Ident ("/" Ident)*` — no quoted form, no `as`
+		// alias. Strip the keyword and take the first token.
 		path := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(imp), "import"))
-		// Allow `import fmt`, `import "fmt"`, `import fmt as f` — keep the head only.
 		path = strings.TrimSpace(strings.SplitN(path, " ", 2)[0])
-		path = strings.Trim(path, "\"")
 		if ref, ok := importSilenceRef[path]; ok {
 			out = append(out, ref)
 		}
@@ -257,18 +257,33 @@ func (s *replSession) importSilences() []string {
 // corresponding Go-side package. The expression is referenced
 // (not called) inside the synthetic `let _ = …` line, which is
 // enough to mark the import as used in Go.
+//
+// The symbol is spelt with its Go-side capitalisation (e.g.
+// `strings.Split`, not `strings.split`) because PR-C's binding
+// shortcut (`mapFieldName` in `internal/codegen/codegen.go`)
+// only normalises a handful of `fmt.*` names; for every other
+// package the field name is passed through verbatim. Using the
+// Go spelling avoids depending on the binding layer.
+//
+// Source for this list is the stdlib namespace set recognised
+// by codegen (`isStdlibNamespace`); when that set widens, this
+// map should track it. `reflect` is Tide-internal but a user
+// still spells the import, so it lives here too.
 var importSilenceRef = map[string]string{
-	"fmt":     "fmt.println",
-	"os":      "os.stdin",
-	"strings": "strings.split",
-	"strconv": "strconv.itoa",
-	"bufio":   "bufio.newScanner",
-	"context": "context.background",
-	"time":    "time.now",
-	"sync":    "sync.WaitGroup",
-	"io":      "io.copy",
-	"log":     "log.println",
-	"reflect": "reflect.typeOf",
+	"fmt":      "fmt.Println",
+	"os":       "os.Stdin",
+	"strings":  "strings.Split",
+	"strconv":  "strconv.Itoa",
+	"bufio":    "bufio.NewScanner",
+	"context":  "context.Background",
+	"time":     "time.Now",
+	"sync":     "sync.WaitGroup",
+	"io":       "io.Copy",
+	"log":      "log.Println",
+	"net":      "net.Listen",
+	"encoding": "encoding.BinaryMarshaler",
+	"math":     "math.Pi",
+	"reflect":  "reflect.typeOf",
 }
 
 // runSession compiles and executes the current session source.
@@ -426,6 +441,10 @@ func balanced(src string) bool {
 			i++
 		}
 	}
+	// `depth == 0` rather than `<= 0`: a session that has more
+	// closers than openers is malformed, but we flush it anyway
+	// so the parser produces the diagnostic — leaving it in the
+	// continuation buffer would hang forever.
 	return depth <= 0
 }
 
