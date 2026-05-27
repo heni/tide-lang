@@ -70,6 +70,15 @@ scope as `NamedType` (with no type args).
   `...Any` variadic parameters. Does **not** narrow back to a
   concrete `T`; users may not introduce `Any`-typed parameters
   in their own code (D11 / G23, enforced by the resolver).
+- **`Dynamic`** — user-facing runtime-erased wrapper for values
+  whose static type is unknown to the caller, used by the
+  `reflect` module. Introduced only at `reflect.*` parameter
+  sites of formal type `Dynamic` (implicit widen) or via
+  explicit `reflect.box`. Eliminated only via `reflect.unbox<T>`
+  which returns `Result<T>`. See `type-system.md` §Dynamic for
+  the full intro / elim rules. `Any` and `Dynamic` are
+  deliberately separate: `Any` is internal FFI; `Dynamic` is
+  the explicit user-facing handle the reflection API accepts.
 
 ### `error`
 
@@ -286,6 +295,114 @@ Iteration: `for v in ch { ... }` over a `RecvChan<T>` —
 terminates cleanly when the channel closes (`IterElem(RecvChan<T>)
 = T`).
 
+## `reflect` module
+
+Runtime-supplied module. Unlike `fmt`, `strings`, `os` (which
+are Go-stdlib bindings per D6), `reflect` is implemented in
+`tidert/reflect` and ships with the Tide runtime — not a binding
+to any Go package. The surface is governed by **D18**
+(`docs/design-decisions.md`): contract invariants CT1–CT3
+(private/public layer split, version-locking, append-only ABI)
+and performance invariants P1–P3 (passive metadata, explicit
+`Dynamic`, no universal `Value` lowering).
+
+Imported as `import reflect`. Per the layer split (D18), only
+programs that import `reflect` ship the descriptor registry and
+boxing helpers in their binary; reflection-free programs are
+unaffected.
+
+### Types
+
+```
+type Type             // opaque descriptor; equal iff describes the same Tide type
+
+type Kind =
+  | Primitive
+  | Class
+  | Sum
+  | Slice
+  | Function
+  | Unit
+
+type FieldInfo = {
+  name: string,
+  type: Type,
+}
+
+type MethodInfo = {
+  name: string,
+  is_static: bool,
+}
+
+type VariantInfo = {
+  name: string,
+  tag:  int,
+}
+```
+
+`Type` is opaque — its internal representation is part of
+`tidert/reflect` (private under CT1) and not observable to
+user code beyond the functions below. Two `Type` values are
+**equal** iff they describe the same Tide type; this is the
+only externally observable invariant on `Type` identity.
+
+### Functions
+
+Total queries — always succeed:
+
+```
+typeOf(v: Dynamic): Type
+typeName(t: Type): string         // Tide-side spelling, e.g. "Counter", "int", "Option<int>"
+kind(t: Type): Kind
+```
+
+Total queries returning the empty slice for kinds where the
+question is vacuous (e.g., fields on a primitive). Use
+`kind(t)` to distinguish "no fields because not a record"
+from "record with zero fields":
+
+```
+fields(t: Type): []FieldInfo
+methods(t: Type): []MethodInfo
+variants(t: Type): []VariantInfo
+typeArgs(t: Type): []Type
+```
+
+Partial queries returning `Result<T>` — **panic-free**. The
+`Err` payload carries a diagnostic code per `diagnostics.md`:
+
+```
+fieldValue(v: Dynamic, name: string): Result<Dynamic>   // Err: no such field, or v is not a class/record
+variantOf(v: Dynamic): Result<VariantInfo>              // Err: v is not a sum value
+elementType(t: Type): Result<Type>                      // Err: t has no single element type
+```
+
+Boxing / unboxing:
+
+```
+box<T>(v: T): Dynamic              // explicit widen-to-Dynamic
+unbox<T>(d: Dynamic): Result<T>    // type-checked unwrap; Err on descriptor mismatch
+```
+
+The type parameter `<T>` of `box` is inferred from the
+argument. The type parameter of `unbox` is required explicitly
+at the call site (return-only generics — see Open Question 1
+in RFC-0003).
+
+### Constraints
+
+- The reflection API is **panic-free**: every partial operation
+  returns `Result`. This is a hard contract — adding a panicking
+  `reflect.*` function violates the API discipline.
+- Mutation via reflection (`setField`, `callMethod`, ...) is
+  **not** in v1 — it adds semantics obligations (does the
+  receiver narrow? can you set a `let` field?) that need their
+  own RFC.
+- The `Dynamic` introduction rule (`T-Dyn-Intro-Reflect` in
+  `type-system.md`) fires only for functions in **this** module;
+  a user-defined function taking `Dynamic` requires explicit
+  `reflect.box` at the call site.
+
 ## Variant constructors (predeclared)
 
 ```
@@ -435,6 +552,8 @@ sketch below for reviewers' orientation:
 | `SendChan<T>` | `chan<- T` |
 | `RecvChan<T>` | `<-chan T` |
 | `error` | Go `error` interface |
+| `Dynamic` | `tidert.Dynamic` struct (payload + descriptor pointer); never `interface{}` alone — see D18-P3 |
+| `reflect.*` functions | calls into `tidert/reflect`; descriptors built at codegen time and registered in the runtime registry |
 | `scope { ... }` | `errgroup.Group` + cancellable `context.Context` |
 | `spawn` | `g.Go(func() error { ... })` |
 | `makeChannel<T>(n)` | `make(chan T, n)` |
@@ -455,6 +574,10 @@ touched by this file:
   isn't in this catalog and isn't user-defined).
 - **E0104** — Ambiguous variant name (built-in vs user-defined
   same-name variant — see name-resolution).
+- **E0209**–**E0212** — `Dynamic` widening / narrowing / generic
+  flow / `Any`-`Dynamic` mixing diagnostics, raised by sema per
+  `type-system.md` §Dynamic. *(Message text: PR-S5 /
+  `diagnostics.md`.)*
 
 The catalog must be exhaustive: any name resolved through the
 predeclared scope must appear here, and the v1 corpus must not
