@@ -143,6 +143,18 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		writeIndent(b, depth+1)
+		if len(v.TypeParams) == 0 {
+			b.WriteString("(type-params)")
+		} else {
+			b.WriteString("(type-params")
+			for _, tp := range v.TypeParams {
+				b.WriteByte(' ')
+				writeQuoted(b, tp)
+			}
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
 		if len(v.Params) == 0 {
 			b.WriteString("(params)")
 		} else {

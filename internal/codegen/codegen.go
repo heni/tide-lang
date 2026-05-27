@@ -33,7 +33,10 @@ func Emit(f *ast.File, file string) (string, error) {
 			}
 		}
 		if cd, ok := d.(*ast.ClassDecl); ok {
-			ci := classInfo{statics: map[string]bool{}}
+			ci := classInfo{
+				statics: map[string]bool{},
+				generic: len(cd.TypeParams) > 0,
+			}
 			for _, m := range cd.Methods {
 				if m.IsStatic {
 					ci.statics[m.Name] = true
@@ -110,6 +113,7 @@ type variantInfo struct {
 
 type classInfo struct {
 	statics map[string]bool // names of `static` methods
+	generic bool            // true iff the class has type parameters
 }
 
 func (g *gen) writeHeader(f *ast.File) {
@@ -257,6 +261,7 @@ func (g *gen) emitClassDecl(cd *ast.ClassDecl) error {
 	g.line(cd.Span.StartLine)
 	g.b.WriteString("type ")
 	g.b.WriteString(goIdent(cd.Name))
+	g.emitTypeParamBrackets(cd.TypeParams, true) // declaration: with `any` constraints
 	g.b.WriteString(" struct {\n")
 	for _, f := range cd.Fields {
 		g.b.WriteByte('\t')
@@ -269,23 +274,25 @@ func (g *gen) emitClassDecl(cd *ast.ClassDecl) error {
 	}
 	g.b.WriteString("}\n")
 	for _, m := range cd.Methods {
-		if err := g.emitMethod(cd.Name, m); err != nil {
+		if err := g.emitMethod(cd.Name, cd.TypeParams, m); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (g *gen) emitMethod(className string, m *ast.Method) error {
+func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Method) error {
 	g.line(m.Span.StartLine)
 	g.b.WriteString("func ")
 	if !m.IsStatic {
 		g.b.WriteString("(t *")
 		g.b.WriteString(goIdent(className))
+		g.emitTypeParamBrackets(classTypeParams, false) // receiver: type params without constraints
 		g.b.WriteString(") ")
 		g.b.WriteString(goIdent(m.Name))
 	} else {
 		g.b.WriteString(staticMethodName(className, m.Name))
+		g.emitTypeParamBrackets(classTypeParams, true) // static = package-level func, declare constraints
 	}
 	g.b.WriteByte('(')
 	for i, p := range m.Params {
@@ -315,6 +322,29 @@ func (g *gen) emitMethod(className string, m *ast.Method) error {
 	return nil
 }
 
+// emitTypeParamBrackets writes a Go-style type-parameter
+// list. With `withConstraints` it emits `[T any, U any, ...]`
+// (used on declarations); without, it emits `[T, U, ...]`
+// (used on uses like receiver types where the constraint has
+// already been declared). PR-G1 uses `any` as the default
+// constraint; user-written constraints land with PR-G3.
+func (g *gen) emitTypeParamBrackets(tps []string, withConstraints bool) {
+	if len(tps) == 0 {
+		return
+	}
+	g.b.WriteByte('[')
+	for i, tp := range tps {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		g.b.WriteString(goIdent(tp))
+		if withConstraints {
+			g.b.WriteString(" any")
+		}
+	}
+	g.b.WriteByte(']')
+}
+
 // staticMethodName returns the package-level Go name for a
 // static method per lowering-go.md §Generics: `<className>` in
 // camelCase + capitalised method name (`Counter.make` →
@@ -327,6 +357,7 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	g.line(fn.Span.StartLine)
 	g.b.WriteString("func ")
 	g.b.WriteString(goIdent(fn.Name))
+	g.emitTypeParamBrackets(fn.TypeParams, true) // declaration: with `any` constraints
 	g.b.WriteByte('(')
 	for i, p := range fn.Params {
 		if i > 0 {
@@ -997,7 +1028,10 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// lowering-go.md §Implicit receiver, class instances are
 	// pointer-typed; instantiation produces a *ClassName.
 	if id, ok := c.Callee.(*ast.Ident); ok {
-		if _, isClass := g.class[id.Name]; isClass {
+		if ci, isClass := g.class[id.Name]; isClass {
+			if ci.generic {
+				return fmt.Errorf("codegen: constructor call %s(...) on generic class needs explicit type arguments — call-site instantiation lands with PR-G2", id.Name)
+			}
 			g.b.WriteByte('&')
 			g.b.WriteString(goIdent(id.Name))
 			g.b.WriteByte('{')

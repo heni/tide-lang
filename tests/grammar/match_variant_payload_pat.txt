@@ -12,6 +12,7 @@ func main() {
 --- AST ---
 (File @1:1-6:2
   (FuncDecl "main" @1:1-6:2
+    (type-params)
     (params)
     (Block @1:13-6:2
       (ExprStmt @2:3-5:4

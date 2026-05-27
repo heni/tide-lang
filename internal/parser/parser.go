@@ -326,9 +326,13 @@ func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
 	if err != nil {
 		return nil, err
 	}
-	if p.at(lexer.KindKeyword, "implements") || p.at(lexer.KindOp, "<") {
+	typeParams, err := p.parseTypeParamList()
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.KindKeyword, "implements") {
 		t := p.peek()
-		return nil, p.diag("E0112", "PR-F4 admits only plain `class Name { ... }` — no generics or `implements` yet", t.Line, t.Col)
+		return nil, p.diag("E0112", "`implements` on class declarations is not yet supported", t.Line, t.Col)
 	}
 	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
 		return nil, err
@@ -358,9 +362,10 @@ func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
 			StartLine: kw.Line, StartCol: kw.Col,
 			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
 		},
-		Name:    nameTok.Lexeme,
-		Fields:  fields,
-		Methods: methods,
+		Name:       nameTok.Lexeme,
+		TypeParams: typeParams,
+		Fields:     fields,
+		Methods:    methods,
 	}, nil
 }
 
@@ -444,6 +449,10 @@ func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
 	if err != nil {
 		return nil, err
 	}
+	typeParams, err := p.parseTypeParamList()
+	if err != nil {
+		return nil, err
+	}
 	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
 		return nil, err
 	}
@@ -472,10 +481,42 @@ func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
 			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
 		},
 		Name:       name.Lexeme,
+		TypeParams: typeParams,
 		Params:     params,
 		ReturnType: retType,
 		Body:       body,
 	}, nil
+}
+
+// parseTypeParamList reads an optional `<T, U, ...>` list at
+// the declaration head. v1 admits only bare names (default
+// constraint `any`); user-written constraints land in PR-G3.
+func (p *parser) parseTypeParamList() ([]string, *Diag) {
+	if !p.at(lexer.KindOp, "<") {
+		return nil, nil
+	}
+	p.advance() // consume '<'
+	var out []string
+	for {
+		p.skipNewlines()
+		if !p.at(lexer.KindIdent) {
+			t := p.peek()
+			return nil, p.diag("E0112",
+				fmt.Sprintf("expected type-parameter name, got %s %q", t.Kind, t.Lexeme),
+				t.Line, t.Col)
+		}
+		tp := p.advance()
+		out = append(out, tp.Lexeme)
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+			continue
+		}
+		break
+	}
+	if _, err := p.expect(lexer.KindOp, ">"); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // parseParamList reads zero or more comma-separated `name: T`

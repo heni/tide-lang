@@ -1,0 +1,34 @@
+--- TITLE ---
+generic function — `identity<T>` lowers to Go generic; usage prints inferred result
+
+--- INPUT ---
+import fmt
+
+func identity<T>(x: T): T {
+  return x
+}
+
+func main() {
+  fmt.println(identity(42))
+  fmt.println(identity("hi"))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func identity[T any](x T) T {
+	return x
+}
+func main() {
+	fmt.Println(identity(42))
+	fmt.Println(identity("hi"))
+}
+
+--- STDOUT ---
+42
+hi
+
+--- EXIT ---
+0

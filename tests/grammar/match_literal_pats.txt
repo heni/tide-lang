@@ -13,6 +13,7 @@ func grade(n: int): string {
 --- AST ---
 (File @1:1-7:2
   (FuncDecl "grade" @1:1-7:2
+    (type-params)
     (params
       (Param "n" @1:12-1:18
         (PrimitiveType "int" @1:15-1:18)))

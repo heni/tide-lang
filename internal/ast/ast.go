@@ -154,12 +154,16 @@ type Method struct {
 func (n *Method) NodeSpan() Span   { return n.Span }
 func (n *Method) NodeKind() string { return "Method" }
 
-// FuncDecl is a top-level function. PR-F1 covers the
-// non-generic shape with typed parameters and an optional
-// return type. Generic type parameters land with later PRs.
+// FuncDecl is a top-level function. PR-F1 covered the
+// non-generic shape; PR-G1 adds TypeParams (empty when the
+// function is non-generic). Each entry is a type-parameter
+// name; constraints are all `any` in PR-G1 (per the agreed
+// minimal-generics scope), with comparable-propagation for
+// container key positions added later by codegen if needed.
 type FuncDecl struct {
 	Span       Span
 	Name       string
+	TypeParams []string // empty for non-generic
 	Params     []*Param
 	ReturnType TypeExpr // nil ⇒ unit
 	Body       *Block
