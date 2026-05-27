@@ -70,13 +70,29 @@ them but doing so is bad style. Full signatures live in
 
 - Types: `bool`, `int`, `int8`..`int64`, `uint`..`uint64`,
   `float32`, `float64`, `byte`, `rune`, `string`, `Any`,
-  `error`.
+  `Dynamic`, `error`.
 - Generic types: `Result`, `Option`, `Map`, `Set`, `Stack`,
   `Channel`, `SendChan`, `RecvChan`.
 - Variant constructors: `Ok`, `Err`, `Some`, `None`.
 - Functions: `panic`, `error`, `refEq`, `makeChannel`, `makeSlice`.
 - Conversion: `int`, `int64`, ..., `float64`, `byte`, `rune`, `string`
   also act as conversion functions (`int(x)`, `float64(n)`, ...).
+
+`Any` and `Dynamic` are deliberately separate:
+
+- `Any` is the **binding-boundary** escape type — it appears only
+  in variadic stdlib binding signatures (e.g., `fmt.println(args:
+  ...Any)`). User-authored Tide code does not introduce `Any`-typed
+  parameters, fields, or return types. See `type-system.md` §`Any`.
+- `Dynamic` is the **user-facing** runtime-erased wrapper used by
+  the reflection API. Introduced only via implicit widening at
+  `reflect.*` parameter sites or explicit `reflect.box`; eliminated
+  only via `reflect.unbox<T>`. See `type-system.md` §`Dynamic`
+  (paired edit in PR-S3).
+
+Keeping the two names distinct is a deliberate cultural-line
+measure: `Any` reads as "internal FFI", `Dynamic` reads as "runtime
+box". The compiler should never silently promote one to the other.
 
 ## Operators
 
