@@ -306,23 +306,70 @@ detail. Three things live there:
    wrapper, the functions in the `reflect` module) that reads
    descriptors and box-values at runtime.
 
-**Three invariants of the runtime contract.**
+**Contract invariants (CT1–CT3).** These govern how the runtime
+surface evolves over time.
 
-1. **`tidert/` has a private and a public layer.** The container
+1. **CT1. `tidert/` has a private and a public layer.** The container
    helpers (`Map.new`, `Set.new`, `Stack.pop`, ...) stay private —
    codegen is free to refactor them without it being a contract
    change. The reflection-facing surface — type descriptors, the
    registry, the `reflect` module — is public; every observation
    user code can make through it is a commitment.
-2. **Generated code and `tidert` are version-locked.** A binary
+2. **CT2. Generated code and `tidert` are version-locked.** A binary
    produced by compiler version *N* must be linked against `tidert`
    built at version *N*. Mismatch is detected eagerly (build-time
    error or forced rebuild) and never produces a runnable binary.
-3. **Reflection ABI is append-only within a compatibility window.**
-   New `Kind` variants, new descriptor fields, new `reflect`
-   functions may be added without a language-version bump. Changing
-   the meaning of an already-exposed field, or dropping a field,
-   requires a major / lang-version bump.
+3. **CT3. Reflection ABI is append-only within a compatibility
+   window.** New `Kind` variants, new descriptor fields, new
+   `reflect` functions may be added without a language-version bump.
+   Changing the meaning of an already-exposed field, or dropping a
+   field, requires a major / lang-version bump.
+
+**Performance invariants (P1–P3).** These govern how the runtime
+interacts with the rest of the language at execution time. The
+guiding principle:
+
+> Tide runtime is **opt-in** for dynamic / reflection features and
+> **zero-cost or near-zero-cost passive** for statically typed code.
+
+1. **P1. Reflection metadata is passive.** Type descriptors may be
+   emitted into the binary, but ordinary field access, method call,
+   `match` dispatch, allocation, slice / map / set operations, and
+   `Result` / `Option` control flow do not consult descriptors at
+   runtime. Descriptors are read only by `reflect.*` function
+   bodies.
+2. **P2. `Dynamic` is explicit and viral only by spelling.** Implicit
+   boxing happens exclusively at parameter sites of `reflect.*`
+   functions whose formal type is `Dynamic`. No implicit unboxing
+   anywhere — `reflect.unbox<T>` is the only path back to `T`.
+   Generic lowering does not route values through `Dynamic` as a
+   universal carrier.
+3. **P3. `tidert` helpers are monomorphic Go helpers or use Go
+   generics directly.** They must not force Tide values through a
+   universal `Value`-style representation at runtime. The path from
+   Tide source to running code is "Tide → near-direct Go → Go
+   optimiser / Go runtime", not "Tide → tidert dispatch / boxing
+   → Go".
+
+**Layer split.** `tidert/` is organised into two layers:
+
+- **`tidert/core`** — containers, channel construction, minimal
+  helpers. Inlinable. No reflection dependency. Linked into every
+  Tide binary that uses these features.
+- **`tidert/reflect`** — descriptors, registry, `Dynamic` box,
+  pretty-print helpers. Linked **only** when the program
+  transitively imports `reflect`. Programs that don't use reflection
+  must not ship this layer in their binary.
+
+**Anti-pattern — universal `Value` representation (forbidden).** The
+shape `type Value struct { Type *TypeDesc; Data any }` is **not** a
+valid lowering target for ordinary Tide values. If every Tide value
+lowered through such a type, Go's optimiser would lose visibility
+through the entire program. `Value`-shaped representations are
+admissible only inside the `Dynamic` boundary — i.e., as the
+implementation of `tidert.Dynamic`, never as the lowering of `int`,
+`string`, class instances, sum-type values, or any other
+statically-typed construct.
 
 **Why.** Without naming the line, every future runtime-shaped feature
 (serialisation, debug printers, hot reload, deep clone) would relitigate
