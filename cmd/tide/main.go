@@ -40,6 +40,8 @@ func main() {
 		os.Exit(cmdBuild(os.Args[2:]))
 	case "run":
 		os.Exit(cmdRun(os.Args[2:]))
+	case "repl":
+		os.Exit(cmdRepl(os.Args[2:]))
 	case "bindgen":
 		fmt.Fprintln(os.Stderr, "tide bindgen: not implemented yet")
 		os.Exit(1)
@@ -126,14 +128,18 @@ func emitGoSource(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("tide: cannot read %s: %w", path, err)
 	}
-	src := string(srcBytes)
+	return emitGoFromText(string(srcBytes), path)
+}
+
+// emitGoFromText runs the lexer / parser / codegen pipeline over
+// an in-memory string. Used by REPL execution where the source
+// is synthesised between turns rather than read from disk.
+func emitGoFromText(src, file string) (string, error) {
 	// Pass the path verbatim into diagnostics and //line
 	// directives. test-contract.md §File paths requires
 	// repo-relative paths so two files with the same basename
 	// (e.g., examples/aoc/2025/d01.td vs examples/aoc/2026/d01.td)
 	// remain distinguishable in panic traces and diagnostics.
-	file := path
-
 	toks, lerr := lexer.LexFile(src, file)
 	if lerr != nil {
 		return "", lerr
@@ -199,6 +205,21 @@ func compileToTempGo(path string) (*compiledSource, error) {
 	if err != nil {
 		return nil, err
 	}
+	return writeTempModule(goSrc)
+}
+
+// compileSourceToTempGo is the in-memory variant used by the
+// REPL: takes Tide source text + a synthetic file label for
+// diagnostics, returns a runnable temp module.
+func compileSourceToTempGo(src, label string) (*compiledSource, error) {
+	goSrc, err := emitGoFromText(src, label)
+	if err != nil {
+		return nil, err
+	}
+	return writeTempModule(goSrc)
+}
+
+func writeTempModule(goSrc string) (*compiledSource, error) {
 	dir, err := os.MkdirTemp("", "tide-build-*")
 	if err != nil {
 		return nil, fmt.Errorf("tide: mkdir temp: %w", err)
@@ -234,6 +255,7 @@ Commands:
   emit   <file.td>             print the lowered Go source to stdout
   build  [-o out] <file.td>    compile to a native binary (default: ./<basename>)
   run    <file.td>             compile and execute (stdio passed through)
+  repl                         interactive prompt (RFC-0003 skeleton)
   bindgen                      generate Tide bindings from a Go package (not implemented)
   version                      print the compiler version
   help                         print this message

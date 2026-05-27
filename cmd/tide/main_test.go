@@ -178,6 +178,96 @@ func TestEmitMissingArg(t *testing.T) {
 	}
 }
 
+// runTideStdin invokes the test-built tide binary with the
+// given args, piping the supplied stdin string. Used by REPL
+// tests that drive the interactive prompt non-interactively.
+func runTideStdin(t *testing.T, stdin string, args ...string) (string, string, int) {
+	t.Helper()
+	bin := tideBinary(t)
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = projectRoot(t)
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exit := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		exit = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("tide failed unexpectedly: %v\n%s", err, stderr.String())
+	}
+	return stdout.String(), stderr.String(), exit
+}
+
+func TestReplPrintsHello(t *testing.T) {
+	input := "import fmt\nfmt.println(\"hello from repl\")\n:quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "hello from repl") {
+		t.Errorf("repl stdout missing user output; got:\n%s", stdout)
+	}
+}
+
+func TestReplSilencesUnusedBinding(t *testing.T) {
+	// `let x = 42` alone should NOT trip Go's
+	// declared-and-not-used error — the session renderer
+	// appends a `let _ = x` silence-use.
+	input := "import fmt\nlet x = 42\nfmt.println(\"x =\", x)\n:quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "x = 42") {
+		t.Errorf("repl stdout missing 'x = 42'; got:\n%s\n--stderr:\n%s", stdout, stderr)
+	}
+	if strings.Contains(stderr, "declared and not used") {
+		t.Errorf("repl emitted Go-side unused-var error:\n%s", stderr)
+	}
+}
+
+func TestReplRejectsTopLevelControlFlow(t *testing.T) {
+	input := "if true { 1 }\n:quit\n"
+	_, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stderr, "top-level control-flow") {
+		t.Errorf("expected top-level control-flow rejection; got stderr:\n%s", stderr)
+	}
+}
+
+func TestReplRollsBackCompileFailure(t *testing.T) {
+	// First stmt fails to compile (undefined identifiers). The
+	// REPL must roll it back so the follow-up `let y` works.
+	input := "import fmt\nlet x = oh dear\nlet y = 99\nfmt.println(y)\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "99") {
+		t.Errorf("rollback did not restore session; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplMetaShowAndReset(t *testing.T) {
+	input := "import fmt\nlet x = 1\n:show\n:reset\n:show\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	// First :show must reflect the input; after :reset the
+	// rendered session should be the empty main().
+	if !strings.Contains(stdout, "import fmt") {
+		t.Errorf("first :show missing import; stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "(session cleared)") {
+		t.Errorf("missing :reset acknowledgement; stdout:\n%s", stdout)
+	}
+}
+
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
 	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
