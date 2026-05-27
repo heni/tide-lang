@@ -473,8 +473,42 @@ func TestReplFuncRedefinitionLastWins(t *testing.T) {
 		t.Errorf("redefinition: post-redef call missing; stdout:\n%s", stdout)
 	}
 	// :show must reflect last-wins — only the HELLO version.
-	if strings.Count(stdout, "HELLO") < 1 || strings.Contains(stdout, `func greet(n: string) { fmt.println("hi", n) }`) {
+	if strings.Count(stdout, "HELLO") == 0 || strings.Contains(stdout, `func greet(n: string) { fmt.println("hi", n) }`) {
 		t.Errorf(":show should display only the latest greet definition; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplClassRedefinitionSameShape(t *testing.T) {
+	// Redefine a class with the same field shape — semantic
+	// change in method bodies / constructor logic but no
+	// signature break. The old `let c = Counter(7)` still
+	// compiles against the new class.
+	input := "class Counter { var n: int }\n" +
+		"let c = Counter(7)\n" +
+		"c\n" +
+		"class Counter { var n: int }\n" +
+		"c\n" +
+		":quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "Counter{n: 7}") {
+		t.Errorf("post-redef class instance should still print; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplTypeRedefinition(t *testing.T) {
+	input := "type Point = int\n" +
+		"type Point = int\n" +
+		":quit\n"
+	_, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	// No "duplicate declaration" Go-side error should escape.
+	if strings.Contains(stderr, "redeclared") || strings.Contains(stderr, "duplicate") {
+		t.Errorf("type redef should not surface Go's duplicate-decl error; stderr:\n%s", stderr)
 	}
 }
 

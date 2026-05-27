@@ -235,9 +235,21 @@ func (s *replSession) add(input string) error {
 // shapes: `func <name>(...)`, `class <Name> { ... }`, `type
 // <Name> = ...`, `interface <Name> { ... }`. Returns "" for
 // shapes the parser handles but this extractor doesn't — a
-// generic class `class Box<T>` strips the `<T>` part.
+// generic class `class Box<T>` strips the `<T>` part. The head
+// keyword must be followed by whitespace so `funcfoo()` is not
+// mistaken for `func foo()` — letting it through would let a
+// malformed input transiently displace a working same-name
+// decl before compile rejects it.
 func declName(head, src string) string {
-	rest := strings.TrimLeft(strings.TrimPrefix(strings.TrimLeft(src, " \t"), head), " \t")
+	trimmed := strings.TrimLeft(src, " \t")
+	if !strings.HasPrefix(trimmed, head) {
+		return ""
+	}
+	after := trimmed[len(head):]
+	if after == "" || (after[0] != ' ' && after[0] != '\t') {
+		return ""
+	}
+	rest := strings.TrimLeft(after, " \t")
 	end := 0
 	for end < len(rest) {
 		c := rest[end]
@@ -451,11 +463,13 @@ func (s *replSession) rollback() {
 			}
 		}
 	case changeReplaced:
-		switch s.lastChange.slot {
-		case slotDecls:
-			if s.lastChange.prevIndex < len(s.decls) {
-				s.decls[s.lastChange.prevIndex] = s.lastChange.prevText
-			}
+		// Only slotDecls is reachable here today — replacement-
+		// in-place only fires for func / class / type / interface.
+		// decls cannot shrink between add() and rollback() since
+		// nothing else mutates the slice in that window, so the
+		// invariant prevIndex < len(s.decls) holds by construction.
+		if s.lastChange.slot == slotDecls {
+			s.decls[s.lastChange.prevIndex] = s.lastChange.prevText
 		}
 	}
 	s.lastSlot = slotNone
