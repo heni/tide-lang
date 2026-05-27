@@ -1029,11 +1029,23 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// pointer-typed; instantiation produces a *ClassName.
 	if id, ok := c.Callee.(*ast.Ident); ok {
 		if ci, isClass := g.class[id.Name]; isClass {
-			if ci.generic {
-				return fmt.Errorf("codegen: constructor call %s(...) on generic class needs explicit type arguments — call-site instantiation lands with PR-G2", id.Name)
+			if ci.generic && len(c.TypeArgs) == 0 {
+				return fmt.Errorf("codegen: constructor call %s(...) on generic class needs explicit type arguments — write %s<T>(...)", id.Name, id.Name)
 			}
 			g.b.WriteByte('&')
 			g.b.WriteString(goIdent(id.Name))
+			if len(c.TypeArgs) > 0 {
+				g.b.WriteByte('[')
+				for i, ta := range c.TypeArgs {
+					if i > 0 {
+						g.b.WriteString(", ")
+					}
+					if err := g.emitTypeExpr(ta); err != nil {
+						return err
+					}
+				}
+				g.b.WriteByte(']')
+			}
 			g.b.WriteByte('{')
 			for i, a := range c.Args {
 				if i > 0 {
@@ -1105,6 +1117,18 @@ func (g *gen) emitCall(c *ast.Call) error {
 	}
 	if err := g.emitExpr(c.Callee); err != nil {
 		return err
+	}
+	if len(c.TypeArgs) > 0 {
+		g.b.WriteByte('[')
+		for i, ta := range c.TypeArgs {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitTypeExpr(ta); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(']')
 	}
 	g.b.WriteByte('(')
 	for i, a := range c.Args {

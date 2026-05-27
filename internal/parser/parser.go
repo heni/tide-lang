@@ -1080,7 +1080,22 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 	for {
 		switch {
 		case p.at(lexer.KindPunct, "("):
-			call, err := p.parseCallSuffix(e)
+			call, err := p.parseCallSuffix(e, nil)
+			if err != nil {
+				return nil, err
+			}
+			e = call
+		case p.at(lexer.KindOp, "<") && p.couldBeGenericCallSite():
+			// `<TypeArgs>(...)` postfix: explicit generic call. Per
+			// `lang-spec/keywords.md` lexical-conflict rule: a `<`
+			// in postfix position is generic-args when the matching
+			// `>` is followed by `(`. couldBeGenericCallSite does
+			// the lookahead and returns true only on commit.
+			typeArgs, err := p.parseCallTypeArgs()
+			if err != nil {
+				return nil, err
+			}
+			call, err := p.parseCallSuffix(e, typeArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -1185,11 +1200,77 @@ func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
 	}, nil
 }
 
-func (p *parser) parseCallSuffix(callee ast.Expr) (*ast.Call, *Diag) {
+// couldBeGenericCallSite peeks at the token stream starting at
+// the current `<` and returns true iff the `<` opens a
+// generic-argument list that is followed by `(`. Per
+// keywords.md §Lexical conflict resolution, this is Tide's
+// disambiguation: if the matching `>` (at depth-0) is followed
+// by `(`, treat as type arguments; otherwise treat the `<` as
+// the comparison operator. Bails on any token that can't appear
+// inside a type-argument list.
+func (p *parser) couldBeGenericCallSite() bool {
+	pos := p.pos
+	if pos >= len(p.toks) || p.toks[pos].Kind != lexer.KindOp || p.toks[pos].Lexeme != "<" {
+		return false
+	}
+	depth := 0
+	for i := pos; i < len(p.toks); i++ {
+		t := p.toks[i]
+		switch {
+		case t.Kind == lexer.KindOp && t.Lexeme == "<":
+			depth++
+		case t.Kind == lexer.KindOp && t.Lexeme == ">":
+			depth--
+			if depth == 0 {
+				// Next non-newline token decides.
+				for j := i + 1; j < len(p.toks); j++ {
+					n := p.toks[j]
+					if n.Kind == lexer.KindNewline {
+						continue
+					}
+					return n.Kind == lexer.KindPunct && n.Lexeme == "("
+				}
+				return false
+			}
+		case t.Kind == lexer.KindIdent,
+			t.Kind == lexer.KindPunct && (t.Lexeme == "," || t.Lexeme == "." || t.Lexeme == "[" || t.Lexeme == "]"):
+			// allowed inside a type-arg list
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func (p *parser) parseCallTypeArgs() ([]ast.TypeExpr, *Diag) {
+	if _, err := p.expect(lexer.KindOp, "<"); err != nil {
+		return nil, err
+	}
+	var args []ast.TypeExpr
+	for {
+		p.skipNewlines()
+		t, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, t)
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+			continue
+		}
+		break
+	}
+	if _, err := p.expect(lexer.KindOp, ">"); err != nil {
+		return nil, err
+	}
+	return args, nil
+}
+
+func (p *parser) parseCallSuffix(callee ast.Expr, typeArgs []ast.TypeExpr) (*ast.Call, *Diag) {
 	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
 		return nil, err
 	}
-	c := &ast.Call{Callee: callee}
+	c := &ast.Call{Callee: callee, TypeArgs: typeArgs}
 	p.skipNewlines()
 	if !p.at(lexer.KindPunct, ")") {
 		for {

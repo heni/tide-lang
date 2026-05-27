@@ -415,6 +415,16 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Callee, depth+1)
+		if len(v.TypeArgs) > 0 {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(type-args")
+			for _, ta := range v.TypeArgs {
+				b.WriteByte('\n')
+				write(b, ta, depth+2)
+			}
+			b.WriteByte(')')
+		}
 		for _, a := range v.Args {
 			b.WriteByte('\n')
 			write(b, a, depth+1)

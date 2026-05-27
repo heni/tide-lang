@@ -1,0 +1,45 @@
+--- TITLE ---
+generic class instantiation — `Box<int>(42)` lowers to `&Box[int]{42}`
+
+--- INPUT ---
+import fmt
+
+class Box<T> {
+  var v: T
+  get(): T {
+    return this.v
+  }
+}
+
+func main() {
+  let b = Box<int>(42)
+  fmt.println(b.get())
+  let s = Box<string>("hi")
+  fmt.println(s.get())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box[T any] struct {
+	v T
+}
+
+func (t *Box[T]) get() T {
+	return t.v
+}
+func main() {
+	var b = &Box[int]{42}
+	fmt.Println(b.get())
+	var s = &Box[string]{"hi"}
+	fmt.Println(s.get())
+}
+
+--- STDOUT ---
+42
+hi
+
+--- EXIT ---
+0

@@ -512,13 +512,17 @@ func (n *Ident) NodeSpan() Span   { return n.Span }
 func (n *Ident) NodeKind() string { return "Ident" }
 func (n *Ident) exprMarker()      {}
 
-// Call is an application: callee(args). Explicit type arguments
-// (callee<T1, T2>(args)) are not parsed in PR-B; the slot will
-// land with the parser pass that adds generics.
+// Call is an application: `callee(args)` or
+// `callee<T1, T2>(args)`. TypeArgs is empty when the call has
+// no explicit type arguments (the common case — Go's own
+// inference picks them from arg types in most positions).
+// PR-G2 populates TypeArgs from `<...>` parsed in expression
+// position; PR-G1 left this slot empty.
 type Call struct {
-	Span   Span
-	Callee Expr
-	Args   []Expr
+	Span     Span
+	Callee   Expr
+	TypeArgs []TypeExpr
+	Args     []Expr
 }
 
 func (n *Call) NodeSpan() Span   { return n.Span }
