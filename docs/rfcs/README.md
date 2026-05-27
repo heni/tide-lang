@@ -25,7 +25,7 @@ This directory holds:
 | 0000 | accepted | RFC process |
 | 0001 | accepted | v0.1 baseline |
 | 0002 | accepted | Multi-file Tide programs |
-| 0003 | draft | `tide repl` and reflection API |
+| 0003 | accepted | `tide repl` and reflection API |
 
 ## How to write an RFC
 
