@@ -734,6 +734,10 @@ func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Meth
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
 		}
+		// Same container-typed param tracking as emitFuncDecl.
+		if kind := containerKind(p.DeclType, nil); kind != "" {
+			g.varKind[p.Name] = kind
+		}
 	}
 	g.b.WriteByte(')')
 	if m.ReturnType != nil {
@@ -797,6 +801,13 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 		g.b.WriteByte(' ')
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
+		}
+		// Track container-typed parameters so emitCall's
+		// slice-method shortcut doesn't intercept their `.len()`
+		// / `.push()` calls. Same shallow varKind tracking as
+		// emitLetOrVar.
+		if kind := containerKind(p.DeclType, nil); kind != "" {
+			g.varKind[p.Name] = kind
 		}
 	}
 	g.b.WriteByte(')')

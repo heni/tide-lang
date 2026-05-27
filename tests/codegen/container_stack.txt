@@ -1,0 +1,96 @@
+--- TITLE ---
+predeclared Stack<T> — pop() on empty exercises Result<T, error> Err path
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let s = Stack<int>.new()
+  match s.pop() {
+    Ok(v) => fmt.println("popped", v),
+    Err(e) => fmt.println("err", e),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Option[T any] struct {
+	Tag uint8
+	V   T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, V: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+
+type Stack[T any] struct {
+	xs []T
+}
+
+func stackNew[T any]() *Stack[T] {
+	return &Stack[T]{xs: nil}
+}
+func (s *Stack[T]) len() int { return len(s.xs) }
+func (s *Stack[T]) push(e T) {
+	s.xs = append(s.xs, e)
+}
+func (s *Stack[T]) pop() Result[T, error] {
+	n := len(s.xs)
+	if n == 0 {
+		var zero T
+		return Result[T, error]{Tag: 1, E: tideEmptyStack, V: zero}
+	}
+	v := s.xs[n-1]
+	s.xs = s.xs[:n-1]
+	return Result[T, error]{Tag: 0, V: v}
+}
+func (s *Stack[T]) peek() Option[T] {
+	n := len(s.xs)
+	if n == 0 {
+		return Option[T]{Tag: 0}
+	}
+	return Option[T]{Tag: 1, V: s.xs[n-1]}
+}
+
+var tideEmptyStack = tideEmptyStackError{}
+
+type tideEmptyStackError struct{}
+
+func (tideEmptyStackError) Error() string { return "empty stack" }
+func main() {
+	var s = stackNew[int]()
+	__tide_match_1 := s.pop()
+	switch __tide_match_1.Tag {
+	case 0:
+		v := __tide_match_1.V
+		fmt.Println("popped", v)
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err", e)
+	}
+}
+
+--- STDOUT ---
+err empty stack
+
+--- EXIT ---
+0
