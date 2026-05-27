@@ -19,6 +19,22 @@ func Emit(f *ast.File, file string) (string, error) {
 		variant: map[string]variantInfo{},
 		class:   map[string]classInfo{},
 	}
+	// Predeclared sum-type variants per `lang-spec/builtins.md`
+	// §Option / §Result / §Variant constructors. Registered up
+	// front so identifier resolution and match-arm payload
+	// binding find them. Payload-field names match the
+	// auto-emitted Go-side struct (e.g. `Some.value` → field
+	// `SomeValue` per the `<Var><FieldName>` convention).
+	g.variant["None"] = variantInfo{owner: "Option", tag: 0}
+	g.variant["Some"] = variantInfo{owner: "Option", tag: 1, fields: []*ast.FieldDecl{{Name: "value"}}}
+	g.variant["Ok"] = variantInfo{owner: "Result", tag: 0, fields: []*ast.FieldDecl{{Name: "value"}}}
+	g.variant["Err"] = variantInfo{owner: "Result", tag: 1, fields: []*ast.FieldDecl{{Name: "err"}}}
+	// Pre-walk: detect Option / Result usage so the header
+	// emits the corresponding Go-side definitions only when the
+	// program actually references them. Keeps emitted Go for
+	// programs that touch neither identical to the pre-F5b
+	// output (no fixture churn for unrelated tests).
+	g.detectPredeclaredUsage(f)
 	// First pass — register sum-type variants so later
 	// expression / pattern lowering can qualify Variant idents
 	// to their Go-side constants and tag numbers. Also register
@@ -103,6 +119,13 @@ type gen struct {
 	// Per `lowering-go.md` §MatchIR — capture subject once to
 	// keep side-effects from re-running per arm.
 	matchTempCounter int
+	// usesOption / usesResult — set by the pre-walk in Emit
+	// when the program references the corresponding predeclared
+	// sum type, either by NamedType ("Option"/"Result") or by
+	// variant constructor / pattern (Some/None/Ok/Err). The
+	// header emits the Go-side definitions only when set.
+	usesOption bool
+	usesResult bool
 }
 
 type variantInfo struct {
@@ -145,6 +168,218 @@ func (g *gen) writeHeader(f *ast.File) {
 			}
 			g.b.WriteString(")\n\n")
 		}
+	}
+	g.writePredeclaredSums()
+}
+
+// writePredeclaredSums emits Go-side definitions for Option<T>
+// and Result<T, E> per `lang-spec/builtins.md` §Option / §Result,
+// **only** for the sum types the program actually references
+// (per the pre-walk in `detectPredeclaredUsage`). Reflection-free
+// programs that touch neither pay zero — same emitted Go as
+// pre-F5b.
+//
+// Constructor functions take type-args explicitly so the user
+// can write `Some(42)` (Go infers T from the arg), `None<int>()`,
+// or `Err<int, string>("boom")` at sites where inference can't
+// proceed. The bare-identifier shape `let x: Option<int> = None`
+// (no parens) needs sema-driven type inference and lands later;
+// until then the user writes the call form.
+func (g *gen) writePredeclaredSums() {
+	// Struct shape exactly per `lang-spec/lowering-go.md`
+	// §Container types — runtime representation: `Option[T]`
+	// fields `Tag` + `V`; `Result[T, E]` fields `Tag` + `V` + `E`.
+	// The spec puts these in `tidert/runtime.go` and refers to
+	// them as `tidert.Option[T]` / `tidert.Result[T, E]`; PR-F5b
+	// emits them inline in `main` as a v1 transitional state.
+	// Block R relocates them to `tidert/` without changing the
+	// struct shape (tracked in backlog.md).
+	if g.usesOption {
+		g.b.WriteString("type Option[T any] struct {\n\tTag uint8\n\tV   T\n}\n")
+		g.b.WriteString("func OptionSome[T any](value T) Option[T] {\n\treturn Option[T]{Tag: 1, V: value}\n}\n")
+		g.b.WriteString("func OptionNone[T any]() Option[T] {\n\treturn Option[T]{Tag: 0}\n}\n")
+	}
+	if g.usesResult {
+		g.b.WriteString("type Result[T any, E any] struct {\n\tTag uint8\n\tV   T\n\tE   E\n}\n")
+		g.b.WriteString("func ResultOk[T any, E any](value T) Result[T, E] {\n\treturn Result[T, E]{Tag: 0, V: value}\n}\n")
+		g.b.WriteString("func ResultErr[T any, E any](err E) Result[T, E] {\n\treturn Result[T, E]{Tag: 1, E: err}\n}\n")
+	}
+}
+
+// predeclaredPayloadField returns the Go-side struct field name
+// for a predeclared sum-type variant's payload, per spec
+// (`lang-spec/lowering-go.md` §Container types). Returns the
+// empty string for non-predeclared variants; callers fall back
+// to the PR-F5a `<Variant><FieldName>` convention.
+func predeclaredPayloadField(variantName string) string {
+	switch variantName {
+	case "Some", "Ok":
+		return "V"
+	case "Err":
+		return "E"
+	}
+	return ""
+}
+
+// detectPredeclaredUsage walks the file AST and sets
+// g.usesOption / g.usesResult when any reference is found —
+// type position (NamedType), variant constructor (Ident lookup
+// in g.variant), or match-arm pattern (VariantPat or
+// IdentPat-bound-to-variant). Conservative: any of the four
+// constructor names (Some/None/Ok/Err) flips the corresponding
+// flag even if the reference is later determined to be a
+// shadow. Acceptable for v1; sema will tighten.
+func (g *gen) detectPredeclaredUsage(f *ast.File) {
+	var walk func(n ast.Node)
+	walk = func(n ast.Node) {
+		if n == nil {
+			return
+		}
+		switch v := n.(type) {
+		case *ast.NamedType:
+			if len(v.QName) == 1 {
+				switch v.QName[0] {
+				case "Option":
+					g.usesOption = true
+				case "Result":
+					g.usesResult = true
+				}
+			}
+			for _, a := range v.Args {
+				walk(a)
+			}
+		case *ast.Ident:
+			switch v.Name {
+			case "None", "Some":
+				g.usesOption = true
+			case "Ok", "Err":
+				g.usesResult = true
+			}
+		case *ast.VariantPat:
+			if len(v.QName) > 0 {
+				switch v.QName[len(v.QName)-1] {
+				case "None", "Some":
+					g.usesOption = true
+				case "Ok", "Err":
+					g.usesResult = true
+				}
+			}
+			for _, s := range v.Sub {
+				walk(s)
+			}
+		case *ast.IdentPat:
+			switch v.Name {
+			case "None", "Some":
+				g.usesOption = true
+			case "Ok", "Err":
+				g.usesResult = true
+			}
+		case *ast.FuncDecl:
+			for _, p := range v.Params {
+				walk(p)
+			}
+			walk(v.ReturnType)
+			walk(v.Body)
+		case *ast.ClassDecl:
+			for _, fd := range v.Fields {
+				walk(fd)
+			}
+			for _, m := range v.Methods {
+				walk(m)
+			}
+		case *ast.ClassField:
+			walk(v.DeclType)
+		case *ast.Method:
+			for _, p := range v.Params {
+				walk(p)
+			}
+			walk(v.ReturnType)
+			walk(v.Body)
+		case *ast.Param:
+			walk(v.DeclType)
+		case *ast.TypeDecl:
+			walk(v.Body)
+		case *ast.AliasBody:
+			walk(v.Aliased)
+		case *ast.SumTypeBody:
+			for _, vr := range v.Variants {
+				for _, fd := range vr.Fields {
+					walk(fd)
+				}
+			}
+		case *ast.FieldDecl:
+			walk(v.DeclType)
+		case *ast.Block:
+			for _, s := range v.Stmts {
+				walk(s)
+			}
+			if v.Trailing != nil {
+				walk(v.Trailing)
+			}
+		case *ast.ExprStmt:
+			walk(v.Expr)
+		case *ast.LetStmt:
+			walk(v.Pattern)
+			walk(v.DeclType)
+			walk(v.Value)
+		case *ast.VarStmt:
+			walk(v.DeclType)
+			walk(v.Value)
+		case *ast.AssignStmt:
+			walk(v.LValue)
+			walk(v.Value)
+		case *ast.IfStmt:
+			walk(v.Cond)
+			walk(v.ThenBlock)
+			walk(v.Else)
+		case *ast.ForStmt:
+			walk(v.Pattern)
+			walk(v.Iterable)
+			walk(v.Body)
+		case *ast.ReturnExpr:
+			walk(v.Value)
+		case *ast.MatchExpr:
+			walk(v.Subject)
+			for _, arm := range v.Arms {
+				walk(arm.Pattern)
+				walk(arm.Body)
+			}
+		case *ast.Call:
+			walk(v.Callee)
+			for _, ta := range v.TypeArgs {
+				walk(ta)
+			}
+			for _, a := range v.Args {
+				walk(a)
+			}
+		case *ast.Field:
+			walk(v.Receiver)
+		case *ast.Binary:
+			walk(v.Left)
+			walk(v.Right)
+		case *ast.Unary:
+			walk(v.Operand)
+		case *ast.Index:
+			walk(v.Receiver)
+			walk(v.Idx)
+		case *ast.Slice:
+			walk(v.Receiver)
+			walk(v.Low)
+			walk(v.High)
+		case *ast.SliceLit:
+			walk(v.ElemType)
+			for _, it := range v.Items {
+				walk(it)
+			}
+		case *ast.SliceType:
+			walk(v.Elem)
+		case *ast.RangeExpr:
+			walk(v.Low)
+			walk(v.High)
+		}
+	}
+	for _, d := range f.Decls {
+		walk(d)
 	}
 }
 
@@ -611,7 +846,15 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 			g.b.WriteString(" := ")
 			g.b.WriteString(subjectExpr)
 			g.b.WriteByte('.')
-			g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
+			// Predeclared sums use spec-fixed field names (V / E)
+			// per `lang-spec/lowering-go.md` §Container types;
+			// user-declared variants follow the PR-F5a
+			// `<Variant><FieldName>` convention.
+			if pf := predeclaredPayloadField(name); pf != "" {
+				g.b.WriteString(pf)
+			} else {
+				g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
+			}
 			g.b.WriteByte('\n')
 		case *ast.WildcardPat:
 			// Nothing to bind.
