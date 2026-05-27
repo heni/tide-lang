@@ -316,10 +316,13 @@ func (p *parser) parseSumTypeBody() (*ast.SumTypeBody, *Diag) {
 	}, nil
 }
 
-// parseClassDecl parses `class Name { fields, methods }`. PR-F4
-// scope: no type parameters, no `implements`. A class member is
-// either `let|var name: T` (field) or `[static] name(params)? body`
-// (method); the parser commits based on the leading keyword.
+// parseClassDecl parses `class Name<TypeParams> { fields, methods }`.
+// Type parameters arrived with PR-G1 (the `<T, U>` list after the
+// name is admitted; bare names only, constraints come with PR-G3).
+// `implements` is still rejected at parse time and lands with the
+// interface PR. A class member is either `let|var name: T` (field)
+// or `[static] name<TypeParams>?(params)? body` (method); the
+// parser commits based on the leading keyword.
 func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
 	kw := p.advance() // consume 'class'
 	nameTok, err := p.expect(lexer.KindIdent, "")
@@ -507,6 +510,12 @@ func (p *parser) parseTypeParamList() ([]string, *Diag) {
 		}
 		tp := p.advance()
 		out = append(out, tp.Lexeme)
+		if p.at(lexer.KindPunct, ":") {
+			t := p.peek()
+			return nil, p.diag("E0112",
+				"type-parameter constraints (`<T: SomeInterface>`) land in PR-G3 — drop the constraint and let `any` default apply",
+				t.Line, t.Col)
+		}
 		if p.at(lexer.KindPunct, ",") {
 			p.advance()
 			continue

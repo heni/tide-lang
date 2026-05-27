@@ -1,0 +1,27 @@
+--- TITLE ---
+Generic class with an instance method using `this` — exercises (t *Name[T]) receiver
+
+--- INPUT ---
+class Box<T> {
+  var v: T
+  get(): T {
+    return this.v
+  }
+}
+
+--- AST ---
+(File @1:1-6:2
+  (ClassDecl "Box" @1:1-6:2
+    (type-params "T")
+    (implements)
+    (ClassField "v" Var @2:3-2:11
+      (NamedType "T" @2:10-2:11))
+    (Method "get" instance @3:3-5:4
+      (params)
+      (return
+        (NamedType "T" @3:10-3:11))
+      (Block @3:12-5:4
+        (ExprStmt @4:5-4:18
+          (ReturnExpr @4:5-4:18
+            (Field "v" @4:12-4:18
+              (ThisExpr @4:12-4:16))))))))

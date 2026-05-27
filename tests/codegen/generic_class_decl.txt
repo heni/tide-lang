@@ -1,0 +1,38 @@
+--- TITLE ---
+generic class declaration — emit `type Box[T any] struct { v T }` + `func (t *Box[T]) get() T`
+
+--- INPUT ---
+import fmt
+
+class Box<T> {
+  var v: T
+  get(): T {
+    return this.v
+  }
+}
+
+func main() {
+  fmt.println("declared")
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box[T any] struct {
+	v T
+}
+
+func (t *Box[T]) get() T {
+	return t.v
+}
+func main() {
+	fmt.Println("declared")
+}
+
+--- STDOUT ---
+declared
+
+--- EXIT ---
+0
