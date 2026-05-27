@@ -194,6 +194,15 @@ outside `reflect` does **not** trigger widening — the argument
 must already be `Dynamic` or the call is rejected with
 **E0209**.
 
+**Variadic generalisation.** A variadic formal `vs: ...Dynamic`
+admits the same implicit widening per spread element: each
+positional argument supplied to the variadic slot may be a
+concrete `T` (which widens to `Dynamic`) or a `Dynamic` (which
+passes through). Forwarding a slice via the spread operator
+(`vs...`) keeps its static element type; an `[]int` spread does
+**not** silently widen to `[]Dynamic` — the user must build the
+`[]Dynamic` explicitly (each element wrapped in `reflect.box`).
+
 **Introduction via `reflect.box` (explicit).** For any site
 where the implicit rule does not fire — building a `[]Dynamic`
 literal, returning a `Dynamic` from a non-reflect function,
@@ -219,9 +228,10 @@ expected. The only recovery is the type-checked unwrap:
                        Γ ⊢ reflect.unbox<T>(d) : Result<T>
 ```
 
-`Result<T>` returns `Ok(t)` when the runtime descriptor of `d`
-matches `T`, and `Err(e)` otherwise. No `Dynamic → T` cast
-exists outside this call.
+`Result<T>` is the predeclared error sum (see `builtins.md`):
+`Ok(t)` when the runtime descriptor of `d` matches `T`, and
+`Err(e)` otherwise. No `Dynamic → T` cast exists outside this
+call.
 
 **No-narrowing rule.** Using a `Dynamic`-typed value where a
 concrete type is expected is **E0210 Dynamic narrowing requires
@@ -245,6 +255,13 @@ admitted sites, is **E0209 Dynamic widening requires reflect.box**:
                ──────────────────────────────────────────────────────────
                                   E0209
 ```
+
+In particular, every element of a `[]Dynamic` literal, every
+value-position of a `Map<_, Dynamic>` entry, and every Set/Stack
+element of `Dynamic` element type whose static type is not
+already `Dynamic` must be wrapped in `reflect.box(_)`. There is
+no inference path that promotes a concrete-element collection
+literal to a `Dynamic`-element collection.
 
 **Generic flow.** Type parameters of user-authored generic
 declarations are **never** inferred to `Dynamic`. If unification
@@ -899,15 +916,16 @@ touched by this file:
 - **E0208** — Cannot infer literal type for a bare-`{}` `BraceLit`
   with no contextual expected type.
 - **E0209** — `Dynamic` widening requires `reflect.box` outside
-  `reflect.*` parameter sites (T-Dyn-NoWiden).
+  `reflect.*` parameter sites (T-Dyn-NoWiden). *(Message text:
+  PR-S5 / `diagnostics.md`.)*
 - **E0210** — `Dynamic` narrowing requires `reflect.unbox`
   (T-Dyn-NoNarrow). A `Dynamic` value cannot flow into a concrete
-  type position without explicit unbox.
+  type position without explicit unbox. *(Message text: PR-S5.)*
 - **E0211** — `Dynamic` in inferred type-parameter position
   (T-Dyn-Intro-Reflect's "no implicit Dynamic in generic flow"
-  side condition).
+  side condition). *(Message text: PR-S5.)*
 - **E0212** — `Any` and `Dynamic` cannot be implicitly converted
-  to each other.
+  to each other. *(Message text: PR-S5.)*
 - **E0105** — Duplicate field name in a `Record` body
   (WF-Body-Record side-condition).
 - **E0106** — Duplicate variant name in a `Sum` body
