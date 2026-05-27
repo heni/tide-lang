@@ -202,8 +202,18 @@ class Map<K, V> {
 `Map<K, V>` keys must be comparable. The brace literal form is
 `Map<K, V>{ k1: v1, ..., kn: vn }` (`T-Map-Lit`). The
 `m[k]` index form (`T-Index-Map`) returns `V` directly and
-panics at runtime on miss — the **total**-API path is `m.get(k)
-: Option<V>` followed by a `match`.
+yields V's Go-side zero value on miss — `0` for numeric V, `""`
+for string, the first declared variant for sum-typed V, and so
+on. This mirrors Go's map-index semantics and makes the common
+counter / flag pattern (`m[k] = m[k] + 1`) Just Work. When the
+caller needs to distinguish "missing" from "zero-valued"
+explicitly the **total**-API path is `m.get(k): Option<V>`
+followed by a `match`.
+
+`m[k] = v` (index-assign) lowers to `m.set(k, v)` — the wrapper
+keeps insertion order in sync with the backing map so later
+`m.entries()` / `m.keys()` iterates in the order keys were
+first written.
 
 Iteration: `for (k, v) in m { ... }` (`IterElem(Map<K, V>) =
 (K, V)`). Order is **insertion order**: the order in which

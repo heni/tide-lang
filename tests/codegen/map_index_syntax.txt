@@ -1,0 +1,88 @@
+--- TITLE ---
+Map<K, V> index syntax — m[k] reads via .m[k], m[k]=v lowers to .set(k, v)
+
+--- INPUT ---
+import fmt
+
+func main() {
+  var counts = Map<rune, int>.new()
+  counts['a'] = 1
+  counts['b'] = counts['b'] + 5
+  fmt.println(counts['a'], counts['b'], counts['z'])
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Option[T any] struct {
+	Tag uint8
+	V   T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, V: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+
+type Map[K comparable, V any] struct {
+	m     map[K]V
+	order []K
+}
+
+func mapNew[K comparable, V any]() *Map[K, V] {
+	return &Map[K, V]{m: map[K]V{}, order: nil}
+}
+func (m *Map[K, V]) len() int     { return len(m.order) }
+func (m *Map[K, V]) has(k K) bool { _, ok := m.m[k]; return ok }
+func (m *Map[K, V]) get(k K) Option[V] {
+	if v, ok := m.m[k]; ok {
+		return Option[V]{Tag: 1, V: v}
+	}
+	return Option[V]{Tag: 0}
+}
+func (m *Map[K, V]) set(k K, v V) {
+	if _, ok := m.m[k]; !ok {
+		m.order = append(m.order, k)
+	}
+	m.m[k] = v
+}
+func (m *Map[K, V]) delete(k K) {
+	if _, ok := m.m[k]; !ok {
+		return
+	}
+	delete(m.m, k)
+	for i, kk := range m.order {
+		if kk == k {
+			m.order = append(m.order[:i], m.order[i+1:]...)
+			return
+		}
+	}
+}
+func (m *Map[K, V]) keys() []K {
+	out := make([]K, len(m.order))
+	copy(out, m.order)
+	return out
+}
+func (m *Map[K, V]) values() []V {
+	out := make([]V, 0, len(m.order))
+	for _, k := range m.order {
+		out = append(out, m.m[k])
+	}
+	return out
+}
+func main() {
+	var counts = mapNew[rune, int]()
+	counts.set('a', 1)
+	counts.set('b', counts.m['b']+5)
+	fmt.Println(counts.m['a'], counts.m['b'], counts.m['z'])
+}
+
+--- STDOUT ---
+1 5 0
+
+--- EXIT ---
+0

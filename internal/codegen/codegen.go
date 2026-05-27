@@ -1499,6 +1499,28 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.AssignStmt:
 		g.line(v.Span.StartLine)
 		g.writeIndent()
+		// `m[k] = val` where m is a Map<K, V> lowers to
+		// `m.set(k, val)` — the wrapper's set() updates both the
+		// internal map and the insertion-order slice. Direct
+		// `m.m[k] = val` would bypass that and break iteration
+		// order for any later `.entries()`/`.keys()` call.
+		if idx, ok := v.LValue.(*ast.Index); ok {
+			if id, ok := idx.Receiver.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+				if err := g.emitExpr(id); err != nil {
+					return err
+				}
+				g.b.WriteString(".set(")
+				if err := g.emitExpr(idx.Idx); err != nil {
+					return err
+				}
+				g.b.WriteString(", ")
+				if err := g.emitExpr(v.Value); err != nil {
+					return err
+				}
+				g.b.WriteString(")\n")
+				return nil
+			}
+		}
 		if err := g.emitExpr(v.LValue); err != nil {
 			return err
 		}
@@ -2265,6 +2287,22 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		g.b.WriteByte('}')
 		return nil
 	case *ast.Index:
+		// `m[k]` where m is a Map<K, V> lowers to the wrapper's
+		// internal `m.m[k]` direct map access — returns V's
+		// Go zero value for a missing key (mirrors Go's map
+		// semantics). `m.get(k)` is the explicit-Option form
+		// when the user wants the missing case to surface.
+		if id, ok := v.Receiver.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+			if err := g.emitExpr(id); err != nil {
+				return err
+			}
+			g.b.WriteString(".m[")
+			if err := g.emitExpr(v.Idx); err != nil {
+				return err
+			}
+			g.b.WriteByte(']')
+			return nil
+		}
 		if err := g.emitExpr(v.Receiver); err != nil {
 			return err
 		}
