@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/mattn/go-isatty"
 )
 
 // cmdRepl implements `tide repl` per RFC-0003. PR-REPL-1 lands
@@ -31,6 +33,12 @@ func cmdRepl(args []string) int {
 	if fs.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "tide repl: takes no positional arguments")
 		return 2
+	}
+	// TTY → go-prompt path with up-arrow history and a coloured
+	// prompt; non-TTY (pipe / test harness) → bufio.Scanner
+	// fallback so input from stdin pipes still works for tests.
+	if isatty.IsTerminal(os.Stdin.Fd()) {
+		return runReplPrompt()
 	}
 	return runRepl(os.Stdin, os.Stdout, os.Stderr)
 }

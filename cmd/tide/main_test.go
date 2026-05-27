@@ -578,6 +578,30 @@ func TestReplResetClearsRejected(t *testing.T) {
 	}
 }
 
+func TestReplOpenDepthTracksBraces(t *testing.T) {
+	// openDepth feeds the continuation-prompt auto-indent in the
+	// go-prompt path. Verify it counts open `{` correctly while
+	// skipping `{` inside strings / chars / comments.
+	cases := []struct {
+		src  string
+		want int
+	}{
+		{"", 0},
+		{"func f() {", 1},
+		{"func f() {\n  if x {", 2},
+		{"func f() {\n  if x {\n  }", 1},
+		{`x := "{{{"`, 0},          // braces inside string don't count
+		{`x := '{'`, 0},            // braces inside char don't count
+		{"x := 1 // { foo", 0},     // braces in line comment don't count
+		{"x := 1 /* { */ y := 2", 0}, // braces in block comment don't count
+	}
+	for _, c := range cases {
+		if got := openDepth(c.src); got != c.want {
+			t.Errorf("openDepth(%q) = %d; want %d", c.src, got, c.want)
+		}
+	}
+}
+
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
 	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
