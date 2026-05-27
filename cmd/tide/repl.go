@@ -47,11 +47,12 @@ const (
 // the RFC's "accumulating-source REPL" choice (Tier 1 cost
 // model — every input pays for every prior side-effecting line).
 type replSession struct {
-	imports   []string        // dedup'd import paths in append order
-	decls     []string        // top-level decls (func / class / type / interface)
-	stmts     []replStmt      // body statements in append order
-	lastSlot  replSlot        // which slot the most recent add() appended to
-	rejected  map[string]bool // inputs that already failed compile — refuse to re-stash
+	imports    []string        // dedup'd import paths in append order
+	decls      []string        // top-level decls (func / class / type / interface)
+	stmts      []replStmt      // body statements in append order
+	lastSlot   replSlot        // which slot the most recent add() appended to
+	lastChange lastChange      // precise undo info for rollback (handles redefinition)
+	rejected   map[string]bool // inputs that already failed compile — refuse to re-stash
 }
 
 // replSlot identifies which session slot was last appended to,
@@ -66,6 +67,24 @@ const (
 	slotDecls
 	slotStmts
 )
+
+// lastChange records what the most recent add() did so rollback
+// can invert it precisely. `kind == replaced` means a same-
+// name decl was overwritten — to roll back we restore prevText
+// at prevIndex rather than truncating the slice.
+type lastChangeKind uint8
+
+const (
+	changeAppended lastChangeKind = iota
+	changeReplaced
+)
+
+type lastChange struct {
+	kind      lastChangeKind
+	slot      replSlot
+	prevIndex int
+	prevText  string
+}
 
 // replStmt is one body-position input. `autoPrint == true` means
 // the original input was a bare expression and the REPL is
@@ -170,14 +189,30 @@ func (s *replSession) add(input string) error {
 	case "import":
 		s.imports = append(s.imports, input)
 		s.lastSlot = slotImports
+		s.lastChange = lastChange{kind: changeAppended, slot: slotImports}
 	case "func", "class", "type", "interface":
+		// REPL last-wins shadowing per RFC §What the REPL
+		// accepts ("Re-declaring a name shadows the prior
+		// definition"). If a decl with the same name already
+		// exists, replace it in-place so Go does not error on
+		// the duplicate; otherwise append.
+		if name := declName(head, input); name != "" {
+			if idx := s.findDeclByName(head, name); idx >= 0 {
+				s.lastChange = lastChange{kind: changeReplaced, slot: slotDecls, prevIndex: idx, prevText: s.decls[idx]}
+				s.decls[idx] = input
+				s.lastSlot = slotDecls
+				return nil
+			}
+		}
 		s.decls = append(s.decls, input)
 		s.lastSlot = slotDecls
+		s.lastChange = lastChange{kind: changeAppended, slot: slotDecls}
 	case "if", "for", "while", "match", "return", "break", "continue":
 		return fmt.Errorf("top-level control-flow not supported in v1 — wrap it in a func")
 	case "let", "var":
 		s.stmts = append(s.stmts, replStmt{src: input})
 		s.lastSlot = slotStmts
+		s.lastChange = lastChange{kind: changeAppended, slot: slotStmts}
 	default:
 		if isAssignment(input) || looksLikeCallStatement(input) {
 			// `fmt.println(x)` and friends — side-effecting calls
@@ -190,8 +225,44 @@ func (s *replSession) add(input string) error {
 			s.stmts = append(s.stmts, replStmt{src: input, autoPrint: true})
 		}
 		s.lastSlot = slotStmts
+		s.lastChange = lastChange{kind: changeAppended, slot: slotStmts}
 	}
 	return nil
+}
+
+// declName extracts the name of a top-level declaration so the
+// REPL can implement last-wins shadowing. Recognises the simple
+// shapes: `func <name>(...)`, `class <Name> { ... }`, `type
+// <Name> = ...`, `interface <Name> { ... }`. Returns "" for
+// shapes the parser handles but this extractor doesn't — a
+// generic class `class Box<T>` strips the `<T>` part.
+func declName(head, src string) string {
+	rest := strings.TrimLeft(strings.TrimPrefix(strings.TrimLeft(src, " \t"), head), " \t")
+	end := 0
+	for end < len(rest) {
+		c := rest[end]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9' && end > 0) || c == '_' {
+			end++
+			continue
+		}
+		break
+	}
+	return rest[:end]
+}
+
+// findDeclByName scans s.decls for a same-head, same-name decl
+// and returns its index, or -1 if none exists.
+func (s *replSession) findDeclByName(head, name string) int {
+	for i, d := range s.decls {
+		if firstWord(d) != head {
+			continue
+		}
+		if declName(head, d) == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // markRejected records that this exact input text has already
@@ -358,25 +429,37 @@ func isAssignment(src string) bool {
 
 // rollback drops the most recently added entry — used when the
 // inner compile / run failed so the session does not keep a
-// broken form. Consults lastSlot rather than guessing from
-// length: a failed decl that arrived after an innocent stmt
-// must pop from decls, not stmts.
+// broken form. Consults lastChange so a replaced decl is
+// restored rather than truncated: if `func foo()` redefined a
+// prior `func foo()` and the new definition fails to compile,
+// we want the original back in the session.
 func (s *replSession) rollback() {
-	switch s.lastSlot {
-	case slotStmts:
-		if len(s.stmts) > 0 {
-			s.stmts = s.stmts[:len(s.stmts)-1]
+	switch s.lastChange.kind {
+	case changeAppended:
+		switch s.lastChange.slot {
+		case slotStmts:
+			if len(s.stmts) > 0 {
+				s.stmts = s.stmts[:len(s.stmts)-1]
+			}
+		case slotDecls:
+			if len(s.decls) > 0 {
+				s.decls = s.decls[:len(s.decls)-1]
+			}
+		case slotImports:
+			if len(s.imports) > 0 {
+				s.imports = s.imports[:len(s.imports)-1]
+			}
 		}
-	case slotDecls:
-		if len(s.decls) > 0 {
-			s.decls = s.decls[:len(s.decls)-1]
-		}
-	case slotImports:
-		if len(s.imports) > 0 {
-			s.imports = s.imports[:len(s.imports)-1]
+	case changeReplaced:
+		switch s.lastChange.slot {
+		case slotDecls:
+			if s.lastChange.prevIndex < len(s.decls) {
+				s.decls[s.lastChange.prevIndex] = s.lastChange.prevText
+			}
 		}
 	}
 	s.lastSlot = slotNone
+	s.lastChange = lastChange{}
 }
 
 // render builds the synthetic Tide source for the current
