@@ -57,8 +57,9 @@ func main() {
 func cmdEmit(args []string) int {
 	fs := flag.NewFlagSet("tide emit", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	noLine := fs.Bool("no-line", false, "strip //line directives from the lowered Go (for human reading)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: tide emit <file.td>")
+		fmt.Fprintln(os.Stderr, "usage: tide emit [-no-line] <file.td>")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -68,7 +69,7 @@ func cmdEmit(args []string) int {
 		fmt.Fprintln(os.Stderr, "tide emit: expected exactly one <file.td>")
 		return 2
 	}
-	goSrc, err := emitGoSource(fs.Arg(0))
+	goSrc, err := emitGoSourceOpts(fs.Arg(0), *noLine)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -124,11 +125,24 @@ func cmdBuild(args []string) int {
 // generated Go source string. Used by cmdEmit and (indirectly via
 // compileToTempGo) by build / run.
 func emitGoSource(path string) (string, error) {
+	return emitGoSourceOpts(path, false)
+}
+
+// emitGoSourceOpts is the variant that takes the `no-line` flag —
+// when true, the //line directives mapping back to the .td source
+// are suppressed (useful for reading the lowered Go directly).
+// Build / run keep them on so panic traces and `go vet` errors
+// still point at Tide source coordinates.
+func emitGoSourceOpts(path string, stripLine bool) (string, error) {
 	srcBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("tide: cannot read %s: %w", path, err)
 	}
-	return emitGoFromText(string(srcBytes), path)
+	label := path
+	if stripLine {
+		label = ""
+	}
+	return emitGoFromText(string(srcBytes), label)
 }
 
 // emitGoFromText runs the lexer / parser / codegen pipeline over
@@ -252,7 +266,7 @@ Usage:
   tide <command> [arguments]
 
 Commands:
-  emit   <file.td>             print the lowered Go source to stdout
+  emit   [-no-line] <file.td>  print the lowered Go source to stdout
   build  [-o out] <file.td>    compile to a native binary (default: ./<basename>)
   run    <file.td>             compile and execute (stdio passed through)
   repl                         interactive prompt (RFC-0003 skeleton)
