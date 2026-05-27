@@ -371,6 +371,27 @@ implementation of `tidert.Dynamic`, never as the lowering of `int`,
 `string`, class instances, sum-type values, or any other
 statically-typed construct.
 
+**Concrete reviewer signals.** A PR breaks P1–P3 if any of the
+following appear outside `tidert/reflect`:
+
+- A new Go struct of the shape `{ *TypeDesc, any }` (or any
+  morally equivalent "type descriptor + payload" pair) reachable
+  from non-`reflect.*` code paths.
+- A descriptor lookup (`registry.Get`, `tidert.DescOf`, etc.) in
+  emitted code for ordinary field access, method dispatch, `match`
+  arms, or container operations.
+- A helper signature with `any` / `interface{}` parameter or
+  return type where a Go type parameter would carry the static
+  type through. Exception: the `Dynamic` payload field itself.
+- A `Map` / `Set` / `Stack` operation that resolves the element
+  type at runtime rather than via Go's compile-time generic
+  monomorphisation.
+
+A PR exhibiting any of these patterns is presumed to break P1–P3
+and must either remove the pattern or justify the breakage
+explicitly. The review subagent is briefed to look for these
+shapes alongside the existing review checklist.
+
 **Why.** Without naming the line, every future runtime-shaped feature
 (serialisation, debug printers, hot reload, deep clone) would relitigate
 "does Tide have a runtime?" instead of "what does the runtime do for
