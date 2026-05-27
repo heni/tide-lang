@@ -339,9 +339,13 @@ PrimitiveType = "bool" | "int" | "int8" | "int16" | "int32" | "int64"
               | "float32" | "float64" | "byte" | "rune" | "string"
               | "unit"                              // value-type with one inhabitant `()`
               ;
-// `Any` and `error` are predeclared identifiers, not lexical
-// primitives — they match `NamedType` (Ident lookup). Listed in
-// `builtins.md` (forthcoming).
+// `Any`, `Dynamic`, and `error` are predeclared identifiers, not
+// lexical primitives — they match `NamedType` (Ident lookup).
+// Listed in `keywords.md`; type-system semantics in
+// `type-system.md`. `Dynamic` is the user-facing runtime-erased
+// wrapper used by the reflection API per RFC-0003; `Any` is the
+// binding-boundary FFI escape; the two are kept lexically distinct
+// on purpose (see `keywords.md` §Built-in identifiers).
 NamedType    = QualifiedIdent ( TypeArgs )? ;
 QualifiedIdent = Ident ( "." Ident )* ;
 TypeArgs     = "<" TypeExpr ( "," TypeExpr )* ">" ;
