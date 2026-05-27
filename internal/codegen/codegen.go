@@ -598,15 +598,22 @@ func init() {
 }
 
 func tideBox[T any](v T) Dynamic {
-	key := reflect.TypeOf(v).String()
-	d, ok := tideDescRegistry[key]
-	if !ok {
-		// Unknown type — synthesise a descriptor on the fly so
-		// reflect.box never fails. Kind defaults to KindPrimitive
-		// (best-effort); real descriptors land at class/sum decl.
-		d = &TypeDescriptor{Name: key, Kind: KindPrimitive}
+	return Dynamic{Payload: v, Desc: tideDescForKey(reflect.TypeOf(v).String())}
+}
+
+// tideDescForKey looks up (and caches) a descriptor for the
+// Go-runtime type-name key. The cache preserves CT1 (descriptor
+// uniqueness): two reflect.box calls on the same Go-runtime
+// type return Dynamic values whose Desc pointers compare equal.
+// Concurrent first-time-seen unknown types may briefly race on
+// the registry write — synchronisation lands with PR-R3.
+func tideDescForKey(key string) *TypeDescriptor {
+	if d, ok := tideDescRegistry[key]; ok {
+		return d
 	}
-	return Dynamic{Payload: v, Desc: d}
+	d := &TypeDescriptor{Name: key, Kind: KindPrimitive}
+	tideDescRegistry[key] = d
+	return d
 }
 
 func tideTypeOf(d Dynamic) *TypeDescriptor { return d.Desc }
@@ -666,17 +673,13 @@ func tideFieldErr(msg string) error { return tideFieldErrT{msg: msg} }
 
 // tideBoxAny boxes an arbitrary value (with type known only at
 // runtime via Go's reflect). Used by per-class field accessors
-// when reading a field's value.
+// when reading a field's value. Routes through tideDescForKey so
+// descriptor identity follows CT1.
 func tideBoxAny(v any) Dynamic {
 	if v == nil {
-		return Dynamic{Payload: nil, Desc: &TypeDescriptor{Name: "<nil>", Kind: KindPrimitive}}
+		return Dynamic{Payload: nil, Desc: tideDescForKey("<nil>")}
 	}
-	key := reflect.TypeOf(v).String()
-	d, ok := tideDescRegistry[key]
-	if !ok {
-		d = &TypeDescriptor{Name: key, Kind: KindPrimitive}
-	}
-	return Dynamic{Payload: v, Desc: d}
+	return Dynamic{Payload: v, Desc: tideDescForKey(reflect.TypeOf(v).String())}
 }
 `)
 	// Per-user-type descriptors collected during emit, with init

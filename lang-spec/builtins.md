@@ -342,7 +342,7 @@ type Kind =
 
 type FieldInfo = {
   name: string,
-  type: Type,
+  desc: Type,           // field name `desc`, not `type` — `type` is a Tide keyword
 }
 
 type MethodInfo = {
@@ -385,7 +385,10 @@ typeArgs(t: Type): []Type
 ```
 
 Partial queries returning `Result<T>` — **panic-free**. The
-`Err` payload carries a diagnostic code per `diagnostics.md`:
+`Err` payload carries a runtime `error` value with a
+human-readable message (no compile-time diagnostic code —
+those are reserved for sema). Each function describes its
+`Err` cases in the comment beside its signature:
 
 ```
 fieldValue(v: Dynamic, name: string): Result<Dynamic>   // Err: no such field, or v is not a class/record
