@@ -72,6 +72,10 @@ severity column.
 | E0206 | E | `refEq` requires class operands of the same class | `type-system.md` T-RefEq / `builtins.md` §Free functions | Compare two values of the same class type; for cross-class comparison there is no v1 equivalent (rewrite the logic). |
 | E0207 | E | Wrong type arity on generic instantiation | `type-system.md` WF-Named | Provide the expected number of type arguments. |
 | E0208 | E | Cannot infer literal type | `type-system.md` §Slices, maps, sets, stacks (BraceKind=Unknown) | Add an explicit type annotation at the use site. |
+| E0209 | E | `Dynamic` widening requires `reflect.box` | `type-system.md` T-Dyn-NoWiden / `builtins.md` §reflect | Wrap the value in `reflect.box(v)`. The only site that widens implicitly is a `reflect.*` parameter of formal type `Dynamic`. |
+| E0210 | E | `Dynamic` narrowing requires `reflect.unbox` | `type-system.md` T-Dyn-NoNarrow / `builtins.md` §reflect | Recover a concrete type with `match reflect.unbox<T>(d) { Ok(t) => ..., Err(_) => ... }`. There is no implicit `Dynamic → T` cast. |
+| E0211 | E | `Dynamic` in inferred type-parameter position | `type-system.md` §Dynamic (generic flow side condition) | Unification would set a user type parameter to `Dynamic` — rewrite the call so `T` is a concrete type, and pass the dynamic value through `reflect.box` / `reflect.unbox` explicitly. |
+| E0212 | E | `Any` and `Dynamic` cannot be implicitly converted | `type-system.md` §Dynamic (cross-reference) / `builtins.md` §Special types | These are deliberately separate types — to go from one to the other, narrow to a concrete `T` first and then re-box. |
 
 ### E03xx — Pattern matching
 
@@ -121,6 +125,20 @@ severity column.
 | E0802 | I | internal: `Never`-typed value at a Go-typed position | `lowering-go.md` §Errors | Compiler bug; file an issue. |
 | E0803 | I | internal: type-arg substitution failed | `lowering-go.md` §Errors | Compiler bug; file an issue. |
 
+### E09xx — REPL input
+
+Codes raised by `tide repl` (RFC-0003) when an input is not
+admissible at the prompt. Coordinates use the synthetic file
+`repl` followed by line:col within the input buffer.
+
+| Code | Sev | Message | Authoritative rule | Fix |
+|---|---|---|---|---|
+| E0901 | E | Top-level control-flow not supported at the REPL prompt | RFC-0003 §What the REPL accepts | Wrap `if` / `for` / `while` / `match` in a function and call it. The function body still admits these constructs. |
+| E0902 | E | `main` is owned by the REPL | RFC-0003 §What the REPL accepts | Drop the `func main() { ... }` wrapper — paste the body directly at the prompt. The REPL synthesises `main` itself. |
+| E0903 | E | Unknown meta-command | RFC-0003 §Meta-commands | The set is `:help :quit :reset :imports :show :write[!] :type :inspect :load`. Type `:help` for the full list. |
+| E0904 | E | `:write` target file already exists | RFC-0003 §Meta-commands | Use `:write! <file.td>` to overwrite, or pick a different name. |
+| E0905 | E | Last-value binding is unbound | RFC-0003 §Auto-printing (`_` / `_error`) + §Open questions #2 (unbound-on-fresh-session) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
+
 ## Diagnostic formatting
 
 Every diagnostic is emitted in this canonical format:
@@ -142,6 +160,9 @@ Severity labels: `error` for E, `warning` for W, `internal` for
 I. The bracketed code is mandatory and stable; fixture
 comparison (`test-contract.md`) uses the code, not the message
 alone.
+
+For REPL inputs (codes E09xx) `<path>` is the literal string
+`repl`; `<line>:<col>` is the position within the input buffer.
 
 ## Coverage invariant
 
