@@ -47,10 +47,25 @@ const (
 // the RFC's "accumulating-source REPL" choice (Tier 1 cost
 // model — every input pays for every prior side-effecting line).
 type replSession struct {
-	imports []string   // dedup'd import paths in append order
-	decls   []string   // top-level decls (func / class / type / interface)
-	stmts   []replStmt // body statements in append order
+	imports   []string        // dedup'd import paths in append order
+	decls     []string        // top-level decls (func / class / type / interface)
+	stmts     []replStmt      // body statements in append order
+	lastSlot  replSlot        // which slot the most recent add() appended to
+	rejected  map[string]bool // inputs that already failed compile — refuse to re-stash
 }
+
+// replSlot identifies which session slot was last appended to,
+// so rollback() knows which slice to pop from. Without this, a
+// failed decl could leave its broken text in `decls` while
+// rollback() pops an innocent prior stmt.
+type replSlot uint8
+
+const (
+	slotNone replSlot = iota
+	slotImports
+	slotDecls
+	slotStmts
+)
 
 // replStmt is one body-position input. `autoPrint == true` means
 // the original input was a bare expression and the REPL is
@@ -123,10 +138,14 @@ func runRepl(stdin io.Reader, stdout, stderr io.Writer) int {
 		if err := runSession(sess, stdout, stderr); err != nil {
 			fmt.Fprintln(stderr, "repl:", err)
 			// On compile / run failure the offending input is
-			// rolled back so the session stays usable. RFC §Errors
-			// allows kept side effects from prior successful
-			// inputs *in the same input* — we don't currently
-			// split a multi-form input, so rollback is whole-input.
+			// rolled back so the session stays usable, AND
+			// recorded in the rejected set so retyping the same
+			// broken text doesn't re-enter the compile pipeline
+			// forever. RFC §Errors allows kept side effects from
+			// prior successful inputs *in the same input* — we
+			// don't currently split a multi-form input, so
+			// rollback is whole-input.
+			sess.markRejected(input)
 			sess.rollback()
 		}
 	}
@@ -143,16 +162,22 @@ func runRepl(stdin io.Reader, stdout, stderr io.Writer) int {
 // §Auto-printing. `let` / `var` / assignment inputs go through
 // untouched.
 func (s *replSession) add(input string) error {
+	if s.rejected[input] {
+		return fmt.Errorf("input previously failed to compile — not re-stashed (use :reset to clear history)")
+	}
 	head := firstWord(input)
 	switch head {
 	case "import":
 		s.imports = append(s.imports, input)
+		s.lastSlot = slotImports
 	case "func", "class", "type", "interface":
 		s.decls = append(s.decls, input)
+		s.lastSlot = slotDecls
 	case "if", "for", "while", "match", "return", "break", "continue":
 		return fmt.Errorf("top-level control-flow not supported in v1 — wrap it in a func")
 	case "let", "var":
 		s.stmts = append(s.stmts, replStmt{src: input})
+		s.lastSlot = slotStmts
 	default:
 		if isAssignment(input) || looksLikeCallStatement(input) {
 			// `fmt.println(x)` and friends — side-effecting calls
@@ -161,11 +186,25 @@ func (s *replSession) add(input string) error {
 			// wrap with auto-print. The user can still inspect a
 			// call's return by binding: `let r = call(); r`.
 			s.stmts = append(s.stmts, replStmt{src: input})
-			return nil
+		} else {
+			s.stmts = append(s.stmts, replStmt{src: input, autoPrint: true})
 		}
-		s.stmts = append(s.stmts, replStmt{src: input, autoPrint: true})
+		s.lastSlot = slotStmts
 	}
 	return nil
+}
+
+// markRejected records that this exact input text has already
+// failed to compile and must not be re-added to the session.
+// Without this guard, a user retyping the same broken input
+// would land it back in the session, fail again, get rolled
+// back, and so on — infinite loop of the same broken construct
+// re-entering the compile pipeline.
+func (s *replSession) markRejected(input string) {
+	if s.rejected == nil {
+		s.rejected = map[string]bool{}
+	}
+	s.rejected[input] = true
 }
 
 // looksLikeCallStatement reports whether the input parses as a
@@ -319,16 +358,25 @@ func isAssignment(src string) bool {
 
 // rollback drops the most recently added entry — used when the
 // inner compile / run failed so the session does not keep a
-// broken form.
+// broken form. Consults lastSlot rather than guessing from
+// length: a failed decl that arrived after an innocent stmt
+// must pop from decls, not stmts.
 func (s *replSession) rollback() {
-	switch {
-	case len(s.stmts) > 0:
-		s.stmts = s.stmts[:len(s.stmts)-1]
-	case len(s.decls) > 0:
-		s.decls = s.decls[:len(s.decls)-1]
-	case len(s.imports) > 0:
-		s.imports = s.imports[:len(s.imports)-1]
+	switch s.lastSlot {
+	case slotStmts:
+		if len(s.stmts) > 0 {
+			s.stmts = s.stmts[:len(s.stmts)-1]
+		}
+	case slotDecls:
+		if len(s.decls) > 0 {
+			s.decls = s.decls[:len(s.decls)-1]
+		}
+	case slotImports:
+		if len(s.imports) > 0 {
+			s.imports = s.imports[:len(s.imports)-1]
+		}
 	}
+	s.lastSlot = slotNone
 }
 
 // render builds the synthetic Tide source for the current

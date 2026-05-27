@@ -415,6 +415,64 @@ func TestReplShowOriginalSource(t *testing.T) {
 	}
 }
 
+func TestReplRollbackPopsCorrectSlot(t *testing.T) {
+	// A broken `func` decl must roll back from `decls` even
+	// when prior stmts exist. Previous (buggy) rollback popped
+	// from stmts unconditionally, leaving the broken decl in
+	// the session so every subsequent input re-failed.
+	input := "import fmt\n" +
+		"let x = 1\n" +
+		"func bad() { broken!!!! }\n" +
+		"fmt.println(\"recovered:\", x)\n" +
+		":quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "recovered: 1") {
+		t.Errorf("expected 'recovered: 1' after broken-decl rollback; stdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+}
+
+func TestReplRejectsRetypedBrokenInput(t *testing.T) {
+	// Retyping the exact same broken input must short-circuit
+	// at the REPL boundary, not re-enter the compile pipeline.
+	input := "let x = oh dear\n" +
+		"let x = oh dear\n" +
+		"let x = 42\n" +
+		"x\n" +
+		":quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stderr, "previously failed to compile") {
+		t.Errorf("expected rejected-tracker hit on retype; stderr:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "42") {
+		t.Errorf("expected final '42' auto-print; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplResetClearsRejected(t *testing.T) {
+	// After :reset the rejected set is cleared, so a previously
+	// failed input becomes acceptable again (only blocked
+	// because it failed to compile — not because the text
+	// itself is poisoned forever).
+	input := "let x = oh dear\n" +
+		":reset\n" +
+		"let x = 5\n" +
+		"x\n" +
+		":quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "5") {
+		t.Errorf("expected '5' after :reset + valid let; stdout:\n%s", stdout)
+	}
+}
+
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
 	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
