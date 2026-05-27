@@ -454,6 +454,34 @@ func TestReplRejectsRetypedBrokenInput(t *testing.T) {
 	}
 }
 
+func TestReplResetMainKeepsDecls(t *testing.T) {
+	// `:reset main` clears the main() body but keeps imports
+	// and decls so the user can iterate on stmts against an
+	// established scaffolding.
+	input := "import fmt\n" +
+		"class Counter { var n: int }\n" +
+		"let c = Counter(7)\n" +
+		"c\n" +
+		":reset main\n" +
+		"let c2 = Counter(99)\n" +
+		"c2\n" +
+		":show\n" +
+		":quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Counter{n: 99}") {
+		t.Errorf("post-reset constructor call should still find Counter; stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "class Counter") {
+		t.Errorf(":show after :reset main should still list the class; stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Counter(7)") {
+		t.Errorf(":reset main should drop the prior `Counter(7)` stmt; stdout:\n%s", stdout)
+	}
+}
+
 func TestReplResetClearsRejected(t *testing.T) {
 	// After :reset the rejected set is cleared, so a previously
 	// failed input becomes acceptable again (only blocked

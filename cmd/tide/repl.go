@@ -649,8 +649,23 @@ func handleMeta(line string, s *replSession, stdout, stderr io.Writer) bool {
 	case ":help":
 		fmt.Fprint(stdout, helpText)
 	case ":reset":
-		*s = replSession{}
-		fmt.Fprintln(stdout, "(session cleared)")
+		// `:reset` wipes the whole session; `:reset main` wipes
+		// only the main() body — imports and decls (func / class
+		// / type / interface) survive so the user can iterate on
+		// statements against an established scaffolding without
+		// re-declaring it. The rejected set is cleared in both
+		// modes because its entries are exact-text keys; after
+		// a body-only reset the user may want to retry a
+		// previously broken stmt against the surviving scaffolding.
+		if len(fields) > 1 && fields[1] == "main" {
+			s.stmts = nil
+			s.rejected = nil
+			s.lastSlot = slotNone
+			fmt.Fprintln(stdout, "(main body cleared; imports and declarations kept)")
+		} else {
+			*s = replSession{}
+			fmt.Fprintln(stdout, "(session cleared)")
+		}
 	case ":show":
 		// `:show` is a diagnostic aid — print the original
 		// user-typed source, not the auto-print-wrapped render
@@ -719,6 +734,7 @@ const helpText = `Meta-commands:
   :help                show this list
   :quit / :q           exit the REPL
   :reset               drop all session state
+  :reset main          drop only the main() body (keep imports + decls)
   :imports             list active imports
   :show                print the accumulated session source
   :type <expr>         print the static type of <expr>
