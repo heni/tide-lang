@@ -290,6 +290,51 @@ This is the product-identity counterpart to D1 (Go is an IR), D8 (`//line`
 source maps), and D10 (errors in Tide coordinates) — naming it explicitly
 guards against the project sliding into "just nicer Go syntax."
 
+### D18 — Tide has a runtime, and it is part of the language contract
+
+**Claim.** Tide ships a small runtime package (`tidert/`) whose surface is
+part of the language contract, not a private codegen implementation
+detail. Three things live there:
+
+1. Method bodies for the predeclared generic containers (`Map`, `Set`,
+   `Stack`). These have always lived in `tidert/`; this decision just
+   names what was implicit.
+2. Per-class / per-sum **type descriptors** — small records carrying
+   Tide-side names (class name, field names, variant names, generic
+   arguments), emitted by codegen and held in a runtime registry.
+3. The reflection API (`Type`, `Kind`, `FieldInfo`, the `Dynamic`
+   wrapper, the functions in the `reflect` module) that reads
+   descriptors and box-values at runtime.
+
+**Three invariants of the runtime contract.**
+
+1. **`tidert/` has a private and a public layer.** The container
+   helpers (`Map.new`, `Set.new`, `Stack.pop`, ...) stay private —
+   codegen is free to refactor them without it being a contract
+   change. The reflection-facing surface — type descriptors, the
+   registry, the `reflect` module — is public; every observation
+   user code can make through it is a commitment.
+2. **Generated code and `tidert` are version-locked.** A binary
+   produced by compiler version *N* must be linked against `tidert`
+   built at version *N*. Mismatch is detected eagerly (build-time
+   error or forced rebuild) and never produces a runnable binary.
+3. **Reflection ABI is append-only within a compatibility window.**
+   New `Kind` variants, new descriptor fields, new `reflect`
+   functions may be added without a language-version bump. Changing
+   the meaning of an already-exposed field, or dropping a field,
+   requires a major / lang-version bump.
+
+**Why.** Without naming the line, every future runtime-shaped feature
+(serialisation, debug printers, hot reload, deep clone) would relitigate
+"does Tide have a runtime?" instead of "what does the runtime do for
+this feature?". The threshold was crossed implicitly when `Map`/`Set`/
+`Stack` containers landed; reflection makes it observable, so naming it
+is overdue.
+
+**What it does not change.** D1 still holds — generated Go is not for
+human reading. The runtime exists in Go because the IR is Go; it
+remains invisible to the Tide user.
+
 ---
 
 ## What's not here
