@@ -186,16 +186,39 @@ func (g *gen) writeHeader(f *ast.File) {
 // (no parens) needs sema-driven type inference and lands later;
 // until then the user writes the call form.
 func (g *gen) writePredeclaredSums() {
+	// Struct shape exactly per `lang-spec/lowering-go.md`
+	// §Container types — runtime representation: `Option[T]`
+	// fields `Tag` + `V`; `Result[T, E]` fields `Tag` + `V` + `E`.
+	// The spec puts these in `tidert/runtime.go` and refers to
+	// them as `tidert.Option[T]` / `tidert.Result[T, E]`; PR-F5b
+	// emits them inline in `main` as a v1 transitional state.
+	// Block R relocates them to `tidert/` without changing the
+	// struct shape (tracked in backlog.md).
 	if g.usesOption {
-		g.b.WriteString("type Option[T any] struct {\n\tTag       uint8\n\tSomeValue T\n}\n")
-		g.b.WriteString("func OptionSome[T any](value T) Option[T] {\n\treturn Option[T]{Tag: 1, SomeValue: value}\n}\n")
+		g.b.WriteString("type Option[T any] struct {\n\tTag uint8\n\tV   T\n}\n")
+		g.b.WriteString("func OptionSome[T any](value T) Option[T] {\n\treturn Option[T]{Tag: 1, V: value}\n}\n")
 		g.b.WriteString("func OptionNone[T any]() Option[T] {\n\treturn Option[T]{Tag: 0}\n}\n")
 	}
 	if g.usesResult {
-		g.b.WriteString("type Result[T any, E any] struct {\n\tTag      uint8\n\tOkValue  T\n\tErrErr   E\n}\n")
-		g.b.WriteString("func ResultOk[T any, E any](value T) Result[T, E] {\n\treturn Result[T, E]{Tag: 0, OkValue: value}\n}\n")
-		g.b.WriteString("func ResultErr[T any, E any](err E) Result[T, E] {\n\treturn Result[T, E]{Tag: 1, ErrErr: err}\n}\n")
+		g.b.WriteString("type Result[T any, E any] struct {\n\tTag uint8\n\tV   T\n\tE   E\n}\n")
+		g.b.WriteString("func ResultOk[T any, E any](value T) Result[T, E] {\n\treturn Result[T, E]{Tag: 0, V: value}\n}\n")
+		g.b.WriteString("func ResultErr[T any, E any](err E) Result[T, E] {\n\treturn Result[T, E]{Tag: 1, E: err}\n}\n")
 	}
+}
+
+// predeclaredPayloadField returns the Go-side struct field name
+// for a predeclared sum-type variant's payload, per spec
+// (`lang-spec/lowering-go.md` §Container types). Returns the
+// empty string for non-predeclared variants; callers fall back
+// to the PR-F5a `<Variant><FieldName>` convention.
+func predeclaredPayloadField(variantName string) string {
+	switch variantName {
+	case "Some", "Ok":
+		return "V"
+	case "Err":
+		return "E"
+	}
+	return ""
 }
 
 // detectPredeclaredUsage walks the file AST and sets
@@ -823,7 +846,15 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 			g.b.WriteString(" := ")
 			g.b.WriteString(subjectExpr)
 			g.b.WriteByte('.')
-			g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
+			// Predeclared sums use spec-fixed field names (V / E)
+			// per `lang-spec/lowering-go.md` §Container types;
+			// user-declared variants follow the PR-F5a
+			// `<Variant><FieldName>` convention.
+			if pf := predeclaredPayloadField(name); pf != "" {
+				g.b.WriteString(pf)
+			} else {
+				g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
+			}
 			g.b.WriteByte('\n')
 		case *ast.WildcardPat:
 			// Nothing to bind.
