@@ -40,6 +40,15 @@ is expected, with no implicit cast. The resolver and sema
 together enforce that user-authored Tide code never introduces
 an `Any`-typed parameter (per D11/G23).
 
+`Dynamic` is the user-facing runtime-erased wrapper used by the
+reflection API (per RFC-0003 and D18). `Dynamic` is deliberately
+**separate** from `Any`: `Any` is the internal FFI escape, kept
+out of user code; `Dynamic` is the explicit handle users reach
+for when they want to hand a value to `reflect.*`. The two are
+never silently promoted into one another. Introduction and
+elimination rules for `Dynamic` are formalised in §Dynamic
+below.
+
 `Never` is a subtype of every type: `Never <: T` for all `T`. A
 `DivergingExpr` (return/break/continue/panic/`os.exit`) has type
 `Never`, so it unifies with whatever the surrounding expression
@@ -144,6 +153,113 @@ v1:
 Any other pair fails as **E0205 Illegal type conversion**. Notably
 `string → int` is **not** in `ConvOK` (use `strconv.atoi`).
 Truncation / rounding semantics follow Go's rules at runtime.
+
+### Dynamic — the reflection wrapper
+
+`Dynamic` is a predeclared type used by the `reflect` module
+(per RFC-0003). The type rules below are the spec contract that
+sema enforces; together they implement D18-P2 ("`Dynamic` is
+explicit and viral only by spelling").
+
+**Well-formed type.** `Dynamic` is a predeclared identifier
+(`keywords.md`); `Γ ⊢ Dynamic wf` holds in every environment.
+It carries no type arguments. `Dynamic` may appear in any type
+position a user names it explicitly — parameter, return,
+field, slice / map / set element, type argument. The rules
+below constrain *only* introduction (how a `Dynamic` value is
+produced) and elimination (how it is consumed back to a
+concrete type); they do not restrict where the spelling
+`Dynamic` is allowed.
+
+**Introduction at reflect-call sites (implicit widening).** The
+sole site of implicit widening is a call to a function in the
+`reflect` module whose corresponding formal parameter has type
+`Dynamic`. Nothing else widens implicitly — not assignment,
+not return, not collection-literal element position.
+
+```
+(T-Dyn-Intro-Reflect)
+               Γ ⊢ f : (P_1, ..., P_n) → R
+               f is a function declared in module `reflect`
+               P_k = Dynamic
+               Γ ⊢ a_k : T_k                              (T_k is any well-formed type)
+               (every other a_i type-checks against P_i normally)
+               ─────────────────────────────────────────────────────────
+                                Γ ⊢ f(a_1, ..., a_n) : R
+```
+
+The rule applies *only* if `f`'s qualified name resolves to the
+`reflect` module. A function with the same shape declared
+outside `reflect` does **not** trigger widening — the argument
+must already be `Dynamic` or the call is rejected with
+**E0209**.
+
+**Introduction via `reflect.box` (explicit).** For any site
+where the implicit rule does not fire — building a `[]Dynamic`
+literal, returning a `Dynamic` from a non-reflect function,
+storing a `Dynamic` in a field — the user writes
+`reflect.box(v)` explicitly:
+
+```
+(T-Dyn-Box)    Γ ⊢ v : T
+               ──────────────────────────────────
+                       Γ ⊢ reflect.box<T>(v) : Dynamic
+```
+
+The type parameter `<T>` is inferred from the argument when
+the call site is unambiguous.
+
+**Elimination via `reflect.unbox` (only path).** A value of
+type `Dynamic` cannot be used where a concrete `T` is
+expected. The only recovery is the type-checked unwrap:
+
+```
+(T-Dyn-Unbox)  Γ ⊢ d : Dynamic
+               ──────────────────────────────────────
+                       Γ ⊢ reflect.unbox<T>(d) : Result<T>
+```
+
+`Result<T>` returns `Ok(t)` when the runtime descriptor of `d`
+matches `T`, and `Err(e)` otherwise. No `Dynamic → T` cast
+exists outside this call.
+
+**No-narrowing rule.** Using a `Dynamic`-typed value where a
+concrete type is expected is **E0210 Dynamic narrowing requires
+reflect.unbox**:
+
+```
+(T-Dyn-NoNarrow)
+               Γ ⊢ e : Dynamic     context expects T ≠ Dynamic     T ≠ Any
+               ───────────────────────────────────────────────────────────
+                                  E0210
+```
+
+**No-widening rule (outside reflect).** Passing a concrete `T`
+where `Dynamic` is expected, *outside* the `T-Dyn-Intro-Reflect`
+admitted sites, is **E0209 Dynamic widening requires reflect.box**:
+
+```
+(T-Dyn-NoWiden)
+               Γ ⊢ e : T     T ≠ Dynamic     context expects Dynamic
+               site is not a reflect.* parameter of formal type Dynamic
+               ──────────────────────────────────────────────────────────
+                                  E0209
+```
+
+**Generic flow.** Type parameters of user-authored generic
+declarations are **never** inferred to `Dynamic`. If unification
+would yield `T = Dynamic`, sema rejects with **E0211 Dynamic in
+inferred type-parameter position** — the user must rewrite the
+call to pass through `reflect.box` / `reflect.unbox` explicitly.
+This preserves D18-P3 (no universal `Value` lowering through
+generics).
+
+**Cross-reference.** The `Any` paragraph at the top of this
+file describes Tide's other "top-ish" type. `Any` and `Dynamic`
+share no implicit-conversion path in either direction; mixing
+them across a call boundary is **E0212 Any/Dynamic cannot be
+implicitly converted** (the user must `reflect.box` to go
+either way).
 
 ### Arithmetic and logical operators
 
@@ -782,6 +898,16 @@ touched by this file:
 - **E0207** — Wrong type arity on a generic instantiation.
 - **E0208** — Cannot infer literal type for a bare-`{}` `BraceLit`
   with no contextual expected type.
+- **E0209** — `Dynamic` widening requires `reflect.box` outside
+  `reflect.*` parameter sites (T-Dyn-NoWiden).
+- **E0210** — `Dynamic` narrowing requires `reflect.unbox`
+  (T-Dyn-NoNarrow). A `Dynamic` value cannot flow into a concrete
+  type position without explicit unbox.
+- **E0211** — `Dynamic` in inferred type-parameter position
+  (T-Dyn-Intro-Reflect's "no implicit Dynamic in generic flow"
+  side condition).
+- **E0212** — `Any` and `Dynamic` cannot be implicitly converted
+  to each other.
 - **E0105** — Duplicate field name in a `Record` body
   (WF-Body-Record side-condition).
 - **E0106** — Duplicate variant name in a `Sum` body
