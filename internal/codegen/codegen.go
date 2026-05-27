@@ -317,15 +317,26 @@ func (g *gen) writeHeader(f *ast.File) {
 	// import for the user, but if usesReflect is set we add Go's
 	// `import "reflect"` for the descriptor registry's internal
 	// runtime type lookup.
+	seen := map[string]bool{}
 	var paths []string
+	add := func(p string) {
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
 	for _, im := range f.Imports {
 		if im.Path == "reflect" {
 			continue // Tide-internal
 		}
-		paths = append(paths, im.Path)
+		add(im.Path)
 	}
 	if g.usesReflect {
-		paths = append(paths, "reflect")
+		// reflect.TypeOf for the descriptor registry lookup, plus
+		// strconv for the show-helper's primitive formatting.
+		add("reflect")
+		add("strconv")
 	}
 	// Sort for determinism.
 	for i := 1; i < len(paths); i++ {
@@ -606,7 +617,7 @@ func tideBox[T any](v T) Dynamic {
 // uniqueness): two reflect.box calls on the same Go-runtime
 // type return Dynamic values whose Desc pointers compare equal.
 // Concurrent first-time-seen unknown types may briefly race on
-// the registry write — synchronisation lands with PR-R3.
+// the registry write — a later Block-R PR adds synchronisation.
 func tideDescForKey(key string) *TypeDescriptor {
 	if d, ok := tideDescRegistry[key]; ok {
 		return d
@@ -680,6 +691,64 @@ func tideBoxAny(v any) Dynamic {
 		return Dynamic{Payload: nil, Desc: tideDescForKey("<nil>")}
 	}
 	return Dynamic{Payload: v, Desc: tideDescForKey(reflect.TypeOf(v).String())}
+}
+
+// tideShow renders a Dynamic value as a human-readable string.
+// It is the runtime building block for the REPL auto-printer
+// and ` + "`" + `:inspect` + "`" + ` (RFC-0003). Kinds beyond Primitive /
+// Class fall back to a "<TypeName>" placeholder for now; PR-R4
+// adds Sum / Slice / Map rendering once the matching descriptor
+// metadata lands. Panic-free per D18 CT2.
+func tideShow(d Dynamic) string {
+	if d.Desc == nil {
+		return "<nil>"
+	}
+	switch d.Desc.Kind {
+	case KindClass:
+		out := d.Desc.Name + "{"
+		for i, fi := range d.Desc.fields {
+			if i > 0 {
+				out += ", "
+			}
+			fv := tideFieldValue(d, fi.name)
+			if fv.Tag != 0 {
+				out += fi.name + ": <unreadable>"
+				continue
+			}
+			out += fi.name + ": " + tideShow(fv.V)
+		}
+		return out + "}"
+	case KindPrimitive:
+		return tideShowPrimitive(d)
+	default:
+		return "<" + d.Desc.Name + ">"
+	}
+}
+
+func tideShowPrimitive(d Dynamic) string {
+	switch v := d.Payload.(type) {
+	case nil:
+		return "<nil>"
+	case string:
+		return strconv.Quote(v)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10)
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	default:
+		return "<" + d.Desc.Name + ">"
+	}
 }
 `)
 	// Per-user-type descriptors collected during emit, with init
@@ -1523,10 +1592,10 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 
 // emitReflectCall lowers a `reflect.X(args)` call to the
 // corresponding inline tidert helper emitted by
-// `writePredeclaredReflect`. PR-R1 surface: box / unbox /
-// typeOf / typeName / kind. Field-introspection (fields,
-// fieldValue, methods, variants, variantOf, typeArgs,
-// elementType) lands with PR-R2.
+// `writePredeclaredReflect`. Current surface: box / unbox /
+// typeOf / typeName / kind / fields / fieldValue / show
+// (PR-R1 .. PR-R3). Variants / methods / typeArgs / elementType
+// land with later Block-R PRs.
 func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.Expr) error {
 	switch name {
 	case "box":
@@ -1564,7 +1633,7 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 		}
 		g.b.WriteByte(')')
 		return nil
-	case "typeOf", "typeName", "kind", "fields", "fieldValue":
+	case "typeOf", "typeName", "kind", "fields", "fieldValue", "show":
 		g.b.WriteString("tide")
 		g.b.WriteString(strings.ToUpper(name[:1]))
 		g.b.WriteString(name[1:])

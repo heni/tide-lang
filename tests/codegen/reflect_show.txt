@@ -1,5 +1,5 @@
 --- TITLE ---
-reflection — fields(t) iteration and fieldValue(d, name) over a class
+reflection — reflect.show pretty-prints class + primitive Dynamic values
 
 --- INPUT ---
 import fmt
@@ -12,18 +12,10 @@ class Point {
 
 func main() {
   let p = Point(3, 4)
-  let d = reflect.box(p)
-  for fi in reflect.fields(reflect.typeOf(d)) {
-    fmt.println(fi.name, reflect.typeName(fi.desc))
-  }
-  match reflect.fieldValue(d, "x") {
-    Ok(v) => fmt.println("x=", reflect.typeName(reflect.typeOf(v))),
-    Err(e) => fmt.println("err", e),
-  }
-  match reflect.fieldValue(d, "missing") {
-    Ok(_) => fmt.println("got"),
-    Err(e) => fmt.println("missing err:", e),
-  }
+  fmt.println(reflect.show(reflect.box(p)))
+  fmt.println(reflect.show(reflect.box(42)))
+  fmt.println(reflect.show(reflect.box("hi")))
+  fmt.println(reflect.show(reflect.box(true)))
 }
 
 --- GO ---
@@ -295,34 +287,17 @@ type Point struct {
 
 func main() {
 	var p = &Point{3, 4}
-	var d = tideBox(p)
-	for _, fi := range tideFields(tideTypeOf(d)) {
-		fmt.Println(fi.name, tideTypeName(fi.desc))
-	}
-	__tide_match_1 := tideFieldValue(d, "x")
-	switch __tide_match_1.Tag {
-	case 0:
-		v := __tide_match_1.V
-		fmt.Println("x=", tideTypeName(tideTypeOf(v)))
-	case 1:
-		e := __tide_match_1.E
-		fmt.Println("err", e)
-	}
-	__tide_match_2 := tideFieldValue(d, "missing")
-	switch __tide_match_2.Tag {
-	case 0:
-		fmt.Println("got")
-	case 1:
-		e := __tide_match_2.E
-		fmt.Println("missing err:", e)
-	}
+	fmt.Println(tideShow(tideBox(p)))
+	fmt.Println(tideShow(tideBox(42)))
+	fmt.Println(tideShow(tideBox("hi")))
+	fmt.Println(tideShow(tideBox(true)))
 }
 
 --- STDOUT ---
-x int
-y int
-x= int
-missing err: type Point has no field missing
+Point{x: 3, y: 4}
+42
+"hi"
+true
 
 --- EXIT ---
 0

@@ -25,6 +25,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 )
 
 type Option[T any] struct {
@@ -122,7 +123,7 @@ func tideBox[T any](v T) Dynamic {
 // uniqueness): two reflect.box calls on the same Go-runtime
 // type return Dynamic values whose Desc pointers compare equal.
 // Concurrent first-time-seen unknown types may briefly race on
-// the registry write — synchronisation lands with PR-R3.
+// the registry write — a later Block-R PR adds synchronisation.
 func tideDescForKey(key string) *TypeDescriptor {
 	if d, ok := tideDescRegistry[key]; ok {
 		return d
@@ -196,6 +197,64 @@ func tideBoxAny(v any) Dynamic {
 		return Dynamic{Payload: nil, Desc: tideDescForKey("<nil>")}
 	}
 	return Dynamic{Payload: v, Desc: tideDescForKey(reflect.TypeOf(v).String())}
+}
+
+// tideShow renders a Dynamic value as a human-readable string.
+// It is the runtime building block for the REPL auto-printer
+// and `:inspect` (RFC-0003). Kinds beyond Primitive /
+// Class fall back to a "<TypeName>" placeholder for now; PR-R4
+// adds Sum / Slice / Map rendering once the matching descriptor
+// metadata lands. Panic-free per D18 CT2.
+func tideShow(d Dynamic) string {
+	if d.Desc == nil {
+		return "<nil>"
+	}
+	switch d.Desc.Kind {
+	case KindClass:
+		out := d.Desc.Name + "{"
+		for i, fi := range d.Desc.fields {
+			if i > 0 {
+				out += ", "
+			}
+			fv := tideFieldValue(d, fi.name)
+			if fv.Tag != 0 {
+				out += fi.name + ": <unreadable>"
+				continue
+			}
+			out += fi.name + ": " + tideShow(fv.V)
+		}
+		return out + "}"
+	case KindPrimitive:
+		return tideShowPrimitive(d)
+	default:
+		return "<" + d.Desc.Name + ">"
+	}
+}
+
+func tideShowPrimitive(d Dynamic) string {
+	switch v := d.Payload.(type) {
+	case nil:
+		return "<nil>"
+	case string:
+		return strconv.Quote(v)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10)
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	default:
+		return "<" + d.Desc.Name + ">"
+	}
 }
 
 var tideDesc_Counter = &TypeDescriptor{Name: "Counter", Kind: KindClass}

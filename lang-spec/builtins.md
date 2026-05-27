@@ -415,6 +415,22 @@ argument. The type parameter of `unbox` is required explicitly
 at the call site (return-only generics — see Open Question 1
 in RFC-0003).
 
+Rendering — the runtime building block for the REPL
+auto-printer and `:inspect`:
+
+```
+show(d: Dynamic): string           // total — best-effort pretty-print
+```
+
+`show` walks the descriptor recursively: primitives render via
+their natural spelling (`int`/`float` decimals, `string` quoted,
+`bool` as `true`/`false`), classes as `Name{field: value, ...}`,
+and any other kind falls back to a `<TypeName>` placeholder
+until later Block-R PRs cover sums / slices / maps. `show`
+never panics and never returns `Err` — when reflection cannot
+read a field, the field renders as `field: <unreadable>` and
+walking continues.
+
 ### Constraints
 
 - The reflection API is **panic-free**: every partial operation
