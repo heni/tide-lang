@@ -83,16 +83,33 @@ func Emit(f *ast.File, file string) (string, error) {
 		// class and sum type so the reflection-prelude emitted
 		// from writeHeader can include the init() registration
 		// block.
+		// Collect set of declared class names first so field-type
+		// resolution can reference them (descRef for a field of
+		// class-type X is `tideDesc_X`).
+		classNames := map[string]bool{}
+		for _, d := range f.Decls {
+			if cd, ok := d.(*ast.ClassDecl); ok && len(cd.TypeParams) == 0 {
+				classNames[cd.Name] = true
+			}
+		}
 		for _, d := range f.Decls {
 			switch v := d.(type) {
 			case *ast.ClassDecl:
 				if len(v.TypeParams) != 0 {
 					continue // generic-instantiation descriptors land later
 				}
+				var fields []fieldDescInfo
+				for _, cf := range v.Fields {
+					fields = append(fields, fieldDescInfo{
+						tideName: cf.Name,
+						descRef:  descRefForType(cf.DeclType, classNames),
+					})
+				}
 				g.descriptors = append(g.descriptors, descInfo{
 					tideName: v.Name,
 					goType:   "*main." + v.Name,
 					kind:     "KindClass",
+					fields:   fields,
 				})
 			case *ast.TypeDecl:
 				if _, ok := v.Body.(*ast.SumTypeBody); ok {
@@ -265,10 +282,28 @@ type classInfo struct {
 // as the registry key (`*main.Counter` for classes,
 // `main.Color` for sum types, etc.); `kind` is the spec's Kind
 // enum value (KindClass / KindSum / KindPrimitive ...).
+// `fields` carries per-class field metadata for PR-R2's
+// `reflect.fields(t)` and `reflect.fieldValue(v, name)`. Empty
+// for non-class descriptors.
 type descInfo struct {
 	tideName string
 	goType   string
 	kind     string // "KindClass" / "KindSum" / etc.
+	fields   []fieldDescInfo
+}
+
+// fieldDescInfo is one entry in a class descriptor's field
+// list. `tideName` is the Tide-source spelling (also the
+// Go-side struct field name — emitted lowercase per the
+// class-field lowering convention); `descRef` is the Go-side
+// var name pointing at the field's type descriptor (e.g.,
+// "tideDesc_int" for int, "tideDesc_Counter" for a class
+// instance). When the field's static type has no resolvable
+// descriptor (slices, generics, ...) descRef is the empty
+// string and reflect.fields synthesises a placeholder.
+type fieldDescInfo struct {
+	tideName string
+	descRef  string
 }
 
 func (g *gen) writeHeader(f *ast.File) {
@@ -507,8 +542,14 @@ func (g *gen) writePredeclaredReflect() {
 }
 
 type TypeDescriptor struct {
-	Name string
-	Kind Kind
+	Name   string
+	Kind   Kind
+	fields []FieldInfo
+}
+
+type FieldInfo struct {
+	name string
+	desc *TypeDescriptor
 }
 
 type Kind struct {
@@ -588,6 +629,55 @@ func (e tideUnboxErr) Error() string {
 }
 
 func tideUnboxError(typeName string) error { return tideUnboxErr{typeName: typeName} }
+
+// Per-class field accessor functions are registered into this
+// map at init time (one per non-generic class declared in the
+// program). The accessor reads a named field off the Tide-side
+// pointer-to-struct and returns it boxed as Dynamic.
+type tideFieldAccessor = func(v any, name string) (Dynamic, bool)
+
+var tideFieldAccessors = map[string]tideFieldAccessor{}
+
+func tideFields(t *TypeDescriptor) []FieldInfo { return t.fields }
+
+func tideFieldValue(d Dynamic, name string) Result[Dynamic, error] {
+	if d.Desc == nil {
+		var zero Dynamic
+		return Result[Dynamic, error]{Tag: 1, E: tideFieldErr("Dynamic has no descriptor"), V: zero}
+	}
+	fn, ok := tideFieldAccessors[d.Desc.Name]
+	if !ok {
+		var zero Dynamic
+		return Result[Dynamic, error]{Tag: 1, E: tideFieldErr("type " + d.Desc.Name + " has no field accessor"), V: zero}
+	}
+	v, ok := fn(d.Payload, name)
+	if !ok {
+		var zero Dynamic
+		return Result[Dynamic, error]{Tag: 1, E: tideFieldErr("type " + d.Desc.Name + " has no field " + name), V: zero}
+	}
+	return Result[Dynamic, error]{Tag: 0, V: v}
+}
+
+type tideFieldErrT struct{ msg string }
+
+func (e tideFieldErrT) Error() string { return e.msg }
+
+func tideFieldErr(msg string) error { return tideFieldErrT{msg: msg} }
+
+// tideBoxAny boxes an arbitrary value (with type known only at
+// runtime via Go's reflect). Used by per-class field accessors
+// when reading a field's value.
+func tideBoxAny(v any) Dynamic {
+	if v == nil {
+		return Dynamic{Payload: nil, Desc: &TypeDescriptor{Name: "<nil>", Kind: KindPrimitive}}
+	}
+	key := reflect.TypeOf(v).String()
+	d, ok := tideDescRegistry[key]
+	if !ok {
+		d = &TypeDescriptor{Name: key, Kind: KindPrimitive}
+	}
+	return Dynamic{Payload: v, Desc: d}
+}
 `)
 	// Per-user-type descriptors collected during emit, with init
 	// block registering them into the runtime map.
@@ -603,6 +693,44 @@ func tideUnboxError(typeName string) error { return tideUnboxErr{typeName: typeN
 		g.b.WriteString(d.kind)
 		g.b.WriteString("}\n")
 	}
+	// Per-class field accessor functions — emitted after the
+	// classes themselves are emitted into the package, so the
+	// accessor body can refer to the class struct's field by
+	// its lowercase Go-side name. The accessor takes any so
+	// the dispatcher in tideFieldValue can call it through the
+	// map without per-class typed indirection.
+	for _, d := range g.descriptors {
+		if d.kind != "KindClass" {
+			continue
+		}
+		g.b.WriteString("func tideFieldOf_")
+		g.b.WriteString(d.tideName)
+		g.b.WriteString("(v any, name string) (Dynamic, bool) {\n")
+		g.b.WriteString("\tc, _ := v.(*")
+		g.b.WriteString(d.tideName)
+		g.b.WriteString(")\n")
+		g.b.WriteString("\tif c == nil {\n\t\treturn Dynamic{}, false\n\t}\n")
+		g.b.WriteString("\tswitch name {\n")
+		for _, fi := range d.fields {
+			g.b.WriteString("\tcase ")
+			g.b.WriteString(strconv.Quote(fi.tideName))
+			g.b.WriteString(":\n")
+			if fi.descRef != "" {
+				g.b.WriteString("\t\treturn Dynamic{Payload: c.")
+				g.b.WriteString(fi.tideName)
+				g.b.WriteString(", Desc: ")
+				g.b.WriteString(fi.descRef)
+				g.b.WriteString("}, true\n")
+			} else {
+				// Unknown-static-type — fall back to tideBoxAny so
+				// the descriptor is at least synthesised at runtime.
+				g.b.WriteString("\t\treturn tideBoxAny(c.")
+				g.b.WriteString(fi.tideName)
+				g.b.WriteString("), true\n")
+			}
+		}
+		g.b.WriteString("\t}\n\treturn Dynamic{}, false\n}\n")
+	}
 	g.b.WriteString("func init() {\n")
 	for _, d := range g.descriptors {
 		g.b.WriteString("\ttideDescRegistry[")
@@ -611,7 +739,67 @@ func tideUnboxError(typeName string) error { return tideUnboxErr{typeName: typeN
 		g.b.WriteString(d.tideName)
 		g.b.WriteString("\n")
 	}
+	// Populate field metadata + accessor registry for each
+	// class descriptor. Fields list is emitted as a literal
+	// inside init() so it can reference the per-field type
+	// descriptors that were declared above.
+	for _, d := range g.descriptors {
+		if d.kind != "KindClass" {
+			continue
+		}
+		if len(d.fields) > 0 {
+			g.b.WriteString("\ttideDesc_")
+			g.b.WriteString(d.tideName)
+			g.b.WriteString(".fields = []FieldInfo{\n")
+			for _, fi := range d.fields {
+				g.b.WriteString("\t\t{name: ")
+				g.b.WriteString(strconv.Quote(fi.tideName))
+				g.b.WriteString(", desc: ")
+				if fi.descRef != "" {
+					g.b.WriteString(fi.descRef)
+				} else {
+					g.b.WriteString("nil")
+				}
+				g.b.WriteString("},\n")
+			}
+			g.b.WriteString("\t}\n")
+		}
+		g.b.WriteString("\ttideFieldAccessors[")
+		g.b.WriteString(strconv.Quote(d.tideName))
+		g.b.WriteString("] = tideFieldOf_")
+		g.b.WriteString(d.tideName)
+		g.b.WriteString("\n")
+	}
 	g.b.WriteString("}\n")
+}
+
+// descRefForType resolves a Tide TypeExpr to the Go-side var
+// name of its type descriptor. Returns "" when the type has no
+// emitted descriptor (slices, generics, function types, ...);
+// callers handle the empty case by emitting a placeholder.
+//
+// classNames lists the names of non-generic user classes that
+// will have descriptors emitted in this compilation.
+func descRefForType(t ast.TypeExpr, classNames map[string]bool) string {
+	switch v := t.(type) {
+	case *ast.PrimitiveType:
+		// rune and byte alias to int32 / uint8 at the Go-runtime
+		// level (see writePredeclaredReflect's primitive notes);
+		// the descriptors collapse accordingly.
+		switch v.Name {
+		case "rune":
+			return "tideDesc_int32"
+		case "byte":
+			return "tideDesc_byte"
+		default:
+			return "tideDesc_" + v.Name
+		}
+	case *ast.NamedType:
+		if len(v.QName) == 1 && classNames[v.QName[0]] {
+			return "tideDesc_" + v.QName[0]
+		}
+	}
+	return ""
 }
 
 // predeclaredPayloadField returns the Go-side struct field name
@@ -1373,7 +1561,7 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 		}
 		g.b.WriteByte(')')
 		return nil
-	case "typeOf", "typeName", "kind":
+	case "typeOf", "typeName", "kind", "fields", "fieldValue":
 		g.b.WriteString("tide")
 		g.b.WriteString(strings.ToUpper(name[:1]))
 		g.b.WriteString(name[1:])
@@ -1389,7 +1577,7 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 		g.b.WriteByte(')')
 		return nil
 	}
-	return fmt.Errorf("codegen: reflect.%s is not yet supported (PR-R2 lands fields/fieldValue/methods/variants/typeArgs/elementType)", name)
+	return fmt.Errorf("codegen: reflect.%s is not yet supported (methods / variants / variantOf / typeArgs / elementType land later)", name)
 }
 
 // emitTryPreamble lowers a `try e` at statement position per
