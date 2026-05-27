@@ -320,15 +320,7 @@ func (g *gen) emitMethod(className string, m *ast.Method) error {
 // camelCase + capitalised method name (`Counter.make` →
 // `counterMake`).
 func staticMethodName(className, methodName string) string {
-	if className == "" {
-		return methodName
-	}
-	cn := strings.ToLower(className[:1]) + className[1:]
-	if methodName == "" {
-		return cn
-	}
-	mn := strings.ToUpper(methodName[:1]) + methodName[1:]
-	return cn + mn
+	return lowerFirst(className) + capFirst(methodName)
 }
 
 func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
@@ -599,9 +591,15 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 	return nil
 }
 
+// nextMatchTemp returns a fresh Go identifier reserved for the
+// captured `match` subject. The `__tide_` prefix makes it
+// vanishingly unlikely to collide with a user-written name even
+// if the user takes the unusual step of writing
+// underscore-prefixed identifiers. The runtime-prefix convention
+// is shared with other codegen-internal temps.
 func (g *gen) nextMatchTemp() string {
 	g.matchTempCounter++
-	return fmt.Sprintf("_match%d", g.matchTempCounter)
+	return fmt.Sprintf("__tide_match_%d", g.matchTempCounter)
 }
 
 // emitMatchArmHeader writes either `case <expr>` or `default`.
@@ -671,9 +669,6 @@ func inferSliceElemType(items []ast.Expr) (string, error) {
 // `<VariantName><FieldName>` (both capitalised). E.g. variant
 // `Just` with field `value` → `JustValue`.
 func payloadFieldName(variantName, fieldName string) string {
-	if variantName == "" || fieldName == "" {
-		return variantName + fieldName
-	}
 	return capFirst(variantName) + capFirst(fieldName)
 }
 
@@ -682,6 +677,13 @@ func capFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 func lastSeg(q []string) string {

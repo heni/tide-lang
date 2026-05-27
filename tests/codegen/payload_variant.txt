@@ -33,10 +33,10 @@ func MaybeJust(value int) Maybe {
 }
 func main() {
 	var m = MaybeJust(42)
-	_match1 := m
-	switch _match1.Tag {
+	__tide_match_1 := m
+	switch __tide_match_1.Tag {
 	case 0:
-		v := _match1.JustValue
+		v := __tide_match_1.JustValue
 		fmt.Println("got", v)
 	case 1:
 		fmt.Println("nothing")
