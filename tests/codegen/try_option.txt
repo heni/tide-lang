@@ -1,0 +1,100 @@
+--- TITLE ---
+try expression on Option — None propagates early; Some unwraps to value
+
+--- INPUT ---
+import fmt
+
+func first_even(xs: []int): Option<int> {
+  for x in xs {
+    if x == 0 {
+      return Some<int>(x)
+    }
+    if x == 2 {
+      return Some<int>(x)
+    }
+    if x == 4 {
+      return Some<int>(x)
+    }
+  }
+  return None<int>()
+}
+
+func double_first_even(xs: []int): Option<int> {
+  let x = try first_even(xs)
+  return Some<int>(x + x)
+}
+
+func main() {
+  match double_first_even([1, 3, 4, 5]) {
+    Some(v) => fmt.println("got", v),
+    None => fmt.println("none"),
+  }
+  match double_first_even([1, 3, 5, 7]) {
+    Some(v) => fmt.println("got", v),
+    None => fmt.println("none"),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Option[T any] struct {
+	Tag uint8
+	V   T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, V: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+func first_even(xs []int) Option[int] {
+	for _, x := range xs {
+		if x == 0 {
+			return OptionSome[int](x)
+		}
+		if x == 2 {
+			return OptionSome[int](x)
+		}
+		if x == 4 {
+			return OptionSome[int](x)
+		}
+	}
+	return OptionNone[int]()
+}
+func double_first_even(xs []int) Option[int] {
+	__tide_try_1 := first_even(xs)
+	if __tide_try_1.Tag == 0 {
+		return Option[int]{Tag: 0}
+	}
+	var x = __tide_try_1.V
+	return OptionSome[int](x + x)
+}
+func main() {
+	__tide_match_1 := double_first_even([]int{1, 3, 4, 5})
+	switch __tide_match_1.Tag {
+	case 1:
+		v := __tide_match_1.V
+		fmt.Println("got", v)
+	case 0:
+		fmt.Println("none")
+	}
+	__tide_match_2 := double_first_even([]int{1, 3, 5, 7})
+	switch __tide_match_2.Tag {
+	case 1:
+		v := __tide_match_2.V
+		fmt.Println("got", v)
+	case 0:
+		fmt.Println("none")
+	}
+}
+
+--- STDOUT ---
+got 8
+none
+
+--- EXIT ---
+0
