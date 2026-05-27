@@ -341,6 +341,13 @@ component is.
                           Γ ⊢ lv = e : unit
 ```
 
+Compound assignment `lv <op>= e` (with `<op>` one of `+ - * / %`
+per `grammar.ebnf` AssignOp) is **surface sugar** for
+`lv = lv <op> e` and is desugared at parser stage (see
+`desugaring.md` §Compound assignment). It typechecks under the
+same `T-Assign` after the rewrite, so `lv` must be writable and
+the result of `lv <op> e` must have the same type as `lv`.
+
 "Writable lvalue" is one of: a `var` binding, a `var` field of
 a class instance, or `s[i]` / `m[k]` index assignment on a
 mutable backing. (Slice index-assignment is legal on any slice

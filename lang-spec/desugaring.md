@@ -131,6 +131,30 @@ Some(x + y) } }` per `ast.md:289-292`. Desugaring therefore
 sees one canonical closure shape and does nothing in this
 stage.
 
+This stage also includes **compound assignment** — `grammar.ebnf`
+admits `AssignStmt = LValue ("=" | AssignOp) Expr` with
+`AssignOp = "+=" | "-=" | "*=" | "/=" | "%="`, but the parser
+immediately rewrites a compound form into a plain assignment:
+
+```
+[[ AssignStmt { lv, op: "<op>=", rhs } ]]
+                                            ⟿
+  AssignStmt { lv, op: "=",
+               rhs: Binary { op: "<op>", lhs: lv, rhs: rhs } }
+```
+
+The rewrite re-uses the same `lv` AST node on both sides of the
+synthesised binary; sema (PR-Sema-1) tightens the rule by
+forbidding compound assignment when `lv` contains a
+side-effecting subexpression (function call, `try`, etc.). Until
+sema lands, the duplication is benign for the only writable
+shapes v1 admits (plain identifier, field access, slice / map
+index).
+
+`const` is a surface alias for `let` and produces an identical
+`LetStmt` AST node — implementers shouldn't introduce a
+separate `ConstStmt` form.
+
 This stage is kept in the pipeline list for orientation —
 implementers shouldn't add a fresh "short closure" rewrite when
 they encounter one in the AST; the parser has already handled
