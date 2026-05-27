@@ -429,7 +429,8 @@ and any other kind falls back to a `<TypeName>` placeholder
 until later Block-R PRs cover sums / slices / maps. `show`
 never panics and never returns `Err` — when reflection cannot
 read a field, the field renders as `field: <unreadable>` and
-walking continues.
+walking continues; a class graph with a back-edge renders the
+revisit as `<cycle ClassName>` rather than blowing the stack.
 
 ### Constraints
 

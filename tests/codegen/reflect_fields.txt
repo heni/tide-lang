@@ -211,13 +211,28 @@ func tideBoxAny(v any) Dynamic {
 // and `:inspect` (RFC-0003). Kinds beyond Primitive /
 // Class fall back to a "<TypeName>" placeholder for now; PR-R4
 // adds Sum / Slice / Map rendering once the matching descriptor
-// metadata lands. Panic-free per D18 CT2.
+// metadata lands. Panic-free per D18 CT2 — class graphs with
+// cycles render the back-edge as "<cycle>" instead of blowing
+// the stack.
 func tideShow(d Dynamic) string {
+	return tideShowWalk(d, map[any]bool{})
+}
+
+func tideShowWalk(d Dynamic, seen map[any]bool) string {
 	if d.Desc == nil {
 		return "<nil>"
 	}
 	switch d.Desc.Kind {
 	case KindClass:
+		// Classes are pointer-to-struct on the Go side; use the
+		// payload as a cycle key. Non-class kinds skip the check
+		// because their payloads aren't reliably comparable.
+		if d.Payload != nil {
+			if seen[d.Payload] {
+				return "<cycle " + d.Desc.Name + ">"
+			}
+			seen[d.Payload] = true
+		}
 		out := d.Desc.Name + "{"
 		for i, fi := range d.Desc.fields {
 			if i > 0 {
@@ -228,7 +243,7 @@ func tideShow(d Dynamic) string {
 				out += fi.name + ": <unreadable>"
 				continue
 			}
-			out += fi.name + ": " + tideShow(fv.V)
+			out += fi.name + ": " + tideShowWalk(fv.V, seen)
 		}
 		return out + "}"
 	case KindPrimitive:
@@ -251,12 +266,26 @@ func tideShowPrimitive(d Dynamic) string {
 		return "false"
 	case int:
 		return strconv.Itoa(v)
-	case int64:
-		return strconv.FormatInt(v, 10)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
 	case int32:
 		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case uint:
+		return strconv.FormatUint(uint64(v), 10)
 	case uint8:
 		return strconv.FormatUint(uint64(v), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'g', -1, 32)
 	case float64:
 		return strconv.FormatFloat(v, 'g', -1, 64)
 	default:
