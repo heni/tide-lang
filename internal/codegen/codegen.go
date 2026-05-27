@@ -28,7 +28,7 @@ func Emit(f *ast.File, file string) (string, error) {
 		if td, ok := d.(*ast.TypeDecl); ok {
 			if sb, ok := td.Body.(*ast.SumTypeBody); ok {
 				for i, v := range sb.Variants {
-					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i}
+					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i, fields: v.Fields}
 				}
 			}
 		}
@@ -95,11 +95,17 @@ type gen struct {
 	// (`Counter(...)` → `&Counter{...}`) and static-method
 	// calls (`Counter.make(...)` → `counterMake(...)`).
 	class map[string]classInfo
+	// matchTempCounter generates unique temp names for the
+	// subject of a `match` when any arm binds payload fields.
+	// Per `lowering-go.md` §MatchIR — capture subject once to
+	// keep side-effects from re-running per arm.
+	matchTempCounter int
 }
 
 type variantInfo struct {
-	owner string // owning sum-type name (e.g. "Color")
-	tag   int    // declaration order, used for the Tag field
+	owner  string             // owning sum-type name (e.g. "Color")
+	tag    int                // declaration order, used for the Tag field
+	fields []*ast.FieldDecl   // payload fields, nil/empty for nullary variants
 }
 
 type classInfo struct {
@@ -154,34 +160,89 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		g.b.WriteByte('\n')
 		return nil
 	case *ast.SumTypeBody:
-		// Verify nullary-only — payload variants are PR-F3.
-		for _, v := range body.Variants {
-			if len(v.Fields) > 0 {
-				return fmt.Errorf("codegen: variant %s.%s has payload — payload variants land in a later PR",
-					td.Name, v.Name)
-			}
-		}
-		// Lower to a tagged struct, matching the Option / Result
-		// shape from lowering-go.md §Container types. Nullary
-		// variants are constants of the struct type; their tag
-		// is the declaration order (§Variant-tag numbering).
+		// Lower to a tagged struct per lowering-go.md §MatchIR.
+		// The struct holds Tag + every variant's payload fields
+		// (renamed to <VariantName><FieldName> to avoid clash
+		// across variants). Nullary variants get a `var T_V =
+		// T{Tag: N}`; payload variants get a `func T_V(...) T`
+		// constructor. Tag is declaration order (§Variant-tag
+		// numbering).
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
-		g.b.WriteString(" struct {\n\tTag uint8\n}\n")
-		g.b.WriteString("var (\n")
+		g.b.WriteString(" struct {\n\tTag uint8\n")
+		for _, v := range body.Variants {
+			for _, f := range v.Fields {
+				g.b.WriteByte('\t')
+				g.b.WriteString(payloadFieldName(v.Name, f.Name))
+				g.b.WriteByte(' ')
+				if err := g.emitTypeExpr(f.DeclType); err != nil {
+					return err
+				}
+				g.b.WriteByte('\n')
+			}
+		}
+		g.b.WriteString("}\n")
+		// Nullary constants in a single `var ( ... )` block;
+		// payload constructors as separate funcs after it.
+		anyNullary := false
+		for _, v := range body.Variants {
+			if len(v.Fields) == 0 {
+				anyNullary = true
+				break
+			}
+		}
+		if anyNullary {
+			g.b.WriteString("var (\n")
+			for i, v := range body.Variants {
+				if len(v.Fields) != 0 {
+					continue
+				}
+				g.b.WriteByte('\t')
+				g.b.WriteString(goIdent(td.Name))
+				g.b.WriteString(goIdent(v.Name))
+				g.b.WriteString(" = ")
+				g.b.WriteString(goIdent(td.Name))
+				g.b.WriteByte('{')
+				g.b.WriteString("Tag: ")
+				g.b.WriteString(strconv.Itoa(i))
+				g.b.WriteString("}\n")
+			}
+			g.b.WriteString(")\n")
+		}
 		for i, v := range body.Variants {
-			g.b.WriteByte('\t')
+			if len(v.Fields) == 0 {
+				continue
+			}
+			g.b.WriteString("func ")
 			g.b.WriteString(goIdent(td.Name))
 			g.b.WriteString(goIdent(v.Name))
-			g.b.WriteString(" = ")
+			g.b.WriteByte('(')
+			for j, f := range v.Fields {
+				if j > 0 {
+					g.b.WriteString(", ")
+				}
+				g.b.WriteString(goIdent(f.Name))
+				g.b.WriteByte(' ')
+				if err := g.emitTypeExpr(f.DeclType); err != nil {
+					return err
+				}
+			}
+			g.b.WriteString(") ")
+			g.b.WriteString(goIdent(td.Name))
+			g.b.WriteString(" {\n\treturn ")
 			g.b.WriteString(goIdent(td.Name))
 			g.b.WriteByte('{')
 			g.b.WriteString("Tag: ")
 			g.b.WriteString(strconv.Itoa(i))
-			g.b.WriteString("}\n")
+			for _, f := range v.Fields {
+				g.b.WriteString(", ")
+				g.b.WriteString(payloadFieldName(v.Name, f.Name))
+				g.b.WriteString(": ")
+				g.b.WriteString(goIdent(f.Name))
+			}
+			g.b.WriteString("}\n}\n")
 		}
-		g.b.WriteString(")\n")
 		return nil
 	}
 	return fmt.Errorf("codegen: unhandled TypeBody %T", td.Body)
@@ -431,12 +492,14 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 // arm set is variant-based or literal-based; mixing is not
 // reached by the corpus and rejected.
 func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
-	hasVariant, hasLiteral := false, false
+	hasVariant, hasLiteral, hasPayloadBinding := false, false, false
 	for _, arm := range m.Arms {
 		switch p := arm.Pattern.(type) {
 		case *ast.VariantPat:
 			hasVariant = true
-			_ = p
+			if len(p.Sub) > 0 {
+				hasPayloadBinding = true
+			}
 		case *ast.IdentPat:
 			if _, ok := g.variant[p.Name]; ok {
 				hasVariant = true
@@ -449,10 +512,30 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 		return fmt.Errorf("codegen: mixing variant and literal patterns in one match — not yet supported")
 	}
 	g.line(m.Span.StartLine)
+	// If any arm binds payload fields, capture the subject in a
+	// temp so each binding can reference it without re-evaluating
+	// the subject expression (side-effect safety; lowering-go.md
+	// §MatchIR style). Otherwise switch directly on the subject.
+	subjectExpr := ""
+	if hasPayloadBinding {
+		tmp := g.nextMatchTemp()
+		g.writeIndent()
+		g.b.WriteString(tmp)
+		g.b.WriteString(" := ")
+		if err := g.emitExpr(m.Subject); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		subjectExpr = tmp
+	}
 	g.writeIndent()
 	g.b.WriteString("switch ")
-	if err := g.emitExpr(m.Subject); err != nil {
-		return err
+	if subjectExpr != "" {
+		g.b.WriteString(subjectExpr)
+	} else {
+		if err := g.emitExpr(m.Subject); err != nil {
+			return err
+		}
 	}
 	if hasVariant {
 		g.b.WriteString(".Tag")
@@ -465,6 +548,13 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 		}
 		g.b.WriteString(":\n")
 		g.indent++
+		// Payload bindings: emit `b := subject.<PayloadField>` for
+		// each sub-pattern on a VariantPat.
+		if vp, ok := arm.Pattern.(*ast.VariantPat); ok && len(vp.Sub) > 0 {
+			if err := g.emitPayloadBindings(vp, subjectExpr); err != nil {
+				return err
+			}
+		}
 		if err := g.emitMatchArmBody(arm.Body, arm.Span); err != nil {
 			return err
 		}
@@ -473,6 +563,45 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 	g.writeIndent()
 	g.b.WriteString("}\n")
 	return nil
+}
+
+// emitPayloadBindings writes one `b := <subject>.<PayloadField>`
+// line per sub-pattern of a VariantPat. IdentPat sub-patterns
+// produce a binding; WildcardPat sub-patterns emit nothing.
+// Other sub-pattern shapes (nested VariantPat etc.) are not
+// supported in v1.
+func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error {
+	name := lastSeg(vp.QName)
+	info, ok := g.variant[name]
+	if !ok {
+		return fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", name)
+	}
+	if len(vp.Sub) != len(info.fields) {
+		return fmt.Errorf("codegen: variant pattern %s expects %d sub-pattern(s), got %d",
+			name, len(info.fields), len(vp.Sub))
+	}
+	for i, sub := range vp.Sub {
+		switch sp := sub.(type) {
+		case *ast.IdentPat:
+			g.writeIndent()
+			g.b.WriteString(goIdent(sp.Name))
+			g.b.WriteString(" := ")
+			g.b.WriteString(subjectExpr)
+			g.b.WriteByte('.')
+			g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
+			g.b.WriteByte('\n')
+		case *ast.WildcardPat:
+			// Nothing to bind.
+		default:
+			return fmt.Errorf("codegen: nested sub-pattern %T in variant payload not supported in v1", sub)
+		}
+	}
+	return nil
+}
+
+func (g *gen) nextMatchTemp() string {
+	g.matchTempCounter++
+	return fmt.Sprintf("_match%d", g.matchTempCounter)
 }
 
 // emitMatchArmHeader writes either `case <expr>` or `default`.
@@ -498,11 +627,9 @@ func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
 		}
 		return nil
 	case *ast.VariantPat:
-		// PR-F2 only handles nullary variants; payload
-		// sub-patterns land with PR-F3.
-		if len(pat.Sub) > 0 {
-			return fmt.Errorf("codegen: payload variant pattern %s(...) not yet supported", lastSeg(pat.QName))
-		}
+		// Payload sub-patterns are valid in PR-F5+; bindings are
+		// emitted separately by emitPayloadBindings between the
+		// case header and the arm body.
 		info, ok := g.variant[lastSeg(pat.QName)]
 		if !ok {
 			return fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", lastSeg(pat.QName))
@@ -537,6 +664,24 @@ func inferSliceElemType(items []ast.Expr) (string, error) {
 		return "bool", nil
 	}
 	return "", fmt.Errorf("codegen: cannot infer element type from %T — annotate the slice literal", items[0])
+}
+
+// payloadFieldName builds the Go struct field name for a payload
+// field of a variant, per the lowering-go.md tagged-struct shape:
+// `<VariantName><FieldName>` (both capitalised). E.g. variant
+// `Just` with field `value` → `JustValue`.
+func payloadFieldName(variantName, fieldName string) string {
+	if variantName == "" || fieldName == "" {
+		return variantName + fieldName
+	}
+	return capFirst(variantName) + capFirst(fieldName)
+}
+
+func capFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func lastSeg(q []string) string {

@@ -1,0 +1,50 @@
+--- TITLE ---
+sum type with payload variant — constructor + match-arm payload binding
+
+--- INPUT ---
+import fmt
+
+type Maybe = | Just(value: int) | Nothing
+
+func main() {
+  let m = Just(42)
+  match m {
+    Just(v) => fmt.println("got", v),
+    Nothing => fmt.println("nothing"),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Maybe struct {
+	Tag       uint8
+	JustValue int
+}
+
+var (
+	MaybeNothing = Maybe{Tag: 1}
+)
+
+func MaybeJust(value int) Maybe {
+	return Maybe{Tag: 0, JustValue: value}
+}
+func main() {
+	var m = MaybeJust(42)
+	_match1 := m
+	switch _match1.Tag {
+	case 0:
+		v := _match1.JustValue
+		fmt.Println("got", v)
+	case 1:
+		fmt.Println("nothing")
+	}
+}
+
+--- STDOUT ---
+got 42
+
+--- EXIT ---
+0

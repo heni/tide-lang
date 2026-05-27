@@ -1,0 +1,29 @@
+--- TITLE ---
+VariantPat with payload sub-pattern (`Just(v)`) inside a match arm
+
+--- INPUT ---
+func main() {
+  match m {
+    Just(v) => f(v),
+    Nothing => g(),
+  }
+}
+
+--- AST ---
+(File @1:1-6:2
+  (FuncDecl "main" @1:1-6:2
+    (params)
+    (Block @1:13-6:2
+      (ExprStmt @2:3-5:4
+        (MatchExpr @2:3-5:4
+          (Ident "m" @2:9-2:10)
+          (MatchArm @3:5-3:20
+            (VariantPat "Just" @3:5-3:12
+              (IdentPat "v" @3:10-3:11))
+            (Call @3:16-3:20
+              (Ident "f" @3:16-3:17)
+              (Ident "v" @3:18-3:19)))
+          (MatchArm @4:5-4:19
+            (VariantPat "Nothing" @4:5-4:12)
+            (Call @4:16-4:19
+              (Ident "g" @4:16-4:17))))))))
