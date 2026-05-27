@@ -48,6 +48,17 @@ func Emit(f *ast.File, file string) (string, error) {
 		generic: true,
 		statics: map[string]bool{"new": true},
 	}
+	// `import reflect` is a Tide-internal module — signals that
+	// codegen should emit the reflection layer (Dynamic struct,
+	// TypeDescriptor, registry, helper funcs). It is NOT a
+	// Go-stdlib binding (D6 / D18); the Go-side `import "reflect"`
+	// added by writeHeader is for the descriptor registry's
+	// runtime type lookup, not user code.
+	for _, im := range f.Imports {
+		if im.Path == "reflect" {
+			g.usesReflect = true
+		}
+	}
 	// Pre-walk: detect predeclared-sum / container usage so the
 	// header emits only the corresponding Go-side definitions.
 	// Programs that touch none of them emit identical Go to
@@ -61,6 +72,38 @@ func Emit(f *ast.File, file string) (string, error) {
 	}
 	if g.usesStack {
 		g.usesResult = true
+	}
+	// reflect.unbox<T> returns Result<T, error>; reflect.fields /
+	// reflect.fieldValue (PR-R2) will return Result<Dynamic>, so
+	// any reflection use pulls Result + Option into the binary.
+	if g.usesReflect {
+		g.usesResult = true
+		g.usesOption = true
+		// Pre-collect runtime descriptors for every user-declared
+		// class and sum type so the reflection-prelude emitted
+		// from writeHeader can include the init() registration
+		// block.
+		for _, d := range f.Decls {
+			switch v := d.(type) {
+			case *ast.ClassDecl:
+				if len(v.TypeParams) != 0 {
+					continue // generic-instantiation descriptors land later
+				}
+				g.descriptors = append(g.descriptors, descInfo{
+					tideName: v.Name,
+					goType:   "*main." + v.Name,
+					kind:     "KindClass",
+				})
+			case *ast.TypeDecl:
+				if _, ok := v.Body.(*ast.SumTypeBody); ok {
+					g.descriptors = append(g.descriptors, descInfo{
+						tideName: v.Name,
+						goType:   "main." + v.Name,
+						kind:     "KindSum",
+					})
+				}
+			}
+		}
 	}
 	// First pass — register sum-type variants so later
 	// expression / pattern lowering can qualify Variant idents
@@ -86,6 +129,23 @@ func Emit(f *ast.File, file string) (string, error) {
 				}
 			}
 			g.class[cd.Name] = ci
+		}
+	}
+	// Register the predeclared Kind variants per
+	// `lang-spec/builtins.md` §reflect AFTER user sum decls have
+	// populated g.variant so collision is detectable. Once
+	// `import reflect` is present, the names Primitive / Class /
+	// Sum / Slice / Function / Unit are reserved at the variant
+	// namespace; user sums sharing any of them yield E0104-style
+	// ambiguity (sema PR moves this to a proper `.td`-coordinate
+	// diagnostic).
+	if g.usesReflect {
+		kindVariants := []string{"Primitive", "Class", "Sum", "Slice", "Function", "Unit"}
+		for i, name := range kindVariants {
+			if existing, ok := g.variant[name]; ok && existing.owner != "Kind" {
+				return "", fmt.Errorf("codegen: variant name %q in user sum-type %q collides with predeclared reflect.Kind.%s — rename the variant or drop `import reflect`", name, existing.owner, name)
+			}
+			g.variant[name] = variantInfo{owner: "Kind", tag: i}
 		}
 	}
 	g.writeHeader(f)
@@ -151,11 +211,18 @@ type gen struct {
 	// sum type, either by NamedType ("Option"/"Result") or by
 	// variant constructor / pattern (Some/None/Ok/Err). The
 	// header emits the Go-side definitions only when set.
-	usesOption bool
-	usesResult bool
-	usesMap    bool
-	usesSet    bool
-	usesStack  bool
+	usesOption  bool
+	usesResult  bool
+	usesMap     bool
+	usesSet     bool
+	usesStack   bool
+	usesReflect bool
+	// descriptors collected during emit — for each user-declared
+	// type that has a Tide-side descriptor, we emit a
+	// `tideDesc_<Name>` package-level var plus an init()
+	// registration into the descriptor map keyed by the Go-side
+	// type name. Consumed by reflect.box runtime lookup.
+	descriptors []descInfo
 	// curFuncReturn — the Tide return TypeExpr of the function /
 	// method currently being emitted. Consumed by TryExpr
 	// lowering to know whether the early-return target is
@@ -191,38 +258,62 @@ type classInfo struct {
 	generic bool            // true iff the class has type parameters
 }
 
+// descInfo records one runtime type descriptor that codegen
+// will emit at the bottom of the prelude (per
+// `lang-spec/builtins.md` §reflect / `lang-spec/lowering-go.md`
+// §Container types). `goType` is the Go-side type spelling used
+// as the registry key (`*main.Counter` for classes,
+// `main.Color` for sum types, etc.); `kind` is the spec's Kind
+// enum value (KindClass / KindSum / KindPrimitive ...).
+type descInfo struct {
+	tideName string
+	goType   string
+	kind     string // "KindClass" / "KindSum" / etc.
+}
+
 func (g *gen) writeHeader(f *ast.File) {
 	g.b.WriteString("package main\n\n")
 	// PR-C bindings shortcut: every Tide import resolves to the
 	// matching Go stdlib package by the same name. fmt → "fmt".
 	// strconv → "strconv". etc. Sorted for determinism.
-	if len(f.Imports) > 0 {
-		paths := make([]string, len(f.Imports))
-		for i, im := range f.Imports {
-			paths[i] = im.Path
+	//
+	// `reflect` is Tide-internal (D6 / D18 — runtime-supplied,
+	// not a Go-stdlib binding); it does NOT translate to a Go
+	// import for the user, but if usesReflect is set we add Go's
+	// `import "reflect"` for the descriptor registry's internal
+	// runtime type lookup.
+	var paths []string
+	for _, im := range f.Imports {
+		if im.Path == "reflect" {
+			continue // Tide-internal
 		}
-		// Simple insertion sort (n is tiny).
-		for i := 1; i < len(paths); i++ {
-			for j := i; j > 0 && paths[j-1] > paths[j]; j-- {
-				paths[j-1], paths[j] = paths[j], paths[j-1]
-			}
+		paths = append(paths, im.Path)
+	}
+	if g.usesReflect {
+		paths = append(paths, "reflect")
+	}
+	// Sort for determinism.
+	for i := 1; i < len(paths); i++ {
+		for j := i; j > 0 && paths[j-1] > paths[j]; j-- {
+			paths[j-1], paths[j] = paths[j], paths[j-1]
 		}
-		if len(paths) == 1 {
-			g.b.WriteString("import \"")
-			g.b.WriteString(paths[0])
-			g.b.WriteString("\"\n\n")
-		} else {
-			g.b.WriteString("import (\n")
-			for _, p := range paths {
-				g.b.WriteString("\t\"")
-				g.b.WriteString(p)
-				g.b.WriteString("\"\n")
-			}
-			g.b.WriteString(")\n\n")
+	}
+	if len(paths) == 1 {
+		g.b.WriteString("import \"")
+		g.b.WriteString(paths[0])
+		g.b.WriteString("\"\n\n")
+	} else if len(paths) > 1 {
+		g.b.WriteString("import (\n")
+		for _, p := range paths {
+			g.b.WriteString("\t\"")
+			g.b.WriteString(p)
+			g.b.WriteString("\"\n")
 		}
+		g.b.WriteString(")\n\n")
 	}
 	g.writePredeclaredSums()
 	g.writePredeclaredContainers()
+	g.writePredeclaredReflect()
 }
 
 // writePredeclaredSums emits Go-side definitions for Option<T>
@@ -398,6 +489,131 @@ func (tideEmptyStackError) Error() string { return "empty stack" }
 	}
 }
 
+// writePredeclaredReflect emits Tide's reflection layer per
+// `lang-spec/builtins.md` §reflect and `docs/design-decisions.md`
+// D18: Dynamic wrapper, TypeDescriptor, Kind sum, descriptor
+// registry, and the minimal reflect.* surface (box / unbox /
+// typeOf / typeName / kind). Only emitted when usesReflect.
+// Per D18, the spec location is `tidert/reflect`; PR-R1 emits
+// inline in main as a v1 transitional state (same precedent as
+// Option/Result/containers).
+func (g *gen) writePredeclaredReflect() {
+	if !g.usesReflect {
+		return
+	}
+	g.b.WriteString(`type Dynamic struct {
+	Payload any
+	Desc    *TypeDescriptor
+}
+
+type TypeDescriptor struct {
+	Name string
+	Kind Kind
+}
+
+type Kind struct {
+	Tag uint8
+}
+
+var (
+	KindPrimitive = Kind{Tag: 0}
+	KindClass     = Kind{Tag: 1}
+	KindSum       = Kind{Tag: 2}
+	KindSlice     = Kind{Tag: 3}
+	KindFunction  = Kind{Tag: 4}
+	KindUnit      = Kind{Tag: 5}
+)
+
+var tideDescRegistry = map[string]*TypeDescriptor{}
+
+// Primitive descriptors — registered eagerly so reflect.box on
+// any primitive value finds a descriptor. Notes:
+//   - byte is Go's alias for uint8 (reflect.TypeOf returns "uint8"
+//     for both byte and uint8 values), so we register a single
+//     descriptor for that runtime type with Name "byte".
+//   - rune is Go's alias for int32, so int32 / rune collapse to
+//     one descriptor with Name "int32".
+//   PR-Sema-2 tightens this: when sema knows the user wrote
+//   "let r: rune = ...", reflect.typeName can return "rune" via
+//   compile-time-resolved descriptor.
+var (
+	tideDesc_int     = &TypeDescriptor{Name: "int", Kind: KindPrimitive}
+	tideDesc_int64   = &TypeDescriptor{Name: "int64", Kind: KindPrimitive}
+	tideDesc_int32   = &TypeDescriptor{Name: "int32", Kind: KindPrimitive}
+	tideDesc_string  = &TypeDescriptor{Name: "string", Kind: KindPrimitive}
+	tideDesc_bool    = &TypeDescriptor{Name: "bool", Kind: KindPrimitive}
+	tideDesc_float64 = &TypeDescriptor{Name: "float64", Kind: KindPrimitive}
+	tideDesc_byte    = &TypeDescriptor{Name: "byte", Kind: KindPrimitive}
+)
+
+func init() {
+	tideDescRegistry["int"] = tideDesc_int
+	tideDescRegistry["int64"] = tideDesc_int64
+	tideDescRegistry["int32"] = tideDesc_int32
+	tideDescRegistry["string"] = tideDesc_string
+	tideDescRegistry["bool"] = tideDesc_bool
+	tideDescRegistry["float64"] = tideDesc_float64
+	tideDescRegistry["uint8"] = tideDesc_byte
+}
+
+func tideBox[T any](v T) Dynamic {
+	key := reflect.TypeOf(v).String()
+	d, ok := tideDescRegistry[key]
+	if !ok {
+		// Unknown type — synthesise a descriptor on the fly so
+		// reflect.box never fails. Kind defaults to KindPrimitive
+		// (best-effort); real descriptors land at class/sum decl.
+		d = &TypeDescriptor{Name: key, Kind: KindPrimitive}
+	}
+	return Dynamic{Payload: v, Desc: d}
+}
+
+func tideTypeOf(d Dynamic) *TypeDescriptor { return d.Desc }
+func tideTypeName(t *TypeDescriptor) string { return t.Name }
+func tideKind(t *TypeDescriptor) Kind { return t.Kind }
+
+func tideUnbox[T any](d Dynamic) Result[T, error] {
+	v, ok := d.Payload.(T)
+	if !ok {
+		var zero T
+		return Result[T, error]{Tag: 1, E: tideUnboxError(d.Desc.Name), V: zero}
+	}
+	return Result[T, error]{Tag: 0, V: v}
+}
+
+type tideUnboxErr struct{ typeName string }
+
+func (e tideUnboxErr) Error() string {
+	return "reflect.unbox: payload is not the requested type (have " + e.typeName + ")"
+}
+
+func tideUnboxError(typeName string) error { return tideUnboxErr{typeName: typeName} }
+`)
+	// Per-user-type descriptors collected during emit, with init
+	// block registering them into the runtime map.
+	if len(g.descriptors) == 0 {
+		return
+	}
+	for _, d := range g.descriptors {
+		g.b.WriteString("var tideDesc_")
+		g.b.WriteString(d.tideName)
+		g.b.WriteString(" = &TypeDescriptor{Name: ")
+		g.b.WriteString(strconv.Quote(d.tideName))
+		g.b.WriteString(", Kind: ")
+		g.b.WriteString(d.kind)
+		g.b.WriteString("}\n")
+	}
+	g.b.WriteString("func init() {\n")
+	for _, d := range g.descriptors {
+		g.b.WriteString("\ttideDescRegistry[")
+		g.b.WriteString(strconv.Quote(d.goType))
+		g.b.WriteString("] = tideDesc_")
+		g.b.WriteString(d.tideName)
+		g.b.WriteString("\n")
+	}
+	g.b.WriteString("}\n")
+}
+
 // predeclaredPayloadField returns the Go-side struct field name
 // for a predeclared sum-type variant's payload, per spec
 // (`lang-spec/lowering-go.md` §Container types). Returns the
@@ -458,6 +674,8 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				g.usesSet = true
 			case "Stack":
 				g.usesStack = true
+			case "reflect":
+				g.usesReflect = true
 			}
 		case *ast.VariantPat:
 			if len(v.QName) > 0 {
@@ -466,6 +684,13 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 					g.usesOption = true
 				case "Ok", "Err":
 					g.usesResult = true
+				case "Primitive", "Class", "Sum", "Slice", "Function", "Unit":
+					// Kind variants used in a match arm. The
+					// match subject must be a reflect.kind() call
+					// for sema; here we conservatively flag
+					// usesReflect so the predeclared Kind variant
+					// table is populated.
+					g.usesReflect = true
 				}
 			}
 			for _, s := range v.Sub {
@@ -1105,6 +1330,68 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 	return nil
 }
 
+// emitReflectCall lowers a `reflect.X(args)` call to the
+// corresponding inline tidert helper emitted by
+// `writePredeclaredReflect`. PR-R1 surface: box / unbox /
+// typeOf / typeName / kind. Field-introspection (fields,
+// fieldValue, methods, variants, variantOf, typeArgs,
+// elementType) lands with PR-R2.
+func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.Expr) error {
+	switch name {
+	case "box":
+		g.b.WriteString("tideBox")
+		if len(typeArgs) > 0 {
+			g.b.WriteByte('[')
+			if err := g.emitTypeExpr(typeArgs[0]); err != nil {
+				return err
+			}
+			g.b.WriteByte(']')
+		}
+		g.b.WriteByte('(')
+		if len(args) != 1 {
+			return fmt.Errorf("codegen: reflect.box expects exactly one argument, got %d", len(args))
+		}
+		if err := g.emitExpr(args[0]); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
+	case "unbox":
+		if len(typeArgs) != 1 {
+			return fmt.Errorf("codegen: reflect.unbox requires exactly one explicit type argument `reflect.unbox<T>(d)`")
+		}
+		g.b.WriteString("tideUnbox[")
+		if err := g.emitTypeExpr(typeArgs[0]); err != nil {
+			return err
+		}
+		g.b.WriteString("](")
+		if len(args) != 1 {
+			return fmt.Errorf("codegen: reflect.unbox expects exactly one argument, got %d", len(args))
+		}
+		if err := g.emitExpr(args[0]); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
+	case "typeOf", "typeName", "kind":
+		g.b.WriteString("tide")
+		g.b.WriteString(strings.ToUpper(name[:1]))
+		g.b.WriteString(name[1:])
+		g.b.WriteByte('(')
+		for i, a := range args {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitExpr(a); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(')')
+		return nil
+	}
+	return fmt.Errorf("codegen: reflect.%s is not yet supported (PR-R2 lands fields/fieldValue/methods/variants/typeArgs/elementType)", name)
+}
+
 // emitTryPreamble lowers a `try e` at statement position per
 // `lang-spec/desugaring.md` §T-Try-Result / §T-Try-Option:
 // evaluates the inner expression into a fresh temp, then emits
@@ -1641,6 +1928,14 @@ func (g *gen) emitField(f *ast.Field) error {
 }
 
 func (g *gen) emitCall(c *ast.Call) error {
+	// reflect.* dispatch — lower to inline tidert helpers per
+	// `lang-spec/builtins.md` §reflect. Codegen owns reflect's
+	// surface (it's runtime-supplied, not a Go-stdlib binding).
+	if f, ok := c.Callee.(*ast.Field); ok {
+		if recvID, ok := f.Receiver.(*ast.Ident); ok && recvID.Name == "reflect" {
+			return g.emitReflectCall(f.Name, c.TypeArgs, c.Args)
+		}
+	}
 	// Class constructor shim — `ClassName(args)` in source lowers
 	// to `&ClassName{args...}` (positional fields). Per
 	// lowering-go.md §Implicit receiver, class instances are
