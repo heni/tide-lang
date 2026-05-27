@@ -342,8 +342,9 @@ PrimitiveType = "bool" | "int" | "int8" | "int16" | "int32" | "int64"
 // `Any`, `Dynamic`, and `error` are predeclared identifiers, not
 // lexical primitives — they match `NamedType` (Ident lookup).
 // Listed in `keywords.md`; type-system semantics in
-// `type-system.md`. `Dynamic` is the user-facing runtime-erased
-// wrapper used by the reflection API per RFC-0003; `Any` is the
+// `type-system.md` (§Any landed; §Dynamic is the paired edit in
+// PR-S3). `Dynamic` is the user-facing runtime-erased wrapper
+// used by the reflection API per RFC-0003; `Any` is the
 // binding-boundary FFI escape; the two are kept lexically distinct
 // on purpose (see `keywords.md` §Built-in identifiers).
 NamedType    = QualifiedIdent ( TypeArgs )? ;
