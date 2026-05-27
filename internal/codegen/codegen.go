@@ -230,10 +230,11 @@ type gen struct {
 	// header emits the Go-side definitions only when set.
 	usesOption  bool
 	usesResult  bool
-	usesMap     bool
-	usesSet     bool
-	usesStack   bool
-	usesReflect bool
+	usesMap       bool
+	usesSet       bool
+	usesStack     bool
+	usesReflect   bool
+	usesMakeSlice bool
 	// descriptors collected during emit — for each user-declared
 	// type that has a Tide-side descriptor, we emit a
 	// `tideDesc_<Name>` package-level var plus an init()
@@ -359,6 +360,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	}
 	g.writePredeclaredSums()
 	g.writePredeclaredContainers()
+	g.writePredeclaredMakeSlice()
 	g.writePredeclaredReflect()
 }
 
@@ -394,6 +396,22 @@ func (g *gen) writePredeclaredSums() {
 		g.b.WriteString("func ResultOk[T any, E any](value T) Result[T, E] {\n\treturn Result[T, E]{Tag: 0, V: value}\n}\n")
 		g.b.WriteString("func ResultErr[T any, E any](err E) Result[T, E] {\n\treturn Result[T, E]{Tag: 1, E: err}\n}\n")
 	}
+}
+
+// writePredeclaredMakeSlice emits the inline helper for the
+// `makeSlice<T>(n: int): []T` predeclared builtin (per
+// `lang-spec/builtins.md` §makeSlice). Returns a fresh slice
+// of length n with every element initialised to T's Go
+// zero-value — which for a sum type spelt
+// `type S = | First | ...` is the first variant (tag 0), so
+// `makeSlice<S>(n)` naturally yields `[First, First, ...]`.
+// Conditional on usage.
+func (g *gen) writePredeclaredMakeSlice() {
+	if !g.usesMakeSlice {
+		return
+	}
+	g.b.WriteString(`func tideMakeSlice[T any](n int) []T { return make([]T, n) }
+`)
 }
 
 // writePredeclaredContainers emits the Go-side definitions for
@@ -965,6 +983,8 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				g.usesStack = true
 			case "reflect":
 				g.usesReflect = true
+			case "makeSlice":
+				g.usesMakeSlice = true
 			}
 		case *ast.VariantPat:
 			if len(v.QName) > 0 {
@@ -2085,6 +2105,11 @@ func (g *gen) emitExpr(e ast.Expr) error {
 	case *ast.StringLitExpr:
 		g.b.WriteString(strconv.Quote(v.Value))
 		return nil
+	case *ast.RuneLitExpr:
+		// Re-emit the source text; Go accepts the same `'a'`
+		// rune-literal syntax for its rune (int32) type.
+		g.b.WriteString(v.RawText)
+		return nil
 	case *ast.BoolLitExpr:
 		if v.Value {
 			g.b.WriteString("true")
@@ -2224,6 +2249,34 @@ func (g *gen) emitCall(c *ast.Call) error {
 		if recvID, ok := f.Receiver.(*ast.Ident); ok && recvID.Name == "reflect" {
 			return g.emitReflectCall(f.Name, c.TypeArgs, c.Args)
 		}
+	}
+	// makeSlice<T>(n, v) — predeclared generic builtin lowering
+	// to the inline tideMakeSlice helper.
+	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "makeSlice" {
+		g.b.WriteString("tideMakeSlice")
+		if len(c.TypeArgs) > 0 {
+			g.b.WriteByte('[')
+			for i, ta := range c.TypeArgs {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitTypeExpr(ta); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte(']')
+		}
+		g.b.WriteByte('(')
+		for i, a := range c.Args {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitExpr(a); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(')')
+		return nil
 	}
 	// Class constructor shim — `ClassName(args)` in source lowers
 	// to `&ClassName{args...}` (positional fields). Per

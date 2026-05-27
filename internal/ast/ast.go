@@ -491,6 +491,19 @@ func (n *BoolLitExpr) NodeSpan() Span   { return n.Span }
 func (n *BoolLitExpr) NodeKind() string { return "BoolLitExpr" }
 func (n *BoolLitExpr) exprMarker()      {}
 
+// RuneLitExpr is a single-quoted code-point literal (`'a'`,
+// `'\n'`). Lowers to Go's identical syntax — Tide's `rune` is
+// Go's `rune` (alias for `int32`).
+type RuneLitExpr struct {
+	Span    Span
+	RawText string // source text including the surrounding quotes
+	Value   int32  // decoded code point
+}
+
+func (n *RuneLitExpr) NodeSpan() Span   { return n.Span }
+func (n *RuneLitExpr) NodeKind() string { return "RuneLitExpr" }
+func (n *RuneLitExpr) exprMarker()      {}
+
 // ThisExpr — `this` inside an instance method. Sema attaches
 // the enclosing class type; codegen lowers to the Go receiver
 // name (`t`, per lowering-go.md §Implicit receiver).

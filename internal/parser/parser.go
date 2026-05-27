@@ -1411,6 +1411,17 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			RawText: t.Lexeme,
 			Value:   val,
 		}, nil
+	case lexer.KindRuneLit:
+		p.advance()
+		val, err := decodeRuneLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0110", "Malformed rune literal", t.Line, t.Col)
+		}
+		return &ast.RuneLitExpr{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   val,
+		}, nil
 	case lexer.KindKeyword:
 		switch t.Lexeme {
 		case "true":
@@ -1492,6 +1503,21 @@ func parseIntLit(s string) (int64, error) {
 		return strconv.ParseInt(clean[2:], 2, 64)
 	}
 	return strconv.ParseInt(clean, 10, 64)
+}
+
+// decodeRuneLit converts a single-quoted rune literal lexeme
+// (`'a'`, `'\n'`, `'\\'`) to its decoded code point. Delegates
+// to Go's strconv.UnquoteChar so all standard Go rune escapes
+// (`\n`, `\t`, `\xNN`, `\uNNNN`, `\UNNNNNNNN`) are accepted.
+func decodeRuneLit(s string) (int32, error) {
+	if len(s) < 3 || s[0] != '\'' || s[len(s)-1] != '\'' {
+		return 0, fmt.Errorf("not a rune literal")
+	}
+	r, _, _, err := strconv.UnquoteChar(s[1:len(s)-1], '\'')
+	if err != nil {
+		return 0, err
+	}
+	return int32(r), nil
 }
 
 // decodeStringLit converts a lexer-token lexeme `"hello\n"` to the
