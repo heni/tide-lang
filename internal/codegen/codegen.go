@@ -18,6 +18,7 @@ func Emit(f *ast.File, file string) (string, error) {
 		file:    file,
 		variant: map[string]variantInfo{},
 		class:   map[string]classInfo{},
+		varKind: map[string]string{},
 	}
 	// Predeclared sum-type variants per `lang-spec/builtins.md`
 	// §Option / §Result / §Variant constructors. Registered up
@@ -29,12 +30,38 @@ func Emit(f *ast.File, file string) (string, error) {
 	g.variant["Some"] = variantInfo{owner: "Option", tag: 1, fields: []*ast.FieldDecl{{Name: "value"}}}
 	g.variant["Ok"] = variantInfo{owner: "Result", tag: 0, fields: []*ast.FieldDecl{{Name: "value"}}}
 	g.variant["Err"] = variantInfo{owner: "Result", tag: 1, fields: []*ast.FieldDecl{{Name: "err"}}}
-	// Pre-walk: detect Option / Result usage so the header
-	// emits the corresponding Go-side definitions only when the
-	// program actually references them. Keeps emitted Go for
-	// programs that touch neither identical to the pre-F5b
-	// output (no fixture churn for unrelated tests).
+	// Predeclared container classes per `lang-spec/builtins.md`
+	// §Map / §Set / §Stack. Registered with static-method names
+	// so `Map<K, V>.new()` lowers through the PR-G2
+	// static-method-on-generic-class path. Instance method calls
+	// (`m.get(k)`, `s.add(e)`, ...) lower to plain Go method
+	// dispatch on the inline-emitted struct.
+	g.class["Map"] = classInfo{
+		generic: true,
+		statics: map[string]bool{"new": true},
+	}
+	g.class["Set"] = classInfo{
+		generic: true,
+		statics: map[string]bool{"new": true, "from": true},
+	}
+	g.class["Stack"] = classInfo{
+		generic: true,
+		statics: map[string]bool{"new": true},
+	}
+	// Pre-walk: detect predeclared-sum / container usage so the
+	// header emits only the corresponding Go-side definitions.
+	// Programs that touch none of them emit identical Go to
+	// pre-F5b (no fixture churn for unrelated tests).
 	g.detectPredeclaredUsage(f)
+	// Transitive deps: container methods produce Option / Result
+	// values, so any use of those containers forces those
+	// predeclared sums into the binary too.
+	if g.usesMap || g.usesStack {
+		g.usesOption = true
+	}
+	if g.usesStack {
+		g.usesResult = true
+	}
 	// First pass — register sum-type variants so later
 	// expression / pattern lowering can qualify Variant idents
 	// to their Go-side constants and tag numbers. Also register
@@ -126,6 +153,22 @@ type gen struct {
 	// header emits the Go-side definitions only when set.
 	usesOption bool
 	usesResult bool
+	usesMap    bool
+	usesSet    bool
+	usesStack  bool
+	// varKind tracks lexical variable names (from `let`/`var` at
+	// any statement nesting level in the current emit) to their
+	// presumed predeclared-container kind ("Map" / "Set" /
+	// "Stack"). Populated when a let/var carries a NamedType
+	// annotation pointing at a container, or when the
+	// initialiser is a `Map<...>.new()` / `Set<...>.new()` /
+	// `Stack<...>.new()` static constructor call. Consumed by
+	// emitCall's slice-method shortcut to avoid intercepting
+	// container methods that happen to share a name with slice
+	// methods (`.len()`, `.push()`). v1 placeholder for sema —
+	// scope handling is intentionally shallow (no shadow-aware
+	// scoping; first set wins for the duration of the file).
+	varKind map[string]string
 }
 
 type variantInfo struct {
@@ -170,6 +213,7 @@ func (g *gen) writeHeader(f *ast.File) {
 		}
 	}
 	g.writePredeclaredSums()
+	g.writePredeclaredContainers()
 }
 
 // writePredeclaredSums emits Go-side definitions for Option<T>
@@ -203,6 +247,145 @@ func (g *gen) writePredeclaredSums() {
 		g.b.WriteString("type Result[T any, E any] struct {\n\tTag uint8\n\tV   T\n\tE   E\n}\n")
 		g.b.WriteString("func ResultOk[T any, E any](value T) Result[T, E] {\n\treturn Result[T, E]{Tag: 0, V: value}\n}\n")
 		g.b.WriteString("func ResultErr[T any, E any](err E) Result[T, E] {\n\treturn Result[T, E]{Tag: 1, E: err}\n}\n")
+	}
+}
+
+// writePredeclaredContainers emits the Go-side definitions for
+// the predeclared container types Map / Set / Stack per
+// `lang-spec/builtins.md` §Map / §Set / §Stack and
+// `lang-spec/lowering-go.md` §Container types. Conditional —
+// programs that don't reference a container emit no Go-side
+// noise for it. Like writePredeclaredSums, the spec authoritative
+// location is `tidert/runtime.go`; PR-F6 emits them inline in
+// `main` as a v1 transitional state. Block R relocates without
+// changing the struct shape.
+func (g *gen) writePredeclaredContainers() {
+	if g.usesMap {
+		g.b.WriteString(`type Map[K comparable, V any] struct {
+	m     map[K]V
+	order []K
+}
+func mapNew[K comparable, V any]() *Map[K, V] {
+	return &Map[K, V]{m: map[K]V{}, order: nil}
+}
+func (m *Map[K, V]) len() int { return len(m.order) }
+func (m *Map[K, V]) has(k K) bool { _, ok := m.m[k]; return ok }
+func (m *Map[K, V]) get(k K) Option[V] {
+	if v, ok := m.m[k]; ok {
+		return Option[V]{Tag: 1, V: v}
+	}
+	return Option[V]{Tag: 0}
+}
+func (m *Map[K, V]) set(k K, v V) {
+	if _, ok := m.m[k]; !ok {
+		m.order = append(m.order, k)
+	}
+	m.m[k] = v
+}
+func (m *Map[K, V]) delete(k K) {
+	if _, ok := m.m[k]; !ok {
+		return
+	}
+	delete(m.m, k)
+	for i, kk := range m.order {
+		if kk == k {
+			m.order = append(m.order[:i], m.order[i+1:]...)
+			return
+		}
+	}
+}
+func (m *Map[K, V]) keys() []K {
+	out := make([]K, len(m.order))
+	copy(out, m.order)
+	return out
+}
+func (m *Map[K, V]) values() []V {
+	out := make([]V, 0, len(m.order))
+	for _, k := range m.order {
+		out = append(out, m.m[k])
+	}
+	return out
+}
+`)
+	}
+	if g.usesSet {
+		g.b.WriteString(`type Set[T comparable] struct {
+	m     map[T]struct{}
+	order []T
+}
+func setNew[T comparable]() *Set[T] {
+	return &Set[T]{m: map[T]struct{}{}, order: nil}
+}
+func setFrom[T comparable](elems []T) *Set[T] {
+	s := setNew[T]()
+	for _, e := range elems {
+		s.add(e)
+	}
+	return s
+}
+func (s *Set[T]) len() int { return len(s.order) }
+func (s *Set[T]) has(e T) bool { _, ok := s.m[e]; return ok }
+func (s *Set[T]) add(e T) {
+	if _, ok := s.m[e]; ok {
+		return
+	}
+	s.m[e] = struct{}{}
+	s.order = append(s.order, e)
+}
+func (s *Set[T]) delete(e T) {
+	if _, ok := s.m[e]; !ok {
+		return
+	}
+	delete(s.m, e)
+	for i, ee := range s.order {
+		if ee == e {
+			s.order = append(s.order[:i], s.order[i+1:]...)
+			return
+		}
+	}
+}
+func (s *Set[T]) toSlice() []T {
+	out := make([]T, len(s.order))
+	copy(out, s.order)
+	return out
+}
+`)
+	}
+	if g.usesStack {
+		g.b.WriteString(`type Stack[T any] struct {
+	xs []T
+}
+func stackNew[T any]() *Stack[T] {
+	return &Stack[T]{xs: nil}
+}
+func (s *Stack[T]) len() int { return len(s.xs) }
+func (s *Stack[T]) push(e T) {
+	s.xs = append(s.xs, e)
+}
+func (s *Stack[T]) pop() Result[T, error] {
+	n := len(s.xs)
+	if n == 0 {
+		var zero T
+		return Result[T, error]{Tag: 1, E: tideEmptyStack, V: zero}
+	}
+	v := s.xs[n-1]
+	s.xs = s.xs[:n-1]
+	return Result[T, error]{Tag: 0, V: v}
+}
+func (s *Stack[T]) peek() Option[T] {
+	n := len(s.xs)
+	if n == 0 {
+		return Option[T]{Tag: 0}
+	}
+	return Option[T]{Tag: 1, V: s.xs[n-1]}
+}
+
+var tideEmptyStack = tideEmptyStackError{}
+
+type tideEmptyStackError struct{}
+
+func (tideEmptyStackError) Error() string { return "empty stack" }
+`)
 	}
 }
 
@@ -243,6 +426,12 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 					g.usesOption = true
 				case "Result":
 					g.usesResult = true
+				case "Map":
+					g.usesMap = true
+				case "Set":
+					g.usesSet = true
+				case "Stack":
+					g.usesStack = true
 				}
 			}
 			for _, a := range v.Args {
@@ -254,6 +443,12 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				g.usesOption = true
 			case "Ok", "Err":
 				g.usesResult = true
+			case "Map":
+				g.usesMap = true
+			case "Set":
+				g.usesSet = true
+			case "Stack":
+				g.usesStack = true
 			}
 		case *ast.VariantPat:
 			if len(v.QName) > 0 {
@@ -994,7 +1189,40 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 		return err
 	}
 	g.b.WriteByte('\n')
+	// Track predeclared-container bindings so emitCall's slice-
+	// method shortcut doesn't intercept their `.len()` / `.push()`
+	// method calls. See `varKind` field doc.
+	if kind := containerKind(declType, value); kind != "" {
+		g.varKind[name] = kind
+	}
 	return nil
+}
+
+// containerKind inspects a let/var binding's annotation and
+// initialiser to determine whether the bound name is a
+// predeclared container instance ("Map", "Set", "Stack"). Returns
+// the empty string when not statically determinable. This is a
+// shallow placeholder for proper sema type inference.
+func containerKind(declType ast.TypeExpr, value ast.Expr) string {
+	if nt, ok := declType.(*ast.NamedType); ok && len(nt.QName) == 1 {
+		switch nt.QName[0] {
+		case "Map", "Set", "Stack":
+			return nt.QName[0]
+		}
+	}
+	// Constructor-call recognition: `Map<...>.new()` /
+	// `Set<...>.new()` / `Set<...>.from(...)` / `Stack<...>.new()`.
+	if c, ok := value.(*ast.Call); ok {
+		if f, ok := c.Callee.(*ast.Field); ok {
+			if id, ok := f.Receiver.(*ast.Ident); ok {
+				switch id.Name {
+				case "Map", "Set", "Stack":
+					return id.Name
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func (g *gen) emitIfStmt(s *ast.IfStmt) error {
@@ -1345,7 +1573,7 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// is NOT a known stdlib namespace (e.g. fmt, os, strings).
 	// Without sema this is a heuristic: any `.push`/`.len` on a
 	// non-namespace receiver is a slice method. Sema'll tighten.
-	if f, ok := c.Callee.(*ast.Field); ok && !isStdlibNamespace(f.Receiver) {
+	if f, ok := c.Callee.(*ast.Field); ok && !isStdlibNamespace(f.Receiver) && !g.isContainerReceiver(f.Receiver) {
 		switch f.Name {
 		case "push":
 			if len(c.Args) != 1 {
@@ -1399,6 +1627,20 @@ func (g *gen) emitCall(c *ast.Call) error {
 	}
 	g.b.WriteByte(')')
 	return nil
+}
+
+// isContainerReceiver reports whether the receiver expression
+// resolves to a predeclared-container instance (Map / Set /
+// Stack). Used by emitCall to suppress the slice-method
+// shortcut on container instances whose method names happen to
+// collide with slice methods (`.len()`, `.push()`).
+func (g *gen) isContainerReceiver(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	_, ok = g.varKind[id.Name]
+	return ok
 }
 
 // isStdlibNamespace reports whether expr is an Ident whose name

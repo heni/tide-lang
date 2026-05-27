@@ -1,0 +1,79 @@
+--- TITLE ---
+predeclared Set<T> — new, add, len, has; insertion-order semantics
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let s = Set<int>.new()
+  s.add(1)
+  s.add(2)
+  s.add(1)
+  fmt.println(s.len())
+  fmt.println(s.has(1))
+  fmt.println(s.has(99))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Set[T comparable] struct {
+	m     map[T]struct{}
+	order []T
+}
+
+func setNew[T comparable]() *Set[T] {
+	return &Set[T]{m: map[T]struct{}{}, order: nil}
+}
+func setFrom[T comparable](elems []T) *Set[T] {
+	s := setNew[T]()
+	for _, e := range elems {
+		s.add(e)
+	}
+	return s
+}
+func (s *Set[T]) len() int     { return len(s.order) }
+func (s *Set[T]) has(e T) bool { _, ok := s.m[e]; return ok }
+func (s *Set[T]) add(e T) {
+	if _, ok := s.m[e]; ok {
+		return
+	}
+	s.m[e] = struct{}{}
+	s.order = append(s.order, e)
+}
+func (s *Set[T]) delete(e T) {
+	if _, ok := s.m[e]; !ok {
+		return
+	}
+	delete(s.m, e)
+	for i, ee := range s.order {
+		if ee == e {
+			s.order = append(s.order[:i], s.order[i+1:]...)
+			return
+		}
+	}
+}
+func (s *Set[T]) toSlice() []T {
+	out := make([]T, len(s.order))
+	copy(out, s.order)
+	return out
+}
+func main() {
+	var s = setNew[int]()
+	s.add(1)
+	s.add(2)
+	s.add(1)
+	fmt.Println(s.len())
+	fmt.Println(s.has(1))
+	fmt.Println(s.has(99))
+}
+
+--- STDOUT ---
+2
+true
+false
+
+--- EXIT ---
+0
