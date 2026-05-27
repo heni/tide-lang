@@ -301,6 +301,54 @@ func TestReplMetaShowAndReset(t *testing.T) {
 	}
 }
 
+func TestReplAutoPrintExpression(t *testing.T) {
+	input := "1 + 2\n\"hi\"\n:quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "3") || !strings.Contains(stdout, `"hi"`) {
+		t.Errorf("auto-print missing expected output; stdout:\n%s", stdout)
+	}
+}
+
+func TestReplMetaType(t *testing.T) {
+	input := ":type 42\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "int") {
+		t.Errorf(":type 42 should print 'int'; got:\n%s", stdout)
+	}
+}
+
+func TestReplMetaInspect(t *testing.T) {
+	input := "class Point { var x: int\n  var y: int }\n:inspect Point(3, 4)\n:quit\n"
+	stdout, _, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stdout, "Point{x: 3, y: 4}") {
+		t.Errorf(":inspect should pretty-print Point; got:\n%s", stdout)
+	}
+}
+
+func TestReplCallStatementNotAutoPrinted(t *testing.T) {
+	// `fmt.println(x)` is a side-effecting call that returns
+	// `(int, error)`; auto-printing it would wrap the multi-
+	// return in `reflect.box(...)` which doesn't compile. The
+	// classifier must treat it as a plain statement.
+	input := "import fmt\nlet x = 7\nfmt.println(\"x is\", x)\n:quit\n"
+	stdout, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d (stderr: %s)", exit, stderr)
+	}
+	if !strings.Contains(stdout, "x is 7") {
+		t.Errorf("fmt.println output missing; stdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+}
+
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
 	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
