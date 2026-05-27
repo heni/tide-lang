@@ -46,6 +46,7 @@ func cmdRepl(args []string) int {
 const (
 	replPrompt     = "tide> "
 	replContPrompt = "... > "
+	replBanner     = "tide repl 0.2 — type :help for commands, :quit to exit."
 )
 
 // replSession holds the accumulated session source. Each
@@ -110,7 +111,7 @@ type replStmt struct {
 // Stdout / Stderr` out of the loop lets cmd/tide/main_test.go
 // drive the prompt without spawning a subprocess.
 func runRepl(stdin io.Reader, stdout, stderr io.Writer) int {
-	fmt.Fprintln(stdout, "tide repl 0.1 — type :help for commands, :quit to exit.")
+	fmt.Fprintln(stdout, replBanner)
 	sess := &replSession{}
 	scanner := bufio.NewScanner(stdin)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

@@ -27,7 +27,7 @@ import (
 // with single-colour user text for now and revisit once we bump
 // the toolchain.
 func runReplPrompt() int {
-	fmt.Println("tide repl 0.2 — type :help for commands, :quit to exit.")
+	fmt.Println(replBanner)
 	state := &promptState{sess: &replSession{}}
 	p := prompt.New(
 		state.execute,
@@ -71,14 +71,15 @@ func (s *promptState) livePrefix() (string, bool) {
 	return replContPrompt + strings.Repeat("  ", depth), true
 }
 
-// handleCtrlC abandons the current multi-line buffer rather
-// than exiting the REPL (matches RFC §Multi-line input: "Ctrl-C
-// on an empty continuation line abandons the buffer"). Without
-// a multi-line buffer it falls through to go-prompt's default
-// (exit the REPL on Ctrl-C).
+// handleCtrlC: on a non-empty multi-line buffer, abandon the
+// buffer (RFC §Multi-line input). On a fresh prompt, do not
+// exit — convention (Python, Node, irb) is that Ctrl-C at the
+// top level only clears the line and prints a hint. Termination
+// is reserved for `:quit` / Ctrl-D.
 func (s *promptState) handleCtrlC(buf *prompt.Buffer) {
 	if s.buf.Len() == 0 {
-		os.Exit(0)
+		fmt.Fprintln(os.Stdout, "(use :quit or Ctrl-D to exit)")
+		return
 	}
 	s.buf.Reset()
 	fmt.Fprintln(os.Stdout, "(input cancelled)")
@@ -96,6 +97,10 @@ func (s *promptState) execute(line string) {
 			// :quit / :q — go-prompt has no clean Stop() in
 			// v0.2.6, so exit the process with the REPL's
 			// own exit code.
+			// TODO: replace with prompt.Prompt.Stop() if a
+			// later release adds one; the current os.Exit
+			// bypasses any future deferred cleanup
+			// (history-file flush, runSession finalisers).
 			os.Exit(s.exitCode)
 		}
 		return

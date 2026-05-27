@@ -403,6 +403,46 @@ is overdue.
 human reading. The runtime exists in Go because the IR is Go; it
 remains invisible to the Tide user.
 
+### D19 — Third-party Go dependencies are reserved for UX-only surfaces
+
+**Claim.** The compiler core (lexer, parser, sema, codegen, bindgen)
+ships against the Go standard library and project-local `internal/`
+packages — nothing else. Third-party Go modules are admissible only
+in user-facing UX surfaces (the REPL prompt, future devtool plumbing)
+where the alternative is rebuilding a heavy non-language wheel.
+
+The first dep crossed in is `c-bata/go-prompt` (plus its transitive
+`mattn/go-tty`, `mattn/go-isatty`, `mattn/go-runewidth`,
+`mattn/go-colorable`, `pkg/term`, `golang.org/x/sys`) for the
+`tide repl` interactive line editor. Reimplementing arrow-key
+history, raw-mode terminal handling, and cursor positioning inside
+this repo is out of proportion with the value delivered, hence the
+exception.
+
+**Why.** The compiler stays portable, easy to audit, and resistant
+to supply-chain drift — anyone reading the spec can read the
+implementation without auditing thousands of lines of third-party
+Go. UX shells live on a separate budget because terminal handling
+is not a Tide-design question; it is a "make the prompt usable"
+question.
+
+**Rules of thumb when adding a new dep.**
+
+- Compiler-core PRs that introduce a non-stdlib import default to
+  rejection. Justify the exception in the PR; pin a version.
+- UX-shell PRs may introduce deps if the alternative is non-trivial
+  re-implementation. Prefer libraries with stable APIs and a small
+  transitive footprint.
+- Generated user code (Tide → Go output) must never depend on a
+  third-party Go module. The runtime in `tidert/` and the stdlib
+  bindings are the only Go-side surface a Tide program is allowed
+  to reach.
+
+**What it does not change.** D6 (bind, don't port the Go stdlib) and
+D15 (Go IR contract) still hold for the compiler and the generated
+code. D19 only carves out the *toolchain UX shell* as a place where
+external libraries are not architecturally forbidden.
+
 ---
 
 ## What's not here
