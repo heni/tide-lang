@@ -36,45 +36,53 @@ mechanically. Two firm boundaries:
   representation is Tide-side: `int`, `Map<rune, int>`,
   `Status`, `Option<T>`.
 
-What sema owns (see §4 for the seven-phase pipeline):
+What sema owns (see §4 for how this fits the barrier model):
 
 1. **Name resolution.** Every `Ident` / `NamedType` / qualified
    name resolves to a `Symbol` — local binding, top-level decl,
    imported module, field, method, variant, or builtin. After
-   Phase 1 an `IdentExpr` no longer means "the string `foo`";
+   resolution an `IdentExpr` no longer means "the string `foo`";
    it means "this resolved `LocalSymbol#42`" or
-   "`TypeSymbol#17`". Errors with `E0301`/`E0302`.
+   "`TypeSymbol#17`". `E0103` / `E0104` / `E0108`.
 2. **Type construction.** Every `NamedType` in source
    (`User`, `Option<User>`, `Map<string, int>`) is built into a
    canonical Tide-side `Type` value the rest of sema can
    compare, substitute through generics, and pattern-match on.
-3. **Type inference.** Fills in types the source omits:
-   `let x = foo()`, variant constructors (`Ok(42)` ⇒
-   `Result<int, _>`), the empty `[]` literal (from context).
-4. **Trait / interface satisfaction.** Validates that a
-   structural type satisfies the Tide-side interface and (where
-   it surfaces through a binding) the Go-side interface.
-   Dangerous area — sema does the work, codegen reads the
-   verdict.
+3. **Type inference and checking.** Fills in types the source
+   omits — `let x = foo()`, variant constructors
+   (`Ok(42)` ⇒ `Result<int, _>`), the empty `[]` literal (from
+   context) — and enforces every typing rule from
+   `type-system.md`. `E0201`–`E0208`.
+4. **Trait / interface satisfaction.** Validates that a class
+   that declares `implements I` actually provides the method
+   set `I` requires, and (where it surfaces through a binding)
+   that a Tide value satisfies the relevant Go-side interface.
+   v1 has nominal `implements` only; the structural-vs-Go-
+   nominal bridge is anticipated work, not v1 surface.
 5. **Exhaustiveness.** `match` arm patterns cover every value
-   of the scrutinee. `E0303` with witness on miss.
-6. **Effect / context validation.** Not effect *types* in the
-   academic sense — just "is this construct legal at this
-   context?". `try` only inside a function returning
-   `Result`/`Option`; `return` only inside a function;
-   `break`/`continue` only inside a loop; `spawn` only inside
-   a `scope`. Errors via `E03xx`.
+   of the scrutinee. `E0303` with witness on miss; `E0304`
+   for unreachable arms; `E0305` for float-literal patterns.
+6. **Context validation.** Not effect *types* in the academic
+   sense — just "is this construct legal at this context?".
+   `try` only inside a function returning `Result`/`Option`
+   (`E0402` / `E0403`); `break` / `continue` only inside a
+   loop (`E0404`); `spawn` only inside a `scope` (`E0405`);
+   `defer` arg must be a call (`E0406`); `scope` error param
+   must be `error` (`E0407`); `this` only inside an instance
+   method (`E0501`).
 7. **Desugaring preconditions.** After sema, the lowering
    passes (`try` → early-return, `match` → switch / IIFE,
    `scope` → `errgroup`) must succeed *mechanically* — no
-   additional analysis. Sema's job in this phase is to leave
-   the AST + `Info` in a state where every downstream rewrite
-   is a deterministic shape transformation.
+   additional analysis. Concretely: every `MatchExpr` carries
+   `Info.Type`; every `TryExpr` is inside a function whose
+   `Info.ReturnType` is `Result`/`Option`; every variant
+   constructor has its resolved `Info.Variant`; every closure
+   has captured-name bindings recorded.
 
-Cross-cutting: the **Dynamic-doesn't-leak** invariant (§7) runs
-inside Phase 3 (inference) and Phase 4 (satisfaction) — it's
-not a separate phase because it gates introduction at exactly
-the same sites those phases inspect.
+The **Dynamic-doesn't-leak** invariant (§6.1) is enforced at
+every site in (3) and (4) where a type can be assigned, widened
+or inferred — it's a cross-cutting check, not a separate
+concern.
 
 What sema explicitly does **not** own:
 
@@ -116,141 +124,187 @@ during fixture authoring.
 
 ## 3. Internal layout
 
+Files reflect the four **barriers** (§4) plus the cross-cutting
+concerns. Inside a barrier, several walkers may run in parallel
+(§9); each file owns one walker.
+
 ```
 internal/sema/
 ├── doc.go              — package overview
-├── check.go            — entry point: sema.Check
+├── check.go            — entry point: sema.Check; barrier orchestration
 ├── env.go              — Scope, Symbol; the lexical environment
 ├── types.go            — Type representation + unification helpers
-├── resolve.go          — Phase 1: name resolution
-├── construct.go        — Phase 2: NamedType → canonical Type
-├── infer.go            — Phase 3: type inference + checking
-├── satisfy.go          — Phase 4: trait / interface satisfaction
-├── exhaust.go          — Phase 5: match-exhaustiveness
-├── context.go          — Phase 6: try / return / break / spawn context legality
-├── shape.go            — Phase 7: desugaring-precondition assertions
-├── dynamic.go          — Dynamic-doesn't-leak invariant (cross-phase)
-├── diag.go             — Diag construction with .td coordinates
+│
+│  Barrier A — declaration indexing
+├── index.go            — collect top-level decls into the global symbol table
+│
+│  Barrier B — type / member shape resolution
+├── resolve.go          — name resolution into Symbol#N references
+├── construct.go        — NamedType → canonical Type; alias / cycle SCC analysis
+├── signatures.go       — function / method signatures, class field sets,
+│                        sum variant shapes — all from resolved Symbols
+│
+│  Barrier C — body checking (parallel per body)
+├── body.go             — per-body walker: infer + check expressions / stmts
+├── satisfy.go          — interface satisfaction sites encountered inside a body
+│
+│  Barrier D — whole-program checks
+├── exhaust.go          — Maranget exhaustiveness across collected match summaries
+├── context.go          — try / return / break / spawn / defer context legality
+├── shape.go            — desugaring-precondition assertions for codegen
+│
+│  Cross-cutting
+├── dynamic.go          — Dynamic-doesn't-leak invariant; consumed by body.go
+├── diag.go             — Diag construction with .td coordinates + source-span sort
 └── info.go             — the AST-keyed side-table
 ```
 
-Each phase lives in its own file with its own walker so phases
-can be tested in isolation. Tests live under
-`tests/sema/<phase>/` with the per-phase fixture contract
-mirroring the existing `tests/codegen/` shape.
+Tests live under `tests/sema/<barrier>/` with the per-barrier
+fixture contract mirroring the existing `tests/codegen/` shape.
 
-## 4. The seven phases
+## 4. The barrier model
 
-Each phase consumes the previous phases' `Info` plus the AST.
-A phase that detects a fatal error short-circuits all later
-phases on the affected subtree — but other subtrees keep
-going, so the user sees a coherent error batch.
+Sema is **not a strict-sequential pipeline**. It is a dependency
+DAG with four invariant barriers. Each barrier fixes "what's
+known" so the next barrier can rely on it; **within** a barrier,
+work that doesn't cross those invariants runs in parallel.
+
+The barriers exist because some questions genuinely cannot be
+answered until prerequisite data lands (you can't typecheck a
+body until method signatures resolve), but most of the work
+inside a barrier is independent and worth parallelising.
 
 ```
-        AST in
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 1 — Name resolution                    │
-  │  resolve.go                                  │
-  │  imports · locals · fields · methods ·       │
-  │  variants                                    │
-  │  ⇒ every IdentExpr / NamedType references a  │
-  │    Symbol#N, not a string                    │
-  │  E0301 / E0302                               │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 2 — Type construction                  │
-  │  construct.go                                │
-  │  source `Option<User>` ⇒ canonical           │
-  │    Generic{ owner: Option, args: [User] }    │
-  │  Substitutes nothing yet; just builds        │
-  │  comparable type objects.                    │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 3 — Type inference + checking          │
-  │  infer.go                                    │
-  │  `let x = foo()` ⇒ x : <returnType(foo)>     │
-  │  `Ok(42)`        ⇒ Result<int, _>            │
-  │  `[]`            ⇒ from context              │
-  │  Every typing rule from `type-system.md`     │
-  │  enforced here.                              │
-  │  E0303 family                                │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 4 — Trait / interface satisfaction     │
-  │  satisfy.go                                  │
-  │  Structural Tide records ↔ Tide interfaces;  │
-  │  also ↔ Go-side interfaces surfaced through  │
-  │  bindings. Dangerous area: structural types  │
-  │  + Go nominal interfaces.                    │
-  │  E0304 family                                │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 5 — Exhaustiveness                     │
-  │  exhaust.go                                  │
-  │  patterns(arms) covers values(scrutinee) ?   │
-  │  Maranget's algorithm; emits a witness on    │
-  │  miss.                                       │
-  │  E0303-exhaust                               │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 6 — Effect / context validation        │
-  │  context.go                                  │
-  │  Not effect types — just "is this construct  │
-  │  legal here?":                               │
-  │    try     — only inside Result/Option fn    │
-  │    return  — only inside fn                  │
-  │    break   — only inside loop                │
-  │    continue — only inside loop               │
-  │    spawn   — only inside scope               │
-  │  E03xx                                       │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-  ┌──────────────────────────────────────────────┐
-  │ Phase 7 — Desugaring preconditions           │
-  │  shape.go                                    │
-  │  Asserts the AST + Info are now in a state   │
-  │  where every downstream lowering             │
-  │  (try → early-return, match → switch/IIFE,   │
-  │   scope → errgroup) is a *mechanical* shape  │
-  │  transformation needing zero further         │
-  │  analysis. Failures here are sema bugs, not  │
-  │  user errors — they assert internal          │
-  │  invariants for codegen.                     │
-  └────────┬─────────────────────────────────────┘
-           │
-           ▼
-       Info + Diags
+                       Parse AST
+                          │
+                          ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ Barrier A — Declaration indexing                         │
+  │   index.go                                               │
+  │                                                          │
+  │   Collect top-level declarations into a global symbol    │
+  │   table: types · classes · interfaces · funcs · imports  │
+  │   · modules · variants · methods.                        │
+  │                                                          │
+  │   Parallelism: per file / per module.                    │
+  │                                                          │
+  │   After A: every top-level name is a `Symbol#N`. Bodies  │
+  │   are still un-traversed.                                │
+  └────────────────────────┬─────────────────────────────────┘
+                           ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ Barrier B — Type / member shape resolution               │
+  │   resolve.go · construct.go · signatures.go              │
+  │                                                          │
+  │   With the global symbol table in hand, build shapes:    │
+  │   ├─ resolve type aliases / cycles (SCC analysis)        │
+  │   ├─ build sum variant shapes                            │
+  │   ├─ build class field sets                              │
+  │   ├─ build method sets                                   │
+  │   └─ build function / method signatures                  │
+  │                                                          │
+  │   Bodies still not inspected. Diagnostics: E0103, E0104, │
+  │   E0105, E0106, E0107, E0108, E0207, plus alias-cycle.   │
+  │                                                          │
+  │   Parallelism: each declaration's shape is independent   │
+  │   once Barrier A's table is frozen. Type-alias SCC is    │
+  │   the single per-graph sub-pass.                         │
+  │                                                          │
+  │   After B: the "immutable semantic world" — every        │
+  │   external surface of every declaration is fully typed.  │
+  └────────────────────────┬─────────────────────────────────┘
+                           ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ Barrier C — Body checking (the parallel zone)            │
+  │   body.go · satisfy.go (per-body sites)                  │
+  │                                                          │
+  │   For each function / method body, walk the AST. Bodies  │
+  │   are independent: each one consumes the same immutable  │
+  │   semantic world and produces its own Info-fragment +    │
+  │   diagnostics + match-coverage summary.                  │
+  │                                                          │
+  │   Inputs per body:                                       │
+  │     - immutable global environment (Barrier B's output)  │
+  │     - local scope stack                                  │
+  │     - expected return type                               │
+  │     - context flags (in-loop, in-scope, in-Result-fn)    │
+  │                                                          │
+  │   Outputs per body:                                      │
+  │     - typed expressions / stmts in Info                  │
+  │     - diagnostics                                        │
+  │     - per-body match-coverage summary for Barrier D      │
+  │     - interface-satisfaction sites for Barrier D         │
+  │                                                          │
+  │   This is where typing rules (E0201–E0212) and context   │
+  │   legality (E0402–E0407, E0501–E0502, E0601) fire.       │
+  │                                                          │
+  │   The Dynamic-doesn't-leak check (§6.1) lives here —     │
+  │   every inferred type and every assignment / return /    │
+  │   collection-widening site is checked against the        │
+  │   allowed-introduction whitelist.                        │
+  │                                                          │
+  │   Parallelism: per function / method body.               │
+  └────────────────────────┬─────────────────────────────────┘
+                           ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ Barrier D — Whole-program validation                     │
+  │   exhaust.go · shape.go                                  │
+  │                                                          │
+  │   Things that need the union of every body:              │
+  │   ├─ exhaustiveness: Maranget's algorithm over each      │
+  │   │   match's collected summary (E0303 / E0304 / E0305)  │
+  │   ├─ interface conformance cache resolution              │
+  │   ├─ orphan / conflicting impls (future)                 │
+  │   ├─ reflection-metadata completeness (every class /     │
+  │   │   sum must produce a descriptor; D18 CT-1)           │
+  │   ├─ entrypoint validation (`main` exists, right sig)    │
+  │   └─ desugaring-precondition assertions for codegen      │
+  │     (every MatchExpr has Info.Type; every TryExpr is in  │
+  │     a Result/Option function; every variant ctor has     │
+  │     Info.Variant; every closure has captures recorded).  │
+  │                                                          │
+  │   Sequential within itself — the union has already been  │
+  │   collected, the validators are deterministic.           │
+  └────────────────────────┬─────────────────────────────────┘
+                           ▼
+                  Info + Diagnostics
+                           │
+                           ▼
+                     Desugar / lower
 ```
 
-The **Dynamic-doesn't-leak** check is not a numbered phase —
-it's a cross-cutting invariant enforced inside Phase 3 (every
-inferred type is checked against the introduction whitelist)
-and Phase 4 (every satisfaction widening is checked against
-the same list). See §7.
+### Invariants the barriers fix
 
-**The seven phases are a working frame, not a closed set.**
-The split was chosen so each concern owns exactly one file and
-one walker — easier to spec, easier to test, easier to land
-incrementally. A future concern that doesn't cleanly fold into
-an existing phase gets its own phase rather than a clause
-buried in another file. Likely additions, marked as such when
-they land: per-block borrow-style "definite assignment"
-(currently codegen relies on Go to catch use-before-init),
-purity / `defer` ordering, and post-binding `comparable`
-constraint flow.
+Each barrier publishes a guarantee that downstream work can
+assume without re-checking:
+
+| After barrier | Downstream can assume |
+|---------------|----------------------|
+| **A** | Every top-level name resolves to a `Symbol#N`. |
+| **B** | Every type / signature has a canonical `Type`. The semantic world is immutable for the rest of the run. |
+| **C** | Every expression has a type; every context-sensitive construct (try / break / spawn / …) has been validated; the Dynamic-doesn't-leak invariant holds. |
+| **D** | Every match is exhaustive; every interface satisfaction is verified; every codegen precondition is asserted. |
+
+### Why barriers, not phases
+
+A linear "Phase 1, 2, 3, …" framing suggests strict ordering and
+sequential execution. The truth is messier: most of the work
+*inside* a barrier is embarrassingly parallel, and the barriers
+themselves are about **what data is known**, not about a
+particular order of file traversals. This framing also makes
+the parallelism story explicit (§9) and avoids the trap of
+adding a "Phase 8" for the next concern — a new concern goes
+into the barrier whose invariants it needs, not into a new
+slot at the bottom.
+
+### Not a closed set
+
+The barrier model is a working frame, not a permanent
+commitment. Likely additions, marked as such when they land:
+per-block borrow-style "definite assignment" (currently codegen
+relies on Go to catch use-before-init), purity / `defer`
+ordering, and post-binding `comparable` constraint flow. New
+work folds into the barrier whose invariants it depends on.
 
 ## 5. Type representation
 
@@ -285,8 +339,10 @@ Each spec artefact maps to exactly one place in sema:
 | Spec source | Sema artefact |
 |-------------|---------------|
 | `name-resolution.md` rule | a branch in `resolve.go` |
-| `type-system.md` typing rule (T-…) | a case in `typecheck.go` |
-| `diagnostics.md` E-code | a `Diag.Code` literal in `diag.go` |
+| `type-system.md` typing rule (T-…) | a case in `body.go` (typing inside Barrier C) or `signatures.go` (signature shape, Barrier B) |
+| `type-system.md` exhaustiveness | `exhaust.go` (Barrier D) |
+| `type-system.md` context rule (T-Try / T-Break / …) | a case in `context.go` (Barrier D) |
+| `diagnostics.md` E-code | a `Diag.Code` literal at the originating site |
 
 When the spec adds a rule, the corresponding sema case lands in
 the same PR (D17 paired edit). When a sema case is added without
@@ -332,21 +388,23 @@ fourth or fifth path you forgot.
    `reflect.typeOf(counter)`). Implicit widening fires at
    exactly this call site, nowhere else.
 
-**Explicitly forbidden:**
+**Explicitly forbidden (per `diagnostics.md`):**
 
-| Site | What sema rejects |
-|------|-------------------|
-| `var d: Dynamic = some_int` | Direct assignment of a concrete `T` to a `Dynamic` binding (`E0210`). |
-| `return some_int` from a `(): Dynamic` function | Return widening (`E0211`). |
-| `[some_int, other_int]: []Dynamic` | Collection element widening (`E0212`). The user writes `[reflect.box(x), …]`. |
-| Generic inference filling in `Dynamic` | A type parameter `T` is never inferred to `Dynamic`. If the inference reaches `Dynamic` there's a bug somewhere — `E0209` with witness. |
+| Site | What sema rejects | Code |
+|------|-------------------|------|
+| `var d: Dynamic = some_int` | Direct assignment of concrete `T` to a `Dynamic` binding. | `E0209` |
+| `return some_int` from a `(): Dynamic` function | Return widening. | `E0209` |
+| `[some_int, other_int]: []Dynamic` | Collection-element widening. The user writes `[reflect.box(x), …]`. | `E0209` |
+| Generic inference filling in `Dynamic` | A user type parameter `T` unifies to `Dynamic`. | `E0211` |
+| `let x: int = d` where `d: Dynamic` | Implicit narrowing — must go through `reflect.unbox<T>`. | `E0210` |
+| `Any ↔ Dynamic` implicit conversion | Cultural-line invariant from RFC-0003 / D18. | `E0212` |
 
-**Where the check fires.** Phase 3 inspects every place
-inference picks a type; if the picked type is `Dynamic` *and*
-the site is not on the allowed list above, emit `E0209`–`E0212`
-and abort the affected subtree. Phase 4 makes the same check
-when a structural-satisfaction step would widen a concrete `T`
-into a `Dynamic`-typed slot.
+**Where the check fires.** Barrier C (`body.go`) inspects every
+place inference picks a type; if the picked type is `Dynamic`
+*and* the site is not on the allowed list above, emit the
+appropriate code and abort the affected subtree. `dynamic.go`
+holds the shared whitelist + matcher so every body's check is
+deterministic and identical.
 
 **Elimination is symmetric.** `Dynamic` leaves the type system
 only through `reflect.unbox<T>(d): Result<T>` (per
@@ -398,18 +456,64 @@ corresponding field from `gen`.
 
 | PR | Scope |
 |----|-------|
-| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`; **Phase 1** (name resolution); `sema.Check` entry; wire into `cmd/tide build` / `run`. Surface: E0301 / E0302. |
-| **PR-Sema-2** | **Phase 2** (type construction) + **Phase 3** (inference + typing rules) over the subset currently exercised by `tests/codegen/`. Generic instantiation with **explicit** type arguments (`Map<rune, int>.new()` — already in the corpus). E0303 family. Until Phase 5 lands, `match` is type-checked but exhaustiveness is **not** enforced — to keep the gap sound, Phase 3 requires every `match` to carry a wildcard `_` arm. The requirement is removed by PR-Sema-3. Folds the Dynamic-doesn't-leak check into Phase 3 introduction sites (E0209–E0212). |
-| **PR-Sema-3** | **Phase 5** (exhaustiveness) + **Phase 6** (context legality for `try` / `return` / `break` / `continue` / `spawn`). Drops the Sema-2 wildcard-required rule. Migrates codegen's `varKind` to read from `Info.Symbol.Kind`. |
-| **PR-Sema-4** | **Phase 4** (trait / interface satisfaction) — separate PR because structural ↔ Go-nominal interface bridging is its own design problem. Folds the Phase 4 half of the Dynamic-doesn't-leak check (satisfaction widening). |
-| **PR-Sema-5** | **Phase 7** (desugaring preconditions) + type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) + `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Migrates codegen's `g.class` / variant maps to `Info.Type` / `Info.Variant`. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
+| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`. **Barrier A** (declaration indexing) + the resolution half of **Barrier B** (`resolve.go`). `sema.Check` entry wired into `cmd/tide build` / `run`. Surface: `E0103`, `E0104`, `E0107`, `E0108`. |
+| **PR-Sema-2** | Rest of **Barrier B**: `construct.go` (alias / cycle SCC, sum / class shapes) + `signatures.go` (function / method / class field signatures). Surface: `E0105`, `E0106`, `E0207`, alias-cycle. |
+| **PR-Sema-3** | **Barrier C** (per-body checking) over the subset currently exercised by `tests/codegen/`. Typing rules from `type-system.md`, with explicit type arguments at generic call sites. Surface: `E0201`–`E0208`. Folds the **Dynamic-doesn't-leak** check (`dynamic.go`) into the body walker — `E0209`–`E0212`. Until Barrier D lands, `match` is type-checked but exhaustiveness is not enforced; Barrier C requires every `match` to carry a wildcard `_` arm to stay sound. Migrates codegen's `varKind` / `class` / `variant` lookups to read from `Info`. |
+| **PR-Sema-4** | **Barrier D**: `exhaust.go` (drops the Sema-3 wildcard-required rule), `context.go` (`try` / `break` / `continue` / `spawn` / `defer` / `scope` / `this` legality), and `shape.go` (desugaring-precondition assertions). Surface: `E0303`–`E0305`, `E0402`–`E0407`, `E0501`–`E0502`, `E0601`. |
+| **PR-Sema-5** | Trait / interface satisfaction (`satisfy.go`) — separate PR because the structural-vs-Go-nominal interface bridge is its own design problem. v1 surface is the nominal `implements` check only. Also closes type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) and `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
 
 Phases land **before** the codegen migration in each PR — i.e.,
 each Sema-N adds checks but leaves codegen unchanged. The
 migration step is a separate PR per pass to keep diffs small
 and the rollback story trivial.
 
-## 9. Limits in v1
+## 9. Concurrency hazards inside a barrier
+
+Barrier C is parallel-per-body; Barrier B has parallel
+sub-stages. Each of the following needs explicit care.
+
+1. **Type aliases / recursive types.**
+   ```
+   type A = B
+   type B = A
+   ```
+   Detected only when looked at the SCC level. `construct.go`
+   runs an SCC analysis over the alias graph before any
+   per-alias work; cycles emit a deterministic error.
+
+2. **Generic-instantiation cache / interner.**
+   Repeated `Map<rune, int>` references should hash to a
+   single `Type` value. Concurrent body checks contend on the
+   interner. The implementation uses a `sync.Map`-backed
+   intern table keyed by canonical type-key strings; lookup is
+   read-mostly so contention is bounded.
+
+3. **Interface satisfaction cache.**
+   `class X implements I` is checked once; lazy lookups from
+   different bodies must return the same verdict. `satisfy.go`
+   memoises checks in a deterministic-order map; cache miss
+   triggers a single check, hits return the cached result.
+
+4. **Diagnostics ordering.**
+   Parallel body checks naturally emit diagnostics in
+   nondeterministic order. Decision: **sort all diagnostics by
+   source span before returning from `sema.Check`**. The cost
+   is one O(n log n) pass; the benefit is reproducible test
+   output and predictable user experience. The alternative —
+   declaring order unstable — would make every error-test
+   fragile.
+
+5. **Inference across declaration boundaries.**
+   If sema permitted inference in public function signatures
+   (`func f(x) = …`), Barrier B would need to wait for
+   Barrier C of dependencies, breaking the
+   immutable-semantic-world guarantee. **Rule, kept
+   deliberately strict:** every exported function / method
+   signature is fully explicit. Local inference is
+   body-local. This keeps bodies independent and Barrier C
+   parallel.
+
+## 10. Limits in v1
 
 - **No flow-sensitive narrowing.** `if x is Some { ... x.value ... }`
   is desirable but needs flow typing; v1 requires `match`.
