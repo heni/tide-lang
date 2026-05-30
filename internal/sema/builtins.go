@@ -21,21 +21,28 @@ func predeclaredSymbols() map[string]*Symbol {
 	for _, t := range []string{
 		"bool", "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "byte", "rune", "string", "error",
+		"float32", "float64", "byte", "rune", "string",
 		"Any", "Dynamic", "unit", "Never",
 	} {
 		addType(t)
 	}
+	// `error` is both a type (the interface) and a free function
+	// (the constructor) per lang-spec/builtins.md. Sema-1 keeps
+	// the type role; the call form re-uses the same symbol and
+	// codegen routes the value lowering. Sema-3 will split the
+	// dual role once typing rules need to distinguish them.
+	out["error"] = &Symbol{Name: "error", Kind: SymBuiltinType, Type: &Builtin{N: "error"}}
+
 	for _, t := range []string{"Option", "Result", "Map", "Set", "Stack", "Channel", "SendChan", "RecvChan"} {
 		out[t] = &Symbol{Name: t, Kind: SymBuiltinType, Type: &Named{N: t}}
 	}
-	for _, v := range []string{
-		"None", "Some", "Ok", "Err",
-		"Primitive", "Class", "Sum", "Slice", "Function", "Unit",
-	} {
+	// `reflect.Kind` variants — qualified under `reflect.`, not
+	// in unqualified scope. Sema-3 attaches them when resolving
+	// `reflect.Primitive` field access on the reflect module.
+	for _, v := range []string{"None", "Some", "Ok", "Err"} {
 		addVar(v)
 	}
-	for _, fn := range []string{"panic", "error", "refEq", "makeChannel", "makeSlice"} {
+	for _, fn := range []string{"panic", "refEq", "makeChannel", "makeSlice"} {
 		addFunc(fn)
 	}
 	for _, m := range []string{
@@ -52,6 +59,5 @@ func predeclaredSymbols() map[string]*Symbol {
 // Lexer already rejects this; kept as defence-in-depth for
 // synthesised names that bypass the lexer.
 func goReservedIdent(name string) bool {
-	const reserved = "_tide_"
-	return len(name) >= len(reserved) && name[:len(reserved)] == reserved
+	return len(name) >= 6 && name[:6] == "_tide_"
 }

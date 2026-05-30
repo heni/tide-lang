@@ -57,13 +57,61 @@ func main() {
 // stays as defence-in-depth for future synthesised-name
 // pipelines that bypass the lexer.
 
-func TestDuplicateDeclFiresE0106(t *testing.T) {
+func TestDuplicateTopLevelDeclFiresE0113(t *testing.T) {
 	src := `func foo() {}
 func foo() {}
 `
 	codes := runCheck(t, src)
+	if !contains(codes, "E0113") {
+		t.Errorf("expected E0113, got %v", codes)
+	}
+}
+
+func TestDuplicateVariantFiresE0106(t *testing.T) {
+	src := `type Color = | Red | Green | Red
+`
+	codes := runCheck(t, src)
 	if !contains(codes, "E0106") {
-		t.Errorf("expected E0106, got %v", codes)
+		t.Errorf("expected E0106 (duplicate variant), got %v", codes)
+	}
+}
+
+func TestAmbiguousVariantFiresE0104(t *testing.T) {
+	src := `type A = | Up | Down
+type B = | Up | Left
+`
+	codes := runCheck(t, src)
+	if !contains(codes, "E0104") {
+		t.Errorf("expected E0104, got %v", codes)
+	}
+}
+
+func TestClassFieldVisibleInsideMethod(t *testing.T) {
+	src := `import fmt
+class Counter {
+  var n: int
+  dump() {
+    fmt.println(n)
+  }
+}
+func main() { Counter(0).dump() }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (field via implicit receiver), got %v", codes)
+	}
+}
+
+func TestForRangeBoundsResolve(t *testing.T) {
+	src := `import fmt
+func main() {
+  for i in 0..missing_upper {
+    fmt.println(i)
+  }
+}
+`
+	codes := runCheck(t, src)
+	if !contains(codes, "E0103") {
+		t.Errorf("expected E0103 for unresolved range bound, got %v", codes)
 	}
 }
 

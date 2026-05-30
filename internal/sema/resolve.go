@@ -36,19 +36,35 @@ func (c *checker) resolveClassDecl(cd *ast.ClassDecl, parent *Scope) {
 	classScope := newScope(parent)
 	for _, tp := range cd.TypeParams {
 		c.checkReservedName(tp, cd.Span)
-		classScope.declare(&Symbol{Name: tp, Kind: SymBuiltinType, Type: &Named{N: tp}})
+		classScope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
 	}
+	// Class member scope: fields + methods visible inside any
+	// instance method body via implicit receiver
+	// (name-resolution.md §Implicit receiver).
+	memberScope := newScope(classScope)
 	for _, f := range cd.Fields {
 		c.checkReservedName(f.Name, f.Span)
+		memberScope.declare(&Symbol{Name: f.Name, Kind: SymField, Decl: f, Type: &Unknown{}})
 		c.resolveTypeExpr(f.DeclType, classScope)
 	}
 	for _, m := range cd.Methods {
-		c.resolveMethod(cd, m, classScope)
+		memberScope.declare(&Symbol{Name: m.Name, Kind: SymMethod, Decl: m, Type: &Unknown{}})
+	}
+	for _, m := range cd.Methods {
+		c.resolveMethod(cd, m, classScope, memberScope)
 	}
 }
 
-func (c *checker) resolveMethod(cd *ast.ClassDecl, m *ast.Method, classScope *Scope) {
-	bodyScope := newScope(classScope)
+func (c *checker) resolveMethod(cd *ast.ClassDecl, m *ast.Method, classScope, memberScope *Scope) {
+	// Instance methods see members via implicit receiver; static
+	// ones don't (they call other statics through the class name).
+	var bodyParent *Scope
+	if m.IsStatic {
+		bodyParent = classScope
+	} else {
+		bodyParent = memberScope
+	}
+	bodyScope := newScope(bodyParent)
 	if !m.IsStatic {
 		bodyScope.declare(&Symbol{Name: "this", Kind: SymLocal, Decl: cd, Type: &Named{N: cd.Name, Decl: cd}})
 	}
@@ -70,7 +86,7 @@ func (c *checker) resolveFuncDecl(fn *ast.FuncDecl, parent *Scope) {
 	fnScope := newScope(parent)
 	for _, tp := range fn.TypeParams {
 		c.checkReservedName(tp, fn.Span)
-		fnScope.declare(&Symbol{Name: tp, Kind: SymBuiltinType, Type: &Named{N: tp}})
+		fnScope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
 	}
 	for _, p := range fn.Params {
 		c.checkReservedName(p.Name, p.Span)
@@ -134,17 +150,27 @@ func (c *checker) resolveStmt(s ast.Stmt, scope *Scope) {
 			c.resolveBlock(e, scope)
 		}
 	case *ast.ForStmt:
-		if expr, ok := v.Iterable.(ast.Expr); ok {
-			c.resolveExpr(expr, scope)
+		// RangeExpr is a Node but not an Expr — handle it
+		// explicitly. Other iterables (slices, maps, sets) are
+		// regular Expr values.
+		switch it := v.Iterable.(type) {
+		case *ast.RangeExpr:
+			c.resolveExpr(it.Low, scope)
+			c.resolveExpr(it.High, scope)
+		case ast.Expr:
+			c.resolveExpr(it, scope)
 		}
 		bodyScope := newScope(scope)
 		c.bindPattern(v.Pattern, bodyScope, v)
 		if v.Body != nil {
+			// Re-use resolveBlock so block-internal scoping
+			// stays consistent with the let-in-let rule.
+			innerScope := newScope(bodyScope)
 			for _, st := range v.Body.Stmts {
-				c.resolveStmt(st, bodyScope)
+				c.resolveStmt(st, innerScope)
 			}
 			if v.Body.Trailing != nil {
-				c.resolveExpr(v.Body.Trailing, bodyScope)
+				c.resolveExpr(v.Body.Trailing, innerScope)
 			}
 		}
 	}

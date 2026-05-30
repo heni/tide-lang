@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strings"
+
 	"github.com/heni/tide-lang/internal/ast"
 )
 
@@ -14,14 +16,11 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 	file := newScope(pre)
 
 	for _, im := range f.Imports {
-		head := im.Path
-		for i, r := range head {
-			if r == '/' {
-				head = head[:i]
-				break
-			}
+		if im.Path == "" {
+			continue
 		}
-		if head == "" || pre.lookup(head) == nil {
+		head := strings.SplitN(im.Path, "/", 2)[0]
+		if pre.lookup(head) == nil {
 			continue
 		}
 		file.declare(&Symbol{Name: head, Kind: SymBuiltinModule, Type: &Unknown{}})
@@ -33,12 +32,22 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 			c.checkReservedName(v.Name, v.Span)
 			sym := &Symbol{Name: v.Name, Kind: SymTypeDecl, Decl: v, Type: &Named{N: v.Name, Decl: v}}
 			if prev := file.declare(sym); prev != nil {
-				c.report("E0106", "Duplicate top-level declaration "+v.Name, v.Span)
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
 			if sb, ok := v.Body.(*ast.SumTypeBody); ok {
+				// Within-sum duplicate variant names are E0106
+				// per diagnostics.md.
+				seen := map[string]bool{}
 				for _, va := range sb.Variants {
 					c.checkReservedName(va.Name, va.Span)
+					if seen[va.Name] {
+						c.report("E0106", "Duplicate variant name "+va.Name, va.Span)
+						continue
+					}
+					seen[va.Name] = true
 					vsym := &Symbol{Name: va.Name, Kind: SymUserVariant, Decl: va, Type: &Named{N: v.Name, Decl: v}}
+					// Cross-sum ambiguity (E0104) — a variant
+					// name shared by two different user sums.
 					if prev := file.lookup(va.Name); prev != nil && prev.Kind == SymUserVariant {
 						if prev.Type != nil && vsym.Type != nil && prev.Type.String() != vsym.Type.String() {
 							c.report("E0104", "Ambiguous variant name "+va.Name+" — declared by both "+prev.Type.String()+" and "+vsym.Type.String(), va.Span)
@@ -51,13 +60,13 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 			c.checkReservedName(v.Name, v.Span)
 			sym := &Symbol{Name: v.Name, Kind: SymClass, Decl: v, Type: &Named{N: v.Name, Decl: v}}
 			if prev := file.declare(sym); prev != nil {
-				c.report("E0106", "Duplicate top-level declaration "+v.Name, v.Span)
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
 		case *ast.FuncDecl:
 			c.checkReservedName(v.Name, v.Span)
 			sym := &Symbol{Name: v.Name, Kind: SymFunc, Decl: v, Type: &Unknown{}}
 			if prev := file.declare(sym); prev != nil {
-				c.report("E0106", "Duplicate top-level declaration "+v.Name, v.Span)
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
 		}
 	}

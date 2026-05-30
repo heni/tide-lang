@@ -31,6 +31,10 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 			c.resolveExpr(a, scope)
 		}
 	case *ast.Field:
+		// Only the receiver is resolved here; v.Name (the field
+		// or method spelling) is dispatched by codegen against
+		// the receiver's runtime shape. Sema-3 will validate
+		// the field exists once Info.Type is populated.
 		c.resolveExpr(v.Receiver, scope)
 	case *ast.Binary:
 		c.resolveExpr(v.Left, scope)
