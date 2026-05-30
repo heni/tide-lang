@@ -29,7 +29,7 @@ mechanically. Two firm boundaries:
   sema sees an already-lowered AST — `try foo()` is already an
   early-return-on-Err shape, compound assignment is already
   `lv = lv <op> rhs`, etc. There is no special `try` case in
-  `typecheck.go`; the lowered nodes type-check via the regular
+  `body.go`; the lowered nodes type-check via the regular
   typing rules.
 - Sema does **not** lower types into Go form — codegen handles
   the Go-side encoding (`lang-spec/lowering-go.md`). Sema's type
@@ -69,7 +69,8 @@ What sema owns (see §4 for how this fits the barrier model):
    loop (`E0404`); `spawn` only inside a `scope` (`E0405`);
    `defer` arg must be a call (`E0406`); `scope` error param
    must be `error` (`E0407`); `this` only inside an instance
-   method (`E0501`).
+   method (`E0501`); write-shadowing a field (`E0502`); `scope`
+   reference outside a `scope { … }` body (`E0601`).
 7. **Desugaring preconditions.** After sema, the lowering
    passes (`try` → early-return, `match` → switch / IIFE,
    `scope` → `errgroup`) must succeed *mechanically* — no
@@ -221,6 +222,26 @@ deterministic in-memory value (a future `.tidei` file would be
 its on-disk projection); it does *not* expose function bodies
 or private declarations. Cross-module reads go through this
 interface; cross-module writes are impossible.
+
+**Tide modules vs Go-stdlib bindings.** The import graph is
+over Tide modules only. `import fmt`, `import strings`,
+`import strconv`, … in `.td` source are *not* Tide-module
+imports — they're Go-stdlib bindings whose surface is built
+by `internal/bindgen` from `go/packages`. D20's acyclic rule
+applies to Tide-module edges only; binding leaves sit outside
+the graph. Sema treats a binding as an immutable
+already-resolved interface — same shape as a Tide module's
+exported interface, sourced through the bindgen pipeline
+instead of from another module's Barrier B output.
+
+**Cross-module generics.** A reference like `Map<K, V>` where
+`Map` lives in one module and `K` in another resolves by
+fetching the type-arg names through the importer's namespace,
+then looking the type up in the producing module's already-
+finalised exported interface. Because topological order
+guarantees each module is fully checked before its dependents
+run Barrier B, the producing module's interface is always
+available when a dependent constructs the generic.
 
 **v1 reality.** Tide v1 ships with a single user module — the
 `.td` file passed to `tide build`. The module-level layer is a
@@ -529,9 +550,14 @@ so each step has a trivial rollback:
 
 | codegen tracker | replacement | landed in |
 |-----------------|-------------|-----------|
-| `g.varKind` (local binding → "Map"/"Set"/"Stack") | `Info.Symbol.Kind` | PR-Sema-3 |
-| `g.class` (class declaration table) | `Info.Type` (class symbols) | PR-Sema-4 |
-| `g.variant` (variant-constructor lookup) | `Info.Variant` | PR-Sema-4 |
+| `g.varKind` (local binding → "Map"/"Set"/"Stack") | `Info.Symbol.Kind` | PR-Sema-3b |
+| `g.class` (class declaration table) | `Info.Type` (class symbols) | PR-Sema-3b |
+| `g.variant` (variant-constructor lookup) | `Info.Variant` | PR-Sema-3b |
+
+PR-Sema-5 owns the final cleanup pass — removes the last
+"without sema we don't know" comments and any vestigial fields
+on `gen` left over after PR-Sema-3b. The actual tracker
+migrations themselves all land together in 3b.
 
 PR-Sema-1 wires the side-table but keeps codegen using its own
 trackers; each later PR replaces one tracker and removes the
@@ -547,7 +573,7 @@ corresponding field from `gen`.
 | **PR-Sema-3b** | **Dynamic-doesn't-leak** check (`dynamic.go`) folded into the Barrier C body walker. Surface: `E0209`–`E0212`. Migrates codegen's `varKind` / `class` / `variant` lookups to read from `Info`. Split from Sema-3a so the typing-rules diff stays reviewable. |
 | **PR-Sema-4** | **Barrier D**: `exhaust.go` (drops the Sema-3a wildcard-required rule), `context.go` (`try` / `break` / `continue` / `spawn` / `defer` / `scope` / `this` legality), and `shape.go` (desugaring-precondition assertions). Surface: `E0303`–`E0305`, `E0402`–`E0407`, `E0501`–`E0502`, `E0601`. |
 | **PR-Sema-5** | Trait / interface satisfaction (`satisfy.go`) — separate PR because the structural-vs-Go-nominal interface bridge is its own design problem. v1 surface is the nominal `implements` check only. Also closes type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) and `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
-| **PR-Sema-Mod** | Promote the module-level layer from degenerate single-file form to a real multi-file resolver: parse all `.td` inputs, build the import graph, enforce **D20** (acyclic), produce per-module exported interfaces, run Barriers A–C in topo order. Whole-program Barrier D extends across modules. Not blocking on multi-file user programs; tracked as the follow-up. |
+| **PR-Sema-Mod** | Promote the module-level layer from degenerate single-file form to a real multi-file resolver: parse all `.td` inputs, build the import graph, enforce **D20** (acyclic), produce per-module exported interfaces, run Barriers A–C in topo order. Whole-program Barrier D extends across modules. Unblocks multi-file user programs; not on the v1 critical path. |
 
 Phases land **before** the codegen migration in each PR — i.e.,
 each Sema-N adds checks but leaves codegen unchanged. The
@@ -590,8 +616,11 @@ sub-stages. Each of the following needs explicit care.
    declaring order unstable — would make every error-test
    fragile.
 
-5. **Inference across declaration boundaries.**
-   If sema permitted inference in public function signatures
+5. **Inference across declaration boundaries — a rule, not a
+   runtime hazard.** This entry differs from items 1–4: it
+   describes a deliberate language-level constraint that
+   *prevents* a hazard from existing in the first place. If
+   sema permitted inference in public function signatures
    (`func f(x) = …`), Barrier B would need to wait for
    Barrier C of dependencies, breaking the
    immutable-semantic-world guarantee. **Rule, kept
