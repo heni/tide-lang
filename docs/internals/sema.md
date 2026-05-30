@@ -127,7 +127,7 @@ during fixture authoring.
 
 Files reflect the four **barriers** (§4) plus the cross-cutting
 concerns. Inside a barrier, several walkers may run in parallel
-(§9); each file owns one walker.
+(§8); each file owns one walker.
 
 ```
 internal/sema/
@@ -347,7 +347,7 @@ inside a barrier is independent and worth parallelising.
   │   exhaust.go · shape.go                                  │
   │                                                          │
   │   Concerns either inherently cross bodies or co-located  │
-  │   here because the diagnostic-ordering story (§9 #4)     │
+  │   here because the diagnostic-ordering story (§8 #4)     │
   │   wants a single deterministic finaliser:                │
   │                                                          │
   │   ├─ exhaustiveness: Maranget's algorithm over each      │
@@ -395,7 +395,7 @@ sequential execution. The truth is messier: most of the work
 *inside* a barrier is embarrassingly parallel, and the barriers
 themselves are about **what data is known**, not about a
 particular order of file traversals. This framing also makes
-the parallelism story explicit (§9) and avoids the trap of
+the parallelism story explicit (§8) and avoids the trap of
 adding a "Phase 8" for the next concern — a new concern goes
 into the barrier whose invariants it needs, not into a new
 slot at the bottom.
@@ -546,41 +546,11 @@ Hooks for the REPL:
 The codegen package gradually sheds its ad-hoc local trackers
 (`g.varKind`, `g.class`, the variant lookup map) as sema becomes
 the single source of truth. The migration is staged per tracker
-so each step has a trivial rollback:
+so each step has a trivial rollback — the actual sequencing
+(which tracker moves first, which PR owns it) is a pipeline
+concern that lives in the dev tracker, not in this document.
 
-| codegen tracker | replacement | landed in |
-|-----------------|-------------|-----------|
-| `g.varKind` (local binding → "Map"/"Set"/"Stack") | `Info.Symbol.Kind` | PR-Sema-3b |
-| `g.class` (class declaration table) | `Info.Type` (class symbols) | PR-Sema-3b |
-| `g.variant` (variant-constructor lookup) | `Info.Variant` | PR-Sema-3b |
-
-PR-Sema-5 owns the final cleanup pass — removes the last
-"without sema we don't know" comments and any vestigial fields
-on `gen` left over after PR-Sema-3b. The actual tracker
-migrations themselves all land together in 3b.
-
-PR-Sema-1 wires the side-table but keeps codegen using its own
-trackers; each later PR replaces one tracker and removes the
-corresponding field from `gen`.
-
-## 8. Phased delivery
-
-| PR | Scope |
-|----|-------|
-| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`. Module-level layer in degenerate single-file form (graph with one node, trivial topo order). **Barrier A** (declaration indexing) + the resolution half of **Barrier B** (`resolve.go`). `sema.Check` entry wired into `cmd/tide build` / `run`. Surface: `E0103`, `E0104`, `E0107`, `E0108`. |
-| **PR-Sema-2** | Rest of **Barrier B**: `construct.go` (alias / cycle SCC, sum / class shapes) + `signatures.go` (function / method / class field signatures). Surface: `E0105`, `E0106`, `E0207`, alias-cycle. |
-| **PR-Sema-3a** | **Barrier C — typing rules** over the subset currently exercised by `tests/codegen/`. Typing rules from `type-system.md`, with explicit type arguments at generic call sites. Surface: `E0201`–`E0208`. Until Barrier D lands, `match` is type-checked but exhaustiveness is not enforced — Barrier C requires every `match` to carry a wildcard `_` arm to stay sound. **No codegen migration in this PR** — it adds checks only. |
-| **PR-Sema-3b** | **Dynamic-doesn't-leak** check (`dynamic.go`) folded into the Barrier C body walker. Surface: `E0209`–`E0212`. Migrates codegen's `varKind` / `class` / `variant` lookups to read from `Info`. Split from Sema-3a so the typing-rules diff stays reviewable. |
-| **PR-Sema-4** | **Barrier D**: `exhaust.go` (drops the Sema-3a wildcard-required rule), `context.go` (`try` / `break` / `continue` / `spawn` / `defer` / `scope` / `this` legality), and `shape.go` (desugaring-precondition assertions). Surface: `E0303`–`E0305`, `E0402`–`E0407`, `E0501`–`E0502`, `E0601`. |
-| **PR-Sema-5** | Trait / interface satisfaction (`satisfy.go`) — separate PR because the structural-vs-Go-nominal interface bridge is its own design problem. v1 surface is the nominal `implements` check only. Also closes type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) and `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
-| **PR-Sema-Mod** | Promote the module-level layer from degenerate single-file form to a real multi-file resolver: parse all `.td` inputs, build the import graph, enforce **D20** (acyclic), produce per-module exported interfaces, run Barriers A–C in topo order. Whole-program Barrier D extends across modules. Unblocks multi-file user programs; not on the v1 critical path. |
-
-Phases land **before** the codegen migration in each PR — i.e.,
-each Sema-N adds checks but leaves codegen unchanged. The
-migration step is a separate PR per pass to keep diffs small
-and the rollback story trivial.
-
-## 9. Concurrency hazards inside a barrier
+## 8. Concurrency hazards inside a barrier
 
 Barrier C is parallel-per-body; Barrier B has parallel
 sub-stages. Each of the following needs explicit care.
@@ -629,7 +599,7 @@ sub-stages. Each of the following needs explicit care.
    body-local. This keeps bodies independent and Barrier C
    parallel.
 
-## 10. Limits in v1
+## 9. Limits in v1
 
 - **No flow-sensitive narrowing.** `if x is Some { ... x.value ... }`
   is desirable but needs flow typing; v1 requires `match`.
