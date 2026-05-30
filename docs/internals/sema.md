@@ -24,7 +24,13 @@ mechanically. Two firm boundaries:
 - Sema does **not** rewrite the AST into another shape — that's
   desugaring (`lang-spec/desugaring.md`, currently parser-stage).
   Sema annotates existing nodes (name links, resolved types,
-  variant tags), it doesn't reshape them.
+  variant tags) **via the side-table in §2**, it doesn't
+  reshape them. Because parser-stage desugaring runs first,
+  sema sees an already-lowered AST — `try foo()` is already an
+  early-return-on-Err shape, compound assignment is already
+  `lv = lv <op> rhs`, etc. There is no special `try` case in
+  `typecheck.go`; the lowered nodes type-check via the regular
+  typing rules.
 - Sema does **not** lower types into Go form — codegen handles
   the Go-side encoding (`lang-spec/lowering-go.md`). Sema's type
   representation is Tide-side: `int`, `Map<rune, int>`,
@@ -67,6 +73,12 @@ builtins ──┘
   `{Symbol, Type, …}`. Codegen reads it where today it does
   ad-hoc local lookups (`g.varKind`, `g.class`, etc.) and the
   emitter loses the "without sema we don't know" caveats.
+  **Invariant:** sema (and codegen) treat the AST as immutable
+  after parser-stage desugaring. Pointer identity is the
+  side-table contract — any later pass that clones or rebuilds
+  AST nodes invalidates `Info` lookups silently. Future
+  desugaring stages, if any, must declare themselves
+  pre-sema-pre-info or rebuild `Info` afterwards.
 - `Diag` slice is ordered by source position so the user sees
   errors top-to-bottom on `tide build`. **Accumulate, not
   fail-fast**: a malformed function should still let later
@@ -136,6 +148,12 @@ A phase that detected fatal errors short-circuits all later
 phases on the affected subtree — but other subtrees keep going,
 so the user sees a coherent error batch.
 
+Phase E runs **before** Phase D by convention, not by
+dependency: neither uses the other's output. Putting
+exhaustiveness first keeps the user-visible error order
+"shape" → "Dynamic discipline" rather than the reverse, which
+felt more natural in review.
+
 ## 5. Type representation
 
 Internal `Type` is a closed sum (Go-side `type Type interface{}`
@@ -153,6 +171,30 @@ Type unification is **invariant** in v1 — no subtyping, no
 covariance. The only widening rule is the D18 `Dynamic` intro
 at reflect parameter sites; everywhere else equal-or-error.
 Generic instantiation uses simple substitution.
+
+Go's compiler does not enforce exhaustive type-switches on the
+`Type` interface — closed-sum-ness is a convention we maintain
+with `default: panic("unhandled Type kind: " + ...)` arms in
+every switch plus the atomic-fixture rule (every concrete case
+must be exercised). Adding a new `Type` case requires touching
+each switch site; the panic is the safety net when the audit
+misses one.
+
+## 5.1. Spec-mirror discipline (D17)
+
+Each spec artefact maps to exactly one place in sema:
+
+| Spec source | Sema artefact |
+|-------------|---------------|
+| `name-resolution.md` rule | a branch in `resolve.go` |
+| `type-system.md` typing rule (T-…) | a case in `typecheck.go` |
+| `diagnostics.md` E-code | a `Diag.Code` literal in `diag.go` |
+
+When the spec adds a rule, the corresponding sema case lands in
+the same PR (D17 paired edit). When a sema case is added without
+a spec citation, the audit is supposed to catch it — the
+atomic-fixture rule (CLAUDE.md "Every spec artefact carries
+coverage") provides the cross-check.
 
 ## 6. Diagnostics
 
@@ -185,18 +227,27 @@ Hooks for the REPL:
 
 The codegen package gradually sheds its ad-hoc local trackers
 (`g.varKind`, `g.class`, the variant lookup map) as sema becomes
-the single source of truth. PR-Sema-1 wires the side-table but
-keeps codegen using its own trackers; later PRs migrate
-codegen lookups one by one.
+the single source of truth. The migration is staged per tracker
+so each step has a trivial rollback:
+
+| codegen tracker | replacement | landed in |
+|-----------------|-------------|-----------|
+| `g.varKind` (local binding → "Map"/"Set"/"Stack") | `Info.Symbol.Kind` | PR-Sema-3 |
+| `g.class` (class declaration table) | `Info.Type` (class symbols) | PR-Sema-4 |
+| `g.variant` (variant-constructor lookup) | `Info.Variant` | PR-Sema-4 |
+
+PR-Sema-1 wires the side-table but keeps codegen using its own
+trackers; each later PR replaces one tracker and removes the
+corresponding field from `gen`.
 
 ## 8. Phased delivery
 
 | PR | Scope |
 |----|-------|
 | **PR-Sema-1** | Skeleton: Scope, Symbol, Type, Diag; Phase R; `sema.Check` entry; wire into `cmd/tide`. Surface: E0301 / E0302 only. |
-| **PR-Sema-2** | Phase T over the subset of typing rules currently exercised by `tests/codegen/`. E0303 family for literal type errors (mismatched assignment, bad call arity, bad operand types). |
-| **PR-Sema-3** | Phase D (Dynamic intro/elim) + Phase E (exhaustiveness). E0209–E0212 + E0303-exhaustive. Migrates codegen's varKind to read from sema.Info. |
-| **PR-Sema-4** | Generic-instantiation type-arg inference, `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. |
+| **PR-Sema-2** | Phase T over the subset of typing rules currently exercised by `tests/codegen/`. E0303 family for literal type errors (mismatched assignment, bad call arity, bad operand types). Generic instantiation with **explicit** type arguments (`Map<rune, int>.new()` already in the corpus). Until Phase E lands, `match` is type-checked but exhaustiveness is **not** enforced — to keep the gap sound, Phase T requires every `match` to carry a wildcard `_` arm. The requirement is removed by PR-Sema-3. |
+| **PR-Sema-3** | Phase D (Dynamic intro/elim) + Phase E (exhaustiveness). E0209–E0212 + E0303-exhaustive. Drops the Sema-2 wildcard-required rule. Migrates codegen's `varKind` to read from `Info.Symbol.Kind`. |
+| **PR-Sema-4** | Type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) + `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Migrates codegen's `g.class` / variant maps to `Info.Type` / `Info.Variant`. |
 
 Phases land **before** the codegen migration in each PR — i.e.,
 each Sema-N adds checks but leaves codegen unchanged. The
@@ -210,13 +261,16 @@ and the rollback story trivial.
 - **No row polymorphism / structural types.** Record types are
   nominal (D14); structural matching is out of scope.
 - **No effect / async tracking.** Concurrency is uncolored
-  (D5); sema treats `spawn` / `scope` as ordinary stmts.
+  (D7); sema treats `spawn` / `scope` as ordinary stmts.
 - **No exhaustiveness over open types.** v1 covers nullary +
   payload sum variants. Refinement against record / class
   field values is out.
-- **One file at a time.** Multi-file programs need module
-  resolution (RFC-0002 was scoped but not landed yet). For now,
-  sema typechecks a single `*ast.File` plus the predeclared
+- **One file at a time.** Multi-file user programs need
+  cross-file module resolution which v1 doesn't ship. Bindings
+  against the Go stdlib (`import fmt`, `import strings`, …)
+  already work — that path is handled by the binding layer,
+  not by sema. For user-authored multi-file programs sema
+  typechecks a single `*ast.File` plus the predeclared
   surface.
 
 These aren't permanent decisions — they're "not in v1". Each
