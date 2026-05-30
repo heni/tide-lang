@@ -60,6 +60,7 @@ severity column.
 | E0111 | E | Malformed rune literal | `grammar.ebnf` RuneLit | A rune literal must contain exactly one character or escape sequence between single quotes. |
 | E0112 | E | Unexpected token | `grammar.ebnf` syntactic part | The parser was looking for a different shape; check the surrounding construct. |
 | E0113 | E | Duplicate top-level declaration | `name-resolution.md` §File scope | Two file-scope `func`, `class`, `type`, or `interface` declarations share a name. Rename one or fold them together. |
+| E0114 | E | Cyclic type alias | `type-system.md` §Alias resolution | The alias chain loops back on itself (`type A = B; type B = A`). Break the cycle by inlining one side or introducing a fresh nominal type. |
 
 ### E02xx — Type system
 

@@ -192,6 +192,78 @@ func main() {
 	}
 }
 
+func TestDuplicateClassFieldFiresE0105(t *testing.T) {
+	src := `class Point {
+  var x: int
+  var y: int
+  var x: int
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0105") {
+		t.Errorf("expected E0105, got %v", codes)
+	}
+}
+
+func TestDuplicateVariantPayloadFieldFiresE0105(t *testing.T) {
+	src := `type Pair = | Both(a: int, a: int) | Neither
+`
+	if codes := runCheck(t, src); !contains(codes, "E0105") {
+		t.Errorf("expected E0105, got %v", codes)
+	}
+}
+
+func TestWrongGenericArityFiresE0207(t *testing.T) {
+	src := `func bad(m: Map<int>) {}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0207") {
+		t.Errorf("expected E0207, got %v", codes)
+	}
+}
+
+func TestAliasCycleFiresE0114(t *testing.T) {
+	src := `type A = B
+type B = A
+`
+	if codes := runCheck(t, src); !contains(codes, "E0114") {
+		t.Errorf("expected E0114, got %v", codes)
+	}
+}
+
+func TestSelfAliasFiresE0114(t *testing.T) {
+	src := `type Loop = Loop
+`
+	if codes := runCheck(t, src); !contains(codes, "E0114") {
+		t.Errorf("expected E0114, got %v", codes)
+	}
+}
+
+func TestThreeNodeAliasCycleFiresE0114(t *testing.T) {
+	src := `type A = B
+type B = C
+type C = A
+`
+	if codes := runCheck(t, src); !contains(codes, "E0114") {
+		t.Errorf("expected E0114, got %v", codes)
+	}
+}
+
+func TestTooManyGenericArgsFiresE0207(t *testing.T) {
+	src := `func bad(r: Result<int, string, bool>) {}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0207") {
+		t.Errorf("expected E0207, got %v", codes)
+	}
+}
+
+func TestNonCyclicAliasPasses(t *testing.T) {
+	src := `type Cents = int
+type Total = Cents
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {
