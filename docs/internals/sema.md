@@ -36,20 +36,45 @@ mechanically. Two firm boundaries:
   representation is Tide-side: `int`, `Map<rune, int>`,
   `Status`, `Option<T>`.
 
-What sema owns:
+What sema owns (see §4 for the seven-phase pipeline):
 
 1. **Name resolution.** Every `Ident` / `NamedType` / qualified
    name resolves to a `Symbol` — local binding, top-level decl,
-   imported module, or builtin. Errors with `E0301`/`E0302` per
-   `diagnostics.md`.
-2. **Type checking.** Every expression gets a type; every
-   typing rule from `type-system.md` is enforced (T-Let,
-   T-Assign, T-Call, T-Match, …). Errors with `E0303`+ codes.
-3. **Exhaustiveness.** `match` arms cover the scrutinee type.
-   `E0303`.
-4. **Dynamic discipline.** D18 / RFC-0003: `Dynamic` introduced
-   only at `reflect.*` parameter sites, eliminated only via
-   `reflect.unbox`. `E0209`–`E0212`.
+   imported module, field, method, variant, or builtin. After
+   Phase 1 an `IdentExpr` no longer means "the string `foo`";
+   it means "this resolved `LocalSymbol#42`" or
+   "`TypeSymbol#17`". Errors with `E0301`/`E0302`.
+2. **Type construction.** Every `NamedType` in source
+   (`User`, `Option<User>`, `Map<string, int>`) is built into a
+   canonical Tide-side `Type` value the rest of sema can
+   compare, substitute through generics, and pattern-match on.
+3. **Type inference.** Fills in types the source omits:
+   `let x = foo()`, variant constructors (`Ok(42)` ⇒
+   `Result<int, _>`), the empty `[]` literal (from context).
+4. **Trait / interface satisfaction.** Validates that a
+   structural type satisfies the Tide-side interface and (where
+   it surfaces through a binding) the Go-side interface.
+   Dangerous area — sema does the work, codegen reads the
+   verdict.
+5. **Exhaustiveness.** `match` arm patterns cover every value
+   of the scrutinee. `E0303` with witness on miss.
+6. **Effect / context validation.** Not effect *types* in the
+   academic sense — just "is this construct legal at this
+   context?". `try` only inside a function returning
+   `Result`/`Option`; `return` only inside a function;
+   `break`/`continue` only inside a loop; `spawn` only inside
+   a `scope`. Errors via `E03xx`.
+7. **Desugaring preconditions.** After sema, the lowering
+   passes (`try` → early-return, `match` → switch / IIFE,
+   `scope` → `errgroup`) must succeed *mechanically* — no
+   additional analysis. Sema's job in this phase is to leave
+   the AST + `Info` in a state where every downstream rewrite
+   is a deterministic shape transformation.
+
+Cross-cutting: the **Dynamic-doesn't-leak** invariant (§7) runs
+inside Phase 3 (inference) and Phase 4 (satisfaction) — it's
+not a separate phase because it gates introduction at exactly
+the same sites those phases inspect.
 
 What sema explicitly does **not** own:
 
@@ -97,62 +122,135 @@ internal/sema/
 ├── check.go            — entry point: sema.Check
 ├── env.go              — Scope, Symbol; the lexical environment
 ├── types.go            — Type representation + unification helpers
-├── resolve.go          — name-resolution pass (Phase R)
-├── typecheck.go        — typing-rules pass (Phase T)
-├── exhaust.go          — match-exhaustiveness pass (Phase E)
-├── dynamic.go          — Dynamic intro/elim enforcement (Phase D)
+├── resolve.go          — Phase 1: name resolution
+├── construct.go        — Phase 2: NamedType → canonical Type
+├── infer.go            — Phase 3: type inference + checking
+├── satisfy.go          — Phase 4: trait / interface satisfaction
+├── exhaust.go          — Phase 5: match-exhaustiveness
+├── context.go          — Phase 6: try / return / break / spawn context legality
+├── shape.go            — Phase 7: desugaring-precondition assertions
+├── dynamic.go          — Dynamic-doesn't-leak invariant (cross-phase)
 ├── diag.go             — Diag construction with .td coordinates
 └── info.go             — the AST-keyed side-table
 ```
 
-Files map 1:1 to passes; each pass is its own walker so they
+Each phase lives in its own file with its own walker so phases
 can be tested in isolation. Tests live under
-`tests/sema/<pass>/` with the per-pass fixture contract
+`tests/sema/<phase>/` with the per-phase fixture contract
 mirroring the existing `tests/codegen/` shape.
 
-## 4. Pass order
+## 4. The seven phases
+
+Each phase consumes the previous phases' `Info` plus the AST.
+A phase that detects a fatal error short-circuits all later
+phases on the affected subtree — but other subtrees keep
+going, so the user sees a coherent error batch.
 
 ```
         AST in
            │
            ▼
-  ┌────────────────┐
-  │ Phase R        │  resolve every Ident / NamedType to a
-  │  resolve.go    │  Symbol; report E0301 / E0302
-  └────────┬───────┘
-           │ Info has names; no types yet
-           ▼
-  ┌────────────────┐
-  │ Phase T        │  walk every Expr, derive its Type;
-  │  typecheck.go  │  enforce typing rules; E0303+
-  └────────┬───────┘
-           │ Info has types
-           ▼
-  ┌────────────────┐
-  │ Phase E        │  walk every MatchExpr; verify the pattern
-  │  exhaust.go    │  matrix covers the scrutinee type
-  └────────┬───────┘
+  ┌──────────────────────────────────────────────┐
+  │ Phase 1 — Name resolution                    │
+  │  resolve.go                                  │
+  │  imports · locals · fields · methods ·       │
+  │  variants                                    │
+  │  ⇒ every IdentExpr / NamedType references a  │
+  │    Symbol#N, not a string                    │
+  │  E0301 / E0302                               │
+  └────────┬─────────────────────────────────────┘
            │
            ▼
-  ┌────────────────┐
-  │ Phase D        │  walk every reflect.* call / Dynamic
-  │  dynamic.go    │  reference; enforce intro/elim
-  └────────┬───────┘
+  ┌──────────────────────────────────────────────┐
+  │ Phase 2 — Type construction                  │
+  │  construct.go                                │
+  │  source `Option<User>` ⇒ canonical           │
+  │    Generic{ owner: Option, args: [User] }    │
+  │  Substitutes nothing yet; just builds        │
+  │  comparable type objects.                    │
+  └────────┬─────────────────────────────────────┘
+           │
+           ▼
+  ┌──────────────────────────────────────────────┐
+  │ Phase 3 — Type inference + checking          │
+  │  infer.go                                    │
+  │  `let x = foo()` ⇒ x : <returnType(foo)>     │
+  │  `Ok(42)`        ⇒ Result<int, _>            │
+  │  `[]`            ⇒ from context              │
+  │  Every typing rule from `type-system.md`     │
+  │  enforced here.                              │
+  │  E0303 family                                │
+  └────────┬─────────────────────────────────────┘
+           │
+           ▼
+  ┌──────────────────────────────────────────────┐
+  │ Phase 4 — Trait / interface satisfaction     │
+  │  satisfy.go                                  │
+  │  Structural Tide records ↔ Tide interfaces;  │
+  │  also ↔ Go-side interfaces surfaced through  │
+  │  bindings. Dangerous area: structural types  │
+  │  + Go nominal interfaces.                    │
+  │  E0304 family                                │
+  └────────┬─────────────────────────────────────┘
+           │
+           ▼
+  ┌──────────────────────────────────────────────┐
+  │ Phase 5 — Exhaustiveness                     │
+  │  exhaust.go                                  │
+  │  patterns(arms) covers values(scrutinee) ?   │
+  │  Maranget's algorithm; emits a witness on    │
+  │  miss.                                       │
+  │  E0303-exhaust                               │
+  └────────┬─────────────────────────────────────┘
+           │
+           ▼
+  ┌──────────────────────────────────────────────┐
+  │ Phase 6 — Effect / context validation        │
+  │  context.go                                  │
+  │  Not effect types — just "is this construct  │
+  │  legal here?":                               │
+  │    try     — only inside Result/Option fn    │
+  │    return  — only inside fn                  │
+  │    break   — only inside loop                │
+  │    continue — only inside loop               │
+  │    spawn   — only inside scope               │
+  │  E03xx                                       │
+  └────────┬─────────────────────────────────────┘
+           │
+           ▼
+  ┌──────────────────────────────────────────────┐
+  │ Phase 7 — Desugaring preconditions           │
+  │  shape.go                                    │
+  │  Asserts the AST + Info are now in a state   │
+  │  where every downstream lowering             │
+  │  (try → early-return, match → switch/IIFE,   │
+  │   scope → errgroup) is a *mechanical* shape  │
+  │  transformation needing zero further         │
+  │  analysis. Failures here are sema bugs, not  │
+  │  user errors — they assert internal          │
+  │  invariants for codegen.                     │
+  └────────┬─────────────────────────────────────┘
            │
            ▼
        Info + Diags
 ```
 
-Each phase consumes the previous phase's `Info` plus the AST.
-A phase that detected fatal errors short-circuits all later
-phases on the affected subtree — but other subtrees keep going,
-so the user sees a coherent error batch.
+The **Dynamic-doesn't-leak** check is not a numbered phase —
+it's a cross-cutting invariant enforced inside Phase 3 (every
+inferred type is checked against the introduction whitelist)
+and Phase 4 (every satisfaction widening is checked against
+the same list). See §7.
 
-Phase E runs **before** Phase D by convention, not by
-dependency: neither uses the other's output. Putting
-exhaustiveness first keeps the user-visible error order
-"shape" → "Dynamic discipline" rather than the reverse, which
-felt more natural in review.
+**The seven phases are a working frame, not a closed set.**
+The split was chosen so each concern owns exactly one file and
+one walker — easier to spec, easier to test, easier to land
+incrementally. A future concern that doesn't cleanly fold into
+an existing phase gets its own phase rather than a clause
+buried in another file. Likely additions, marked as such when
+they land: per-block borrow-style "definite assignment"
+(currently codegen relies on Go to catch use-before-init),
+purity / `defer` ordering, and post-binding `comparable`
+constraint flow.
 
 ## 5. Type representation
 
@@ -209,6 +307,62 @@ The CLI prints `repo-relative-path:line:col: error[E0xxx]:
 <message>` — same shape as the existing parser / lexer errors,
 so the user sees one consistent error format end-to-end.
 
+## 6.1. Dynamic doesn't leak — the introduction whitelist
+
+`Dynamic` is the runtime-erased wrapper introduced by RFC-0003
+and governed by D18. Once it enters a binding, every later
+operation has to reason about it specially, and that reasoning
+is brittle. The invariant we hold is:
+
+> A `Dynamic` value is introduced **only** at sites listed
+> below. Everywhere else, an attempt to widen a concrete `T`
+> into `Dynamic` is an error.
+
+This is the kind of invariant that is *much* easier to install
+in the first pass than to recover later — once `Dynamic` shows
+up in a few places it's hard to convince yourself there isn't a
+fourth or fifth path you forgot.
+
+**Allowed introduction sites:**
+
+1. `reflect.box(v)` — the explicit boxing call. Sema lifts its
+   single argument from `T` to `Dynamic`.
+2. Argument passed to a function in the `reflect` module whose
+   corresponding parameter is declared `Dynamic` (e.g.
+   `reflect.typeOf(counter)`). Implicit widening fires at
+   exactly this call site, nowhere else.
+
+**Explicitly forbidden:**
+
+| Site | What sema rejects |
+|------|-------------------|
+| `var d: Dynamic = some_int` | Direct assignment of a concrete `T` to a `Dynamic` binding (`E0210`). |
+| `return some_int` from a `(): Dynamic` function | Return widening (`E0211`). |
+| `[some_int, other_int]: []Dynamic` | Collection element widening (`E0212`). The user writes `[reflect.box(x), …]`. |
+| Generic inference filling in `Dynamic` | A type parameter `T` is never inferred to `Dynamic`. If the inference reaches `Dynamic` there's a bug somewhere — `E0209` with witness. |
+
+**Where the check fires.** Phase 3 inspects every place
+inference picks a type; if the picked type is `Dynamic` *and*
+the site is not on the allowed list above, emit `E0209`–`E0212`
+and abort the affected subtree. Phase 4 makes the same check
+when a structural-satisfaction step would widen a concrete `T`
+into a `Dynamic`-typed slot.
+
+**Elimination is symmetric.** `Dynamic` leaves the type system
+only through `reflect.unbox<T>(d): Result<T>` (per
+`builtins.md`). No other narrowing — including pattern matching
+on `Dynamic` — is admitted. Codegen can rely on this: every
+`Dynamic` value either lives inside the `reflect` boundary or
+has been observably unwrapped via `unbox`.
+
+**Why this list lives here and not just in the spec.** The
+RFC and `type-system.md` describe the rule abstractly; this
+section describes how sema *enforces* it operationally — which
+walkers check, which `Info` fields are inspected, which
+diagnostics fire. If a future reflection feature widens the
+allowed list (e.g. mutation methods), the discussion happens in
+the RFC; this file gets the paired implementation update.
+
 ## 7. Integration with the pipeline
 
 `cmd/tide` calls sema between parse and codegen. On any error
@@ -244,10 +398,11 @@ corresponding field from `gen`.
 
 | PR | Scope |
 |----|-------|
-| **PR-Sema-1** | Skeleton: Scope, Symbol, Type, Diag; Phase R; `sema.Check` entry; wire into `cmd/tide`. Surface: E0301 / E0302 only. |
-| **PR-Sema-2** | Phase T over the subset of typing rules currently exercised by `tests/codegen/`. E0303 family for literal type errors (mismatched assignment, bad call arity, bad operand types). Generic instantiation with **explicit** type arguments (`Map<rune, int>.new()` already in the corpus). Until Phase E lands, `match` is type-checked but exhaustiveness is **not** enforced — to keep the gap sound, Phase T requires every `match` to carry a wildcard `_` arm. The requirement is removed by PR-Sema-3. |
-| **PR-Sema-3** | Phase D (Dynamic intro/elim) + Phase E (exhaustiveness). E0209–E0212 + E0303-exhaustive. Drops the Sema-2 wildcard-required rule. Migrates codegen's `varKind` to read from `Info.Symbol.Kind`. |
-| **PR-Sema-4** | Type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) + `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Migrates codegen's `g.class` / variant maps to `Info.Type` / `Info.Variant`. |
+| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`; **Phase 1** (name resolution); `sema.Check` entry; wire into `cmd/tide build` / `run`. Surface: E0301 / E0302. |
+| **PR-Sema-2** | **Phase 2** (type construction) + **Phase 3** (inference + typing rules) over the subset currently exercised by `tests/codegen/`. Generic instantiation with **explicit** type arguments (`Map<rune, int>.new()` — already in the corpus). E0303 family. Until Phase 5 lands, `match` is type-checked but exhaustiveness is **not** enforced — to keep the gap sound, Phase 3 requires every `match` to carry a wildcard `_` arm. The requirement is removed by PR-Sema-3. Folds the Dynamic-doesn't-leak check into Phase 3 introduction sites (E0209–E0212). |
+| **PR-Sema-3** | **Phase 5** (exhaustiveness) + **Phase 6** (context legality for `try` / `return` / `break` / `continue` / `spawn`). Drops the Sema-2 wildcard-required rule. Migrates codegen's `varKind` to read from `Info.Symbol.Kind`. |
+| **PR-Sema-4** | **Phase 4** (trait / interface satisfaction) — separate PR because structural ↔ Go-nominal interface bridging is its own design problem. Folds the Phase 4 half of the Dynamic-doesn't-leak check (satisfaction widening). |
+| **PR-Sema-5** | **Phase 7** (desugaring preconditions) + type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) + `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Migrates codegen's `g.class` / variant maps to `Info.Type` / `Info.Variant`. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
 
 Phases land **before** the codegen migration in each PR — i.e.,
 each Sema-N adds checks but leaves codegen unchanged. The
