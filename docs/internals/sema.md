@@ -162,12 +162,80 @@ internal/sema/
 Tests live under `tests/sema/<barrier>/` with the per-barrier
 fixture contract mirroring the existing `tests/codegen/` shape.
 
-## 4. The barrier model
+## 4. Two layers: modules above, bodies below
 
-Sema is **not a strict-sequential pipeline**. It is a dependency
-DAG with four invariant barriers. Each barrier fixes "what's
-known" so the next barrier can rely on it; **within** a barrier,
-work that doesn't cross those invariants runs in parallel.
+Sema runs at two distinct scales, and confusing them is the
+fastest way to design a broken type checker.
+
+- **Module-level sema** orchestrates the order in which modules
+  are checked. Modules form a dependency graph; each module's
+  exported interface is the only thing its dependents can see.
+- **Body-level sema** runs *inside* one module against the
+  already-known exported interfaces of its dependencies. This
+  is where the four-barrier DAG (§4.2) lives.
+
+### 4.1 Module-level sema
+
+Per D20, the module import graph is **acyclic**. Sema enforces
+this before any body check looks at any function:
+
+```
+Parse all modules
+      ↓
+Build module import graph
+      ↓
+Cycle? → diagnostic (cycle path printed), stop
+      ↓
+Topological sort
+      ↓
+For each module in topo order:
+    ┌────────────────────────────────────┐
+    │ Module-internal sema (§4.2)        │
+    │  Barrier A — declaration indexing  │
+    │  Barrier B — shape resolution      │
+    │  Barrier C — body checking         │
+    │                                    │
+    │ Inputs:                            │
+    │  - this module's AST               │
+    │  - exported interfaces of every    │
+    │    module in topo-order < self     │
+    └─────────────────┬──────────────────┘
+                      ↓
+              Exported interface
+              (types · functions · classes ·
+               methods · variants · consts)
+                      ↓
+                Dependents see it
+                      ↓
+… continues until every module is checked …
+      ↓
+Barrier D — whole-program validation
+      ↓
+   Info + Diagnostics
+```
+
+A module's **exported interface** is whatever its dependents
+can legally reach: pub-marked types, functions, classes,
+methods, sum variants, constants. The interface is a
+deterministic in-memory value (a future `.tidei` file would be
+its on-disk projection); it does *not* expose function bodies
+or private declarations. Cross-module reads go through this
+interface; cross-module writes are impossible.
+
+**v1 reality.** Tide v1 ships with a single user module — the
+`.td` file passed to `tide build`. The module-level layer is a
+no-op in degenerate form (one node, trivial topo order, no
+cycle possible). The layer is in the architecture from day one
+so adding multi-file support later is a multi-module loop
+around the existing single-module pass, not a sema rewrite.
+
+### 4.2 Body-level sema: the barrier DAG
+
+Inside one module, sema is **not a strict-sequential pipeline**.
+It is a dependency DAG with four invariant barriers. Each
+barrier fixes "what's known" so the next barrier can rely on
+it; **within** a barrier, work that doesn't cross those
+invariants runs in parallel.
 
 The barriers exist because some questions genuinely cannot be
 answered until prerequisite data lands (you can't typecheck a
@@ -210,8 +278,12 @@ inside a barrier is independent and worth parallelising.
   │   once Barrier A's table is frozen. Type-alias SCC is    │
   │   the single per-graph sub-pass.                         │
   │                                                          │
-  │   After B: the "immutable semantic world" — every        │
-  │   external surface of every declaration is fully typed.  │
+  │   After B: every declaration's *external surface* is     │
+  │   fully typed and frozen. Sema may still grow purely     │
+  │   additive content-addressed caches during C (generic    │
+  │   interner, satisfaction cache, exhaustiveness summary   │
+  │   bag) — those don't invalidate the freeze because they  │
+  │   never rewrite an existing entry.                       │
   └────────────────────────┬─────────────────────────────────┘
                            ▼
   ┌──────────────────────────────────────────────────────────┐
@@ -235,8 +307,11 @@ inside a barrier is independent and worth parallelising.
   │     - per-body match-coverage summary for Barrier D      │
   │     - interface-satisfaction sites for Barrier D         │
   │                                                          │
-  │   This is where typing rules (E0201–E0212) and context   │
-  │   legality (E0402–E0407, E0501–E0502, E0601) fire.       │
+  │   This is where typing rules (E0201–E0212) fire. Context │
+  │   legality (E0402–E0407, E0501–E0502, E0601) is checked  │
+  │   in Barrier D — it needs the per-body context stack but │
+  │   not the typing verdicts, and parking it with the other │
+  │   whole-program validators simplifies diagnostics order. │
   │                                                          │
   │   The Dynamic-doesn't-leak check (§6.1) lives here —     │
   │   every inferred type and every assignment / return /    │
@@ -250,14 +325,21 @@ inside a barrier is independent and worth parallelising.
   │ Barrier D — Whole-program validation                     │
   │   exhaust.go · shape.go                                  │
   │                                                          │
-  │   Things that need the union of every body:              │
+  │   Concerns either inherently cross bodies or co-located  │
+  │   here because the diagnostic-ordering story (§9 #4)     │
+  │   wants a single deterministic finaliser:                │
+  │                                                          │
   │   ├─ exhaustiveness: Maranget's algorithm over each      │
-  │   │   match's collected summary (E0303 / E0304 / E0305)  │
-  │   ├─ interface conformance cache resolution              │
-  │   ├─ orphan / conflicting impls (future)                 │
+  │   │   match's collected summary (E0303 / E0304 / E0305). │
+  │   │   Per-match in isolation, but parked here so all     │
+  │   │   match diagnostics emit from one sorted pass.       │
+  │   ├─ context legality (E0402–E0407 / E0501 / E0502 /     │
+  │   │   E0601) — needs scope-stack from C but no typing.   │
+  │   ├─ interface conformance cache resolution.             │
+  │   ├─ orphan / conflicting impls (future).                │
   │   ├─ reflection-metadata completeness (every class /     │
-  │   │   sum must produce a descriptor; D18 CT-1)           │
-  │   ├─ entrypoint validation (`main` exists, right sig)    │
+  │   │   sum must produce a descriptor; D18 CT-1).          │
+  │   ├─ entrypoint validation (`main` exists, right sig).   │
   │   └─ desugaring-precondition assertions for codegen      │
   │     (every MatchExpr has Info.Type; every TryExpr is in  │
   │     a Result/Option function; every variant ctor has     │
@@ -320,9 +402,12 @@ in `type-system.md` is a pattern match over `Type`, and missing
 a case is a programming bug worth catching at compile time.
 
 Type unification is **invariant** in v1 — no subtyping, no
-covariance. The only widening rule is the D18 `Dynamic` intro
-at reflect parameter sites; everywhere else equal-or-error.
-Generic instantiation uses simple substitution.
+covariance. The only **implicit** widening rule is the D18
+`Dynamic` intro at reflect-parameter sites; everywhere else
+equal-or-error. `reflect.box(v)` is the **explicit** lifting
+form — a regular call, not a widening rule. The two together
+make up the allowed-introduction whitelist in §6.1. Generic
+instantiation uses simple substitution.
 
 Go's compiler does not enforce exhaustive type-switches on the
 `Type` interface — closed-sum-ness is a convention we maintain
@@ -456,11 +541,13 @@ corresponding field from `gen`.
 
 | PR | Scope |
 |----|-------|
-| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`. **Barrier A** (declaration indexing) + the resolution half of **Barrier B** (`resolve.go`). `sema.Check` entry wired into `cmd/tide build` / `run`. Surface: `E0103`, `E0104`, `E0107`, `E0108`. |
+| **PR-Sema-1** | Skeleton: `Scope`, `Symbol`, `Type`, `Diag`, `Info`. Module-level layer in degenerate single-file form (graph with one node, trivial topo order). **Barrier A** (declaration indexing) + the resolution half of **Barrier B** (`resolve.go`). `sema.Check` entry wired into `cmd/tide build` / `run`. Surface: `E0103`, `E0104`, `E0107`, `E0108`. |
 | **PR-Sema-2** | Rest of **Barrier B**: `construct.go` (alias / cycle SCC, sum / class shapes) + `signatures.go` (function / method / class field signatures). Surface: `E0105`, `E0106`, `E0207`, alias-cycle. |
-| **PR-Sema-3** | **Barrier C** (per-body checking) over the subset currently exercised by `tests/codegen/`. Typing rules from `type-system.md`, with explicit type arguments at generic call sites. Surface: `E0201`–`E0208`. Folds the **Dynamic-doesn't-leak** check (`dynamic.go`) into the body walker — `E0209`–`E0212`. Until Barrier D lands, `match` is type-checked but exhaustiveness is not enforced; Barrier C requires every `match` to carry a wildcard `_` arm to stay sound. Migrates codegen's `varKind` / `class` / `variant` lookups to read from `Info`. |
-| **PR-Sema-4** | **Barrier D**: `exhaust.go` (drops the Sema-3 wildcard-required rule), `context.go` (`try` / `break` / `continue` / `spawn` / `defer` / `scope` / `this` legality), and `shape.go` (desugaring-precondition assertions). Surface: `E0303`–`E0305`, `E0402`–`E0407`, `E0501`–`E0502`, `E0601`. |
+| **PR-Sema-3a** | **Barrier C — typing rules** over the subset currently exercised by `tests/codegen/`. Typing rules from `type-system.md`, with explicit type arguments at generic call sites. Surface: `E0201`–`E0208`. Until Barrier D lands, `match` is type-checked but exhaustiveness is not enforced — Barrier C requires every `match` to carry a wildcard `_` arm to stay sound. **No codegen migration in this PR** — it adds checks only. |
+| **PR-Sema-3b** | **Dynamic-doesn't-leak** check (`dynamic.go`) folded into the Barrier C body walker. Surface: `E0209`–`E0212`. Migrates codegen's `varKind` / `class` / `variant` lookups to read from `Info`. Split from Sema-3a so the typing-rules diff stays reviewable. |
+| **PR-Sema-4** | **Barrier D**: `exhaust.go` (drops the Sema-3a wildcard-required rule), `context.go` (`try` / `break` / `continue` / `spawn` / `defer` / `scope` / `this` legality), and `shape.go` (desugaring-precondition assertions). Surface: `E0303`–`E0305`, `E0402`–`E0407`, `E0501`–`E0502`, `E0601`. |
 | **PR-Sema-5** | Trait / interface satisfaction (`satisfy.go`) — separate PR because the structural-vs-Go-nominal interface bridge is its own design problem. v1 surface is the nominal `implements` check only. Also closes type-arg **inference** at call sites (the implicit `reflect.box(counter)` shape) and `comparable` constraint enforcement for `Map<K, _>` / `Set<K>` keys. Removes the last "without sema we don't know" comments in `internal/codegen/codegen.go`. |
+| **PR-Sema-Mod** | Promote the module-level layer from degenerate single-file form to a real multi-file resolver: parse all `.td` inputs, build the import graph, enforce **D20** (acyclic), produce per-module exported interfaces, run Barriers A–C in topo order. Whole-program Barrier D extends across modules. Not blocking on multi-file user programs; tracked as the follow-up. |
 
 Phases land **before** the codegen migration in each PR — i.e.,
 each Sema-N adds checks but leaves codegen unchanged. The
