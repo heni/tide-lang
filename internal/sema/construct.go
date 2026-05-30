@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strconv"
+
 	"github.com/heni/tide-lang/internal/ast"
 )
 
@@ -84,8 +86,8 @@ func (c *checker) checkTypeArity(t ast.TypeExpr, scope *Scope) {
 				if got != want {
 					c.report("E0207",
 						"Wrong type arity on generic instantiation: "+head+
-							" expects "+itoa(want)+" type "+pluralArgs(want)+
-							", got "+itoa(got),
+							" expects "+strconv.Itoa(want)+" type "+pluralArgs(want)+
+							", got "+strconv.Itoa(got),
 						v.Span)
 				}
 			}
@@ -95,6 +97,13 @@ func (c *checker) checkTypeArity(t ast.TypeExpr, scope *Scope) {
 		}
 	case *ast.SliceType:
 		c.checkTypeArity(v.Elem, scope)
+	case *ast.PrimitiveType:
+		// no args
+	default:
+		// Closed-sum convention (docs/internals/sema.md §5):
+		// a new TypeExpr shape must add a case here. The panic
+		// is the audit net.
+		panic("sema.checkTypeArity: unhandled TypeExpr " + t.NodeKind())
 	}
 }
 
@@ -111,29 +120,6 @@ var predeclaredGenericArity = map[string]int{
 	"Channel":  1,
 	"SendChan": 1,
 	"RecvChan": 1,
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	neg := false
-	if n < 0 {
-		neg = true
-		n = -n
-	}
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
 
 func pluralArgs(n int) string {

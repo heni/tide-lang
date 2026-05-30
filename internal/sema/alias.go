@@ -1,8 +1,9 @@
 package sema
 
 import (
-	"github.com/heni/tide-lang/internal/ast"
 	"strings"
+
+	"github.com/heni/tide-lang/internal/ast"
 )
 
 // detectAliasCycles fires E0114 on a type-alias chain that
@@ -34,16 +35,25 @@ func (c *checker) walkAlias(name string, aliases map[string]*ast.TypeDecl, visit
 		return
 	}
 	if visited[name] == 1 {
-		// Cycle detected — find the index where it starts in stack.
+		// Cycle — point the diagnostic at the alias body whose
+		// reference closes the loop (the last stack frame),
+		// not at the cycle's entry node, so D10 fidelity holds.
 		i := 0
 		for ; i < len(stack); i++ {
 			if stack[i] == name {
 				break
 			}
 		}
-		path := append(stack[i:], name)
-		td := aliases[name]
-		c.report("E0114", "Cyclic type alias: "+strings.Join(path, " → "), td.Span)
+		// Copy explicitly — `append(stack[i:], name)` would
+		// alias the caller's backing array.
+		path := make([]string, 0, len(stack)-i+1)
+		path = append(path, stack[i:]...)
+		path = append(path, name)
+		culprit := aliases[name]
+		if len(stack) > 0 {
+			culprit = aliases[stack[len(stack)-1]]
+		}
+		c.report("E0114", "Cyclic type alias: "+strings.Join(path, " → "), culprit.Span)
 		return
 	}
 	visited[name] = 1
@@ -75,6 +85,9 @@ func aliasRefs(t ast.TypeExpr) []string {
 		return out
 	case *ast.SliceType:
 		return aliasRefs(v.Elem)
+	case *ast.PrimitiveType:
+		return nil
+	default:
+		panic("sema.aliasRefs: unhandled TypeExpr " + t.NodeKind())
 	}
-	return nil
 }

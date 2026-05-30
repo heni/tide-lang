@@ -237,6 +237,24 @@ func TestSelfAliasFiresE0114(t *testing.T) {
 	}
 }
 
+func TestThreeNodeAliasCycleFiresE0114(t *testing.T) {
+	src := `type A = B
+type B = C
+type C = A
+`
+	if codes := runCheck(t, src); !contains(codes, "E0114") {
+		t.Errorf("expected E0114, got %v", codes)
+	}
+}
+
+func TestTooManyGenericArgsFiresE0207(t *testing.T) {
+	src := `func bad(r: Result<int, string, bool>) {}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0207") {
+		t.Errorf("expected E0207, got %v", codes)
+	}
+}
+
 func TestNonCyclicAliasPasses(t *testing.T) {
 	src := `type Cents = int
 type Total = Cents
