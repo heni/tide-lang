@@ -12,6 +12,7 @@ func Check(f *ast.File, file string) (*Info, []*Diag) {
 	scope := c.indexDeclarations(f)
 	c.resolveFile(f, scope)
 	c.constructShapes(f, scope)
+	c.checkBodies(f)
 	sortDiags(c.diags)
 	return c.info, c.diags
 }

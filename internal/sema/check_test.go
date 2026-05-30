@@ -264,6 +264,36 @@ type Total = Cents
 	}
 }
 
+func TestCallArityWrongNumberOfArgsFiresE0202(t *testing.T) {
+	src := `func greet(name: string, age: int) {}
+func main() { greet("alice") }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0202") {
+		t.Errorf("expected E0202, got %v", codes)
+	}
+}
+
+func TestCallArityCorrectPasses(t *testing.T) {
+	src := `func greet(name: string, age: int) {}
+func main() { greet("alice", 30) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean, got %v", codes)
+	}
+}
+
+func TestConstructorArityFiresE0202(t *testing.T) {
+	src := `class Point {
+  var x: int
+  var y: int
+}
+func main() { let _ = Point(1) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0202") {
+		t.Errorf("expected E0202, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {
