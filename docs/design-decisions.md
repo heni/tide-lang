@@ -443,6 +443,50 @@ D15 (Go IR contract) still hold for the compiler and the generated
 code. D19 only carves out the *toolchain UX shell* as a place where
 external libraries are not architecturally forbidden.
 
+### D20 — Module import graph is acyclic
+
+**Claim.** Tide modules form a strictly acyclic dependency graph.
+`module A imports module B` requires `B` to have *no* (transitive)
+dependency on `A`. The compiler builds a module import graph, runs a
+topological order over it, and rejects any cycle with a build-time
+error before sema looks at a single function body.
+
+This is the same rule Go enforces, and it's deliberately the same.
+A v1 program that wants two modules to call each other extracts the
+shared surface into a third module — the same workaround Go users
+already know.
+
+**Why.** Three concrete benefits, in order of weight:
+
+1. **Simpler sema implementation.** Topological order over modules
+   means each module's exported interface is fully known when its
+   dependents are checked; sema never has to take an "intermediate"
+   snapshot of a partially-checked module. Cycles would force either
+   fixed-point iteration (slow, hard to make deterministic) or
+   inference-across-modules (a much bigger semantic commitment than
+   we want in v1).
+2. **Mirrors the Go backend.** Tide lowers to Go, and Go cycles
+   *are* a build-time error. If Tide allowed them, codegen would
+   have to invent its own cycle-breaking lowering — extra
+   complexity for a feature that maps poorly onto the target.
+3. **Cyclic modules are an architectural smell.** Even in
+   languages that permit them (Python, JavaScript), they're
+   typically a sign that a third "shared core" module wants to
+   exist. Forcing the extraction up-front yields better code.
+
+**How.** Sema's module-level layer (see
+`docs/internals/sema.md` §4.1) does cycle detection during the
+import-graph build. Cycle detected → diagnostic with the full
+cycle path printed (`A → B → C → A`) plus a "factor out the
+shared surface into a fourth module" hint.
+
+**What it does not change.** Inside a single module, all the
+normal expressivity remains — mutual recursion between
+functions, recursive types, recursive class methods, sum
+variants pointing to their own type, etc. The acyclic constraint
+applies to **module** imports only, never to definitions within
+a module.
+
 ---
 
 ## What's not here
