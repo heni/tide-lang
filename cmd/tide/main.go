@@ -21,6 +21,7 @@ import (
 	"github.com/heni/tide-lang/internal/codegen"
 	"github.com/heni/tide-lang/internal/lexer"
 	"github.com/heni/tide-lang/internal/parser"
+	"github.com/heni/tide-lang/internal/sema"
 )
 
 const version = "0.0.0-dev"
@@ -161,6 +162,14 @@ func emitGoFromText(src, file string) (string, error) {
 	tree, perr := parser.ParseFile(toks, file)
 	if perr != nil {
 		return "", perr
+	}
+	if _, diags := sema.Check(tree, file); len(diags) > 0 {
+		// Report all diags; return the first as the error so
+		// callers stop, after printing the full batch.
+		for _, d := range diags {
+			fmt.Fprintln(os.Stderr, d.Error())
+		}
+		return "", fmt.Errorf("tide: sema failed")
 	}
 	goSrc, err := codegen.Emit(tree, file)
 	if err != nil {
