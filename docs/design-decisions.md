@@ -475,7 +475,7 @@ already know.
    exist. Forcing the extraction up-front yields better code.
 
 **How.** Sema's module-level layer (see
-`docs/internals/sema.md` §4.0) does cycle detection during the
+`docs/internals/sema.md` §4.1) does cycle detection during the
 import-graph build. Cycle detected → diagnostic with the full
 cycle path printed (`A → B → C → A`) plus a "factor out the
 shared surface into a fourth module" hint.
