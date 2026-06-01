@@ -216,6 +216,12 @@ func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
 	if !concrete(want) || !concrete(got) {
 		return true
 	}
+	// Dynamic / Any boundary rules take precedence over plain
+	// equality so a concrete-vs-Dynamic site reports E0209/E0210/
+	// E0212 rather than a generic E0201.
+	if involvesDynamicOrAny(want, got) {
+		return c.checkDynamicBoundary(want, got, e)
+	}
 	if assignable(want, got) {
 		return true
 	}

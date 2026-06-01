@@ -65,8 +65,10 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 		// are the modelled containers; Option / Result / Channel
 		// stay Unknown until their own PRs.
 		switch head {
-		case "Any", "Dynamic":
-			return &Builtin{N: head}
+		case "Any":
+			return &Any{}
+		case "Dynamic":
+			return &Dynamic{}
 		case "Map":
 			if len(v.Args) == 2 {
 				return &Map{Key: c.typeFromExprSeen(v.Args[0], seen), Val: c.typeFromExprSeen(v.Args[1], seen)}

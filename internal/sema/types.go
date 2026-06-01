@@ -79,6 +79,21 @@ type Stack struct{ Elem Type }
 func (*Stack) typeMarker()      {}
 func (s *Stack) String() string { return "Stack<" + s.Elem.String() + ">" }
 
+// Dynamic — the runtime-erased reflection wrapper (RFC-0003 / D18).
+// Governed by the introduction whitelist in dynamic.go; equality
+// is nominal (only Dynamic equals Dynamic).
+type Dynamic struct{}
+
+func (*Dynamic) typeMarker()    {}
+func (*Dynamic) String() string { return "Dynamic" }
+
+// Any — Tide's other top-ish type. Shares no implicit-conversion
+// path with Dynamic (E0212).
+type Any struct{}
+
+func (*Any) typeMarker()    {}
+func (*Any) String() string { return "Any" }
+
 // Unit — the empty type (`unit`), the value of statements and of
 // a function with no declared return.
 type Unit struct{}
@@ -134,6 +149,12 @@ func equal(a, b Type) bool {
 	case *Never:
 		_, ok := b.(*Never)
 		return ok
+	case *Dynamic:
+		_, ok := b.(*Dynamic)
+		return ok
+	case *Any:
+		_, ok := b.(*Any)
+		return ok
 	case *Func:
 		y, ok := b.(*Func)
 		if !ok || len(x.Params) != len(y.Params) {
@@ -170,7 +191,10 @@ func equal(a, b Type) bool {
 // operand never trips E0401 — callers also gate on concrete().
 func comparable(t Type) bool {
 	switch x := t.(type) {
-	case *Builtin, *Unit, *Unknown:
+	case *Builtin, *Unit, *Unknown, *Dynamic, *Any:
+		// Dynamic / Any operands sidestep the comparability
+		// diagnostic; their misuse is governed by the Dynamic
+		// boundary rules (E0209–E0212), not E0401.
 		return true
 	case *Named:
 		// Class types are excluded (use refEq); sum / record
@@ -223,6 +247,9 @@ func isIntegerType(t Type) bool {
 	b, ok := t.(*Builtin)
 	return ok && isIntegerPrim(b.N)
 }
+
+func isDynamic(t Type) bool { _, ok := t.(*Dynamic); return ok }
+func isAny(t Type) bool     { _, ok := t.(*Any); return ok }
 
 // concrete reports whether t is pinned down enough to justify a
 // diagnostic. Diagnostics fire only when both operands are

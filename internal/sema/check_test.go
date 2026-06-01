@@ -644,6 +644,75 @@ func TestSliceLiteralElementMismatchFiresE0201(t *testing.T) {
 	}
 }
 
+// --- Dynamic doesn't leak (PR-Sema-3b) ---------------------------
+
+func TestDynamicReturnWideningFiresE0209(t *testing.T) {
+	src := `func f(): Dynamic { return 5 }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0209") {
+		t.Errorf("expected E0209 (return widening), got %v", codes)
+	}
+}
+
+func TestDynamicVarWideningFiresE0209(t *testing.T) {
+	src := `func main() { var d: Dynamic = 5 }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0209") {
+		t.Errorf("expected E0209 (var widening), got %v", codes)
+	}
+}
+
+func TestDynamicSliceElementWideningFiresE0209(t *testing.T) {
+	src := `func main() { let xs = []Dynamic{5} }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0209") {
+		t.Errorf("expected E0209 (slice element widening), got %v", codes)
+	}
+}
+
+func TestDynamicNarrowingFiresE0210(t *testing.T) {
+	src := `func f(d: Dynamic) { let x: int = d }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0210") {
+		t.Errorf("expected E0210 (narrowing), got %v", codes)
+	}
+}
+
+func TestAnyDynamicMixFiresE0212(t *testing.T) {
+	src := `func f(d: Dynamic): Any { return d }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0212") {
+		t.Errorf("expected E0212 (Any/Dynamic mix), got %v", codes)
+	}
+}
+
+func TestDynamicPassthroughPasses(t *testing.T) {
+	src := `func relay(d: Dynamic): Dynamic { return d }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (Dynamic -> Dynamic), got %v", codes)
+	}
+}
+
+func TestReflectParamImplicitWidenPasses(t *testing.T) {
+	src := `import reflect
+func main() { let t = reflect.typeOf(5) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (reflect.* implicit widen), got %v", codes)
+	}
+}
+
+func TestReflectBoxToDynamicPasses(t *testing.T) {
+	src := `import reflect
+func sink(d: Dynamic) {}
+func main() { sink(reflect.box(5)) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (reflect.box result is Dynamic), got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {
