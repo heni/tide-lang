@@ -9,4 +9,9 @@
 // call into Go's stdlib `fmt.Println` (with a hardcoded
 // Tide→Go method-name map for the small set hello/fizzbuzz use).
 // The full bindgen pipeline lands in a later PR.
+//
+// Codegen reads the sema side-table (internal/sema Info) for
+// type-driven lowering decisions (e.g. container-receiver
+// detection); EmitWithInfo accepts a pre-computed Info, and Emit
+// computes one itself for standalone callers.
 package codegen
