@@ -207,10 +207,13 @@ func (c *checker) inferBinary(b *ast.Binary) Type {
 		c.expectSame(lt, rt, b, "comparison")
 		return &Builtin{N: "bool"}
 	case "&&", "||":
-		if concrete(lt) && !isBool(lt) {
+		// Dynamic / Any operands are a boundary concern, not a
+		// bool-operand mismatch — consistent with the numeric /
+		// comparison paths.
+		if concrete(lt) && !isBool(lt) && !isDynamic(lt) && !isAny(lt) {
 			c.report("E0201", "Type mismatch — `"+b.Op+"` expects bool, got "+lt.String(), b.Left.NodeSpan())
 		}
-		if concrete(rt) && !isBool(rt) {
+		if concrete(rt) && !isBool(rt) && !isDynamic(rt) && !isAny(rt) {
 			c.report("E0201", "Type mismatch — `"+b.Op+"` expects bool, got "+rt.String(), b.Right.NodeSpan())
 		}
 		return &Builtin{N: "bool"}
