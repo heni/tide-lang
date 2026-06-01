@@ -109,6 +109,16 @@ type Never struct{}
 func (*Never) typeMarker()    {}
 func (*Never) String() string { return "Never" }
 
+// Generic — a generic type parameter (`T` in `func f<T>(...)`). It
+// behaves as a wildcard for diagnostics (concrete() is false, so it
+// never trips a mismatch in a generic body) but carries its name so
+// call-site instantiation can substitute it. After substitution a
+// Generic is replaced by the concrete type argument.
+type Generic struct{ Name string }
+
+func (*Generic) typeMarker()      {}
+func (g *Generic) String() string { return g.Name }
+
 // Unknown — the conservative wildcard. Stands for a type Barrier C
 // cannot pin down yet (an un-modelled shape, an un-typed binding,
 // a stdlib-binding result). Comparisons against Unknown never fire
@@ -134,6 +144,11 @@ func isUnknown(t Type) bool {
 // no false positives.
 func equal(a, b Type) bool {
 	if isUnknown(a) || isUnknown(b) {
+		return true
+	}
+	// An un-substituted generic parameter unifies with anything —
+	// generic bodies are checked structurally, not instantiated.
+	if isGeneric(a) || isGeneric(b) {
 		return true
 	}
 	switch x := a.(type) {
@@ -191,10 +206,10 @@ func equal(a, b Type) bool {
 // operand never trips E0401 — callers also gate on concrete().
 func comparable(t Type) bool {
 	switch x := t.(type) {
-	case *Builtin, *Unit, *Unknown, *Dynamic, *Any:
+	case *Builtin, *Unit, *Unknown, *Dynamic, *Any, *Generic:
 		// Dynamic / Any operands sidestep the comparability
-		// diagnostic; their misuse is governed by the Dynamic
-		// boundary rules (E0209–E0212), not E0401.
+		// diagnostic (governed by E0209–E0212); an un-substituted
+		// Generic is a wildcard, so it does not trip E0401 either.
 		return true
 	case *Named:
 		// Class types are excluded (use refEq); sum / record
@@ -250,8 +265,10 @@ func isIntegerType(t Type) bool {
 
 func isDynamic(t Type) bool { _, ok := t.(*Dynamic); return ok }
 func isAny(t Type) bool     { _, ok := t.(*Any); return ok }
+func isGeneric(t Type) bool { _, ok := t.(*Generic); return ok }
 
 // concrete reports whether t is pinned down enough to justify a
 // diagnostic. Diagnostics fire only when both operands are
-// concrete — an Unknown on either side stays silent.
-func concrete(t Type) bool { return !isUnknown(t) }
+// concrete — an Unknown or an un-substituted Generic on either side
+// stays silent.
+func concrete(t Type) bool { return !isUnknown(t) && !isGeneric(t) }

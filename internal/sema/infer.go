@@ -97,6 +97,9 @@ func (c *checker) inferCall(call *ast.Call) Type {
 			switch sym.Kind {
 			case SymFunc, SymMethod:
 				if fn, ok := sym.Type.(*Func); ok {
+					if len(fn.TypeParams) > 0 {
+						fn = c.instantiate(fn, call, args)
+					}
 					c.checkArgTypes(fn.Params, args, call.Args, sym.Name)
 					ret = fn.Return
 				}
