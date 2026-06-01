@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/heni/tide-lang/internal/ast"
+	"github.com/heni/tide-lang/internal/sema"
 )
 
 // Emit lowers the given Tide AST to a Go source string. The
@@ -14,11 +15,22 @@ import (
 // file is the source path embedded into //line directives;
 // pass "" to suppress them.
 func Emit(f *ast.File, file string) (string, error) {
+	// Codegen reads variable / receiver types from the sema
+	// side-table. When called standalone (tests, tooling) it
+	// computes Info here; cmd/tide passes the Info it already
+	// produced via EmitWithInfo. Diagnostics are the caller's
+	// concern — codegen only needs the type side-table.
+	info, _ := sema.Check(f, file)
+	return EmitWithInfo(f, file, info)
+}
+
+// EmitWithInfo is Emit with a pre-computed sema side-table.
+func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 	g := &gen{
 		file:    file,
+		info:    info,
 		variant: map[string]variantInfo{},
 		class:   map[string]classInfo{},
-		varKind: map[string]string{},
 	}
 	// Predeclared sum-type variants per `lang-spec/builtins.md`
 	// §Option / §Result / §Variant constructors. Registered up
@@ -201,6 +213,7 @@ func Emit(f *ast.File, file string) (string, error) {
 type gen struct {
 	b      strings.Builder
 	file   string
+	info   *sema.Info
 	indent int
 	// emittedLine tracks the source line whose //line directive
 	// has most recently been written, so we avoid emitting the
@@ -228,8 +241,8 @@ type gen struct {
 	// sum type, either by NamedType ("Option"/"Result") or by
 	// variant constructor / pattern (Some/None/Ok/Err). The
 	// header emits the Go-side definitions only when set.
-	usesOption  bool
-	usesResult  bool
+	usesOption    bool
+	usesResult    bool
 	usesMap       bool
 	usesSet       bool
 	usesStack     bool
@@ -250,25 +263,12 @@ type gen struct {
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
-	// varKind tracks lexical variable names (from `let`/`var` at
-	// any statement nesting level in the current emit) to their
-	// presumed predeclared-container kind ("Map" / "Set" /
-	// "Stack"). Populated when a let/var carries a NamedType
-	// annotation pointing at a container, or when the
-	// initialiser is a `Map<...>.new()` / `Set<...>.new()` /
-	// `Stack<...>.new()` static constructor call. Consumed by
-	// emitCall's slice-method shortcut to avoid intercepting
-	// container methods that happen to share a name with slice
-	// methods (`.len()`, `.push()`). v1 placeholder for sema —
-	// scope handling is intentionally shallow (no shadow-aware
-	// scoping; first set wins for the duration of the file).
-	varKind map[string]string
 }
 
 type variantInfo struct {
-	owner  string             // owning sum-type name (e.g. "Color")
-	tag    int                // declaration order, used for the Tag field
-	fields []*ast.FieldDecl   // payload fields, nil/empty for nullary variants
+	owner  string           // owning sum-type name (e.g. "Color")
+	tag    int              // declaration order, used for the Tag field
+	fields []*ast.FieldDecl // payload fields, nil/empty for nullary variants
 }
 
 type classInfo struct {
@@ -1277,10 +1277,6 @@ func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Meth
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
 		}
-		// Same container-typed param tracking as emitFuncDecl.
-		if kind := containerKind(p.DeclType, nil); kind != "" {
-			g.varKind[p.Name] = kind
-		}
 	}
 	g.b.WriteByte(')')
 	if m.ReturnType != nil {
@@ -1347,13 +1343,6 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 		g.b.WriteByte(' ')
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
-		}
-		// Track container-typed parameters so emitCall's
-		// slice-method shortcut doesn't intercept their `.len()`
-		// / `.push()` calls. Same shallow varKind tracking as
-		// emitLetOrVar.
-		if kind := containerKind(p.DeclType, nil); kind != "" {
-			g.varKind[p.Name] = kind
 		}
 	}
 	g.b.WriteByte(')')
@@ -1505,7 +1494,7 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		// `m.m[k] = val` would bypass that and break iteration
 		// order for any later `.entries()`/`.keys()` call.
 		if idx, ok := v.LValue.(*ast.Index); ok {
-			if id, ok := idx.Receiver.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+			if id, ok := idx.Receiver.(*ast.Ident); ok && g.varKindOf(id) == "Map" {
 				if err := g.emitExpr(id); err != nil {
 					return err
 				}
@@ -1542,6 +1531,7 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 //     of `switch subject.Tag`.
 //   - Literal patterns → `case <literal>:` of `switch subject`.
 //   - WildcardPat → `default:`.
+//
 // PR-F2 uses one of the two switch forms based on whether the
 // arm set is variant-based or literal-based; mixing is not
 // reached by the corpus and rejected.
@@ -1689,16 +1679,16 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 // inferArmResultType returns the Go-side type name for an
 // expression at a match arm position. Covers sum-variant refs
 // (owner sum-type), variant constructor calls, primitive
-// literals, and Ident references to bindings whose Go type can
-// be looked up via varKind. Returns an error for shapes the
-// codegen can't peek into without sema.
+// literals, and Ident references to container bindings (their
+// kind read from the sema side-table). Returns an error for
+// shapes not yet covered by this shallow arm-type peek.
 func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 	switch v := e.(type) {
 	case *ast.Ident:
 		if info, ok := g.variant[v.Name]; ok {
 			return goIdent(info.owner), nil
 		}
-		if k, ok := g.varKind[v.Name]; ok {
+		if k := g.varKindOf(v); k != "" {
 			return k, nil
 		}
 		return "", fmt.Errorf("cannot infer type from identifier %q (annotate match's surrounding binding)", v.Name)
@@ -2047,40 +2037,7 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 		return err
 	}
 	g.b.WriteByte('\n')
-	// Track predeclared-container bindings so emitCall's slice-
-	// method shortcut doesn't intercept their `.len()` / `.push()`
-	// method calls. See `varKind` field doc.
-	if kind := containerKind(declType, value); kind != "" {
-		g.varKind[name] = kind
-	}
 	return nil
-}
-
-// containerKind inspects a let/var binding's annotation and
-// initialiser to determine whether the bound name is a
-// predeclared container instance ("Map", "Set", "Stack"). Returns
-// the empty string when not statically determinable. This is a
-// shallow placeholder for proper sema type inference.
-func containerKind(declType ast.TypeExpr, value ast.Expr) string {
-	if nt, ok := declType.(*ast.NamedType); ok && len(nt.QName) == 1 {
-		switch nt.QName[0] {
-		case "Map", "Set", "Stack":
-			return nt.QName[0]
-		}
-	}
-	// Constructor-call recognition: `Map<...>.new()` /
-	// `Set<...>.new()` / `Set<...>.from(...)` / `Stack<...>.new()`.
-	if c, ok := value.(*ast.Call); ok {
-		if f, ok := c.Callee.(*ast.Field); ok {
-			if id, ok := f.Receiver.(*ast.Ident); ok {
-				switch id.Name {
-				case "Map", "Set", "Stack":
-					return id.Name
-				}
-			}
-		}
-	}
-	return ""
 }
 
 func (g *gen) emitIfStmt(s *ast.IfStmt) error {
@@ -2204,7 +2161,7 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 		// (Go's bare `range m.m` is randomised). For now we
 		// expose keys only via this short form; tuple-form
 		// `for (k, v) in m` and `m.entries()` come later.
-		if id, ok := iterExpr.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+		if id, ok := iterExpr.(*ast.Ident); ok && g.varKindOf(id) == "Map" {
 			g.b.WriteString("for _, ")
 			g.b.WriteString(goIdent(idPat.Name))
 			g.b.WriteString(" := range ")
@@ -2215,7 +2172,7 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 			break
 		}
 		// Set iteration — same idea against `s.order`.
-		if id, ok := iterExpr.(*ast.Ident); ok && g.varKind[id.Name] == "Set" {
+		if id, ok := iterExpr.(*ast.Ident); ok && g.varKindOf(id) == "Set" {
 			g.b.WriteString("for _, ")
 			g.b.WriteString(goIdent(idPat.Name))
 			g.b.WriteString(" := range ")
@@ -2316,7 +2273,7 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// Go zero value for a missing key (mirrors Go's map
 		// semantics). `m.get(k)` is the explicit-Option form
 		// when the user wants the missing case to surface.
-		if id, ok := v.Receiver.(*ast.Ident); ok && g.varKind[id.Name] == "Map" {
+		if id, ok := v.Receiver.(*ast.Ident); ok && g.varKindOf(id) == "Map" {
 			if err := g.emitExpr(id); err != nil {
 				return err
 			}
@@ -2583,8 +2540,33 @@ func (g *gen) isContainerReceiver(e ast.Expr) bool {
 	if !ok {
 		return false
 	}
-	_, ok = g.varKind[id.Name]
-	return ok
+	return g.varKindOf(id) != ""
+}
+
+// varKindOf returns the predeclared-container kind ("Map" / "Set" /
+// "Stack") of the binding referenced by id, read from the sema
+// side-table (its inferred type), or "" when id is not a container
+// instance. This replaces codegen's former shallow varKind tracker
+// with sema as the single source of truth.
+func (g *gen) varKindOf(id *ast.Ident) string {
+	if g.info == nil {
+		return ""
+	}
+	t := g.info.Type[id]
+	if t == nil {
+		if sym := g.info.Symbol[id]; sym != nil {
+			t = sym.Type
+		}
+	}
+	switch t.(type) {
+	case *sema.Map:
+		return "Map"
+	case *sema.Set:
+		return "Set"
+	case *sema.Stack:
+		return "Stack"
+	}
+	return ""
 }
 
 // isStdlibNamespace reports whether expr is an Ident whose name

@@ -845,6 +845,28 @@ func main() { let _ = id<Dynamic>(reflect.box(5)) }
 	}
 }
 
+func TestStaticContainerCtorTypedPasses(t *testing.T) {
+	src := `func main() {
+  var m = Map<int, string>.new()
+  m[0] = "x"
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (Map<>.new() typed as Map), got %v", codes)
+	}
+}
+
+func TestStaticContainerCtorWrongKeyFiresE0201(t *testing.T) {
+	src := `func main() {
+  var m = Map<int, string>.new()
+  m["bad"] = "x"
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (string key vs int on Map<>.new()), got %v", codes)
+	}
+}
+
 func TestGenericCallWrongTypeArityFiresE0207(t *testing.T) {
 	src := `func id<T>(x: T): T { return x }
 func main() { let _ = id<int, string>(5) }

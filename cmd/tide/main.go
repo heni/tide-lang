@@ -163,7 +163,8 @@ func emitGoFromText(src, file string) (string, error) {
 	if perr != nil {
 		return "", perr
 	}
-	if _, diags := sema.Check(tree, file); len(diags) > 0 {
+	info, diags := sema.Check(tree, file)
+	if len(diags) > 0 {
 		// Report all diags; return the first as the error so
 		// callers stop, after printing the full batch.
 		for _, d := range diags {
@@ -171,7 +172,7 @@ func emitGoFromText(src, file string) (string, error) {
 		}
 		return "", fmt.Errorf("tide: sema failed")
 	}
-	goSrc, err := codegen.Emit(tree, file)
+	goSrc, err := codegen.EmitWithInfo(tree, file, info)
 	if err != nil {
 		return "", fmt.Errorf("tide: %s", err)
 	}

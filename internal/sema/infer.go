@@ -115,14 +115,50 @@ func (c *checker) inferCall(call *ast.Call) Type {
 			}
 		}
 	} else if f, ok := call.Callee.(*ast.Field); ok {
-		// Method call `recv.m(args)`. inferField already typed the
-		// callee as the method's Func when the receiver is a class.
-		if fn, ok := c.info.Type[f].(*Func); ok {
+		// Static container constructor `Map<K,V>.new()` /
+		// `Set<T>.new()` / `Set<T>.from(..)` / `Stack<T>.new()`:
+		// the type arguments bind to the container, carried on the
+		// Call. Produces the structured container type.
+		if ct := c.staticContainerCtor(f, call); ct != nil {
+			ret = ct
+		} else if fn, ok := c.info.Type[f].(*Func); ok {
+			// Method call `recv.m(args)`. inferField already typed
+			// the callee as the method's Func when the receiver is
+			// a class.
 			c.checkArgTypes(fn.Params, args, call.Args, f.Name)
 			ret = fn.Return
 		}
 	}
 	return ret
+}
+
+// staticContainerCtor recognises a predeclared-container static
+// constructor (`Map<K,V>.new()`, `Set<T>.new()/from()`,
+// `Stack<T>.new()`) and returns the structured container type, or
+// nil when f is not such a call.
+func (c *checker) staticContainerCtor(f *ast.Field, call *ast.Call) Type {
+	recv, ok := f.Receiver.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	if sym := c.info.Symbol[recv]; sym == nil || sym.Kind != SymBuiltinType {
+		return nil
+	}
+	switch recv.Name {
+	case "Map":
+		if len(call.TypeArgs) == 2 {
+			return &Map{Key: c.typeFromExpr(call.TypeArgs[0]), Val: c.typeFromExpr(call.TypeArgs[1])}
+		}
+	case "Set":
+		if len(call.TypeArgs) == 1 {
+			return &Set{Elem: c.typeFromExpr(call.TypeArgs[0])}
+		}
+	case "Stack":
+		if len(call.TypeArgs) == 1 {
+			return &Stack{Elem: c.typeFromExpr(call.TypeArgs[0])}
+		}
+	}
+	return nil
 }
 
 // checkConstructor types a `ClassName(args)` constructor call,
