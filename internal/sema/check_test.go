@@ -420,6 +420,161 @@ func TestUnmodelledCalleeReturnNoFalsePositive(t *testing.T) {
 	}
 }
 
+// --- Collections / conversions / comparability (PR-Sema-C2) ------
+
+func TestSliceIndexInfersElementType(t *testing.T) {
+	src := `func first(xs: []int): int { return xs[0] }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (xs[0] : int), got %v", codes)
+	}
+}
+
+func TestSliceIndexWrongResultFiresE0201(t *testing.T) {
+	src := `func first(xs: []int): string { return xs[0] }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0203") {
+		t.Errorf("expected E0203 (int element vs string return), got %v", codes)
+	}
+}
+
+func TestMapIndexInfersValueType(t *testing.T) {
+	src := `func look(m: Map<int, string>): string { return m[0] }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (m[0] : string), got %v", codes)
+	}
+}
+
+func TestMapWrongKeyTypeFiresE0201(t *testing.T) {
+	src := `func look(m: Map<int, string>): string { return m["x"] }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (string key vs int), got %v", codes)
+	}
+}
+
+func TestMakeSliceInfersType(t *testing.T) {
+	src := `func main() {
+  let xs = makeSlice<int>(3)
+  let n: int = xs[0]
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (makeSlice<int> : []int), got %v", codes)
+	}
+}
+
+func TestSizedIntLiteralNarrows(t *testing.T) {
+	src := `func main() {
+  let x: int8 = 5
+  let y: byte = 200
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (literal narrows to sized int), got %v", codes)
+	}
+}
+
+func TestIntLiteralOutOfRangeFiresE0204(t *testing.T) {
+	src := `func main() {
+  let x: int8 = 999
+}
+`
+	codes := runCheck(t, src)
+	if !contains(codes, "E0204") {
+		t.Errorf("expected E0204, got %v", codes)
+	}
+	if contains(codes, "E0201") {
+		t.Errorf("E0204 should not also fire E0201 (literal adapts), got %v", codes)
+	}
+}
+
+func TestIllegalConversionFiresE0205(t *testing.T) {
+	src := `func main() {
+  let n = int("hello")
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0205") {
+		t.Errorf("expected E0205 (string -> int), got %v", codes)
+	}
+}
+
+func TestValidConversionPasses(t *testing.T) {
+	src := `func main() {
+  let s = string(65)
+  let r = int('a')
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (codepoint / rune conversions), got %v", codes)
+	}
+}
+
+func TestRefEqNonClassFiresE0206(t *testing.T) {
+	src := `func main() {
+  let b = refEq(1, 2)
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0206") {
+		t.Errorf("expected E0206 (refEq on non-class), got %v", codes)
+	}
+}
+
+func TestRefEqSameClassPasses(t *testing.T) {
+	src := `class Node { var v: int }
+func main() {
+  let a = Node(1)
+  let b = Node(2)
+  let same = refEq(a, b)
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (refEq same class), got %v", codes)
+	}
+}
+
+func TestRefEqDifferentClassFiresE0206(t *testing.T) {
+	src := `class A { var v: int }
+class B { var v: int }
+func main() {
+  let x = refEq(A(1), B(2))
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0206") {
+		t.Errorf("expected E0206 (refEq across classes), got %v", codes)
+	}
+}
+
+func TestEqOnClassFiresE0401(t *testing.T) {
+	src := `class Node { var v: int }
+func main() {
+  let a = Node(1)
+  let b = Node(2)
+  let same = a == b
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0401") {
+		t.Errorf("expected E0401 (== on class), got %v", codes)
+	}
+}
+
+func TestEqOnSliceFiresE0401(t *testing.T) {
+	src := `func eq(a: []int, b: []int): bool { return a == b }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0401") {
+		t.Errorf("expected E0401 (== on slice), got %v", codes)
+	}
+}
+
+func TestEqOnIntPasses(t *testing.T) {
+	src := `func eq(a: int, b: int): bool { return a == b }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (== on int), got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

@@ -1,6 +1,10 @@
 package sema
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/heni/tide-lang/internal/ast"
+)
 
 // Type — closed sum of Tide-side type representations.
 // See docs/internals/sema.md §5. The §5 catalogue grows by one
@@ -50,6 +54,30 @@ func (f *Func) String() string {
 	}
 	return "func(" + strings.Join(parts, ", ") + "): " + f.Return.String()
 }
+
+// Slice — `[]T`.
+type Slice struct{ Elem Type }
+
+func (*Slice) typeMarker()      {}
+func (s *Slice) String() string { return "[]" + s.Elem.String() }
+
+// Map — `Map<K, V>`.
+type Map struct{ Key, Val Type }
+
+func (*Map) typeMarker()      {}
+func (m *Map) String() string { return "Map<" + m.Key.String() + ", " + m.Val.String() + ">" }
+
+// Set — `Set<T>`.
+type Set struct{ Elem Type }
+
+func (*Set) typeMarker()      {}
+func (s *Set) String() string { return "Set<" + s.Elem.String() + ">" }
+
+// Stack — `Stack<T>`.
+type Stack struct{ Elem Type }
+
+func (*Stack) typeMarker()      {}
+func (s *Stack) String() string { return "Stack<" + s.Elem.String() + ">" }
 
 // Unit — the empty type (`unit`), the value of statements and of
 // a function with no declared return.
@@ -117,6 +145,42 @@ func equal(a, b Type) bool {
 			}
 		}
 		return equal(x.Return, y.Return)
+	case *Slice:
+		y, ok := b.(*Slice)
+		return ok && equal(x.Elem, y.Elem)
+	case *Map:
+		y, ok := b.(*Map)
+		return ok && equal(x.Key, y.Key) && equal(x.Val, y.Val)
+	case *Set:
+		y, ok := b.(*Set)
+		return ok && equal(x.Elem, y.Elem)
+	case *Stack:
+		y, ok := b.(*Stack)
+		return ok && equal(x.Elem, y.Elem)
+	default:
+		return false
+	}
+}
+
+// comparable reports whether `==` / `!=` is admissible on t
+// (type-system.md T-Cmp / builtins.md §Comparable). Primitives and
+// sum (nominal non-class) types are comparable; class types route
+// to refEq, and slices / maps / sets / stacks / funcs are not
+// comparable. Unknown is reported comparable so a half-typed
+// operand never trips E0401 — callers also gate on concrete().
+func comparable(t Type) bool {
+	switch x := t.(type) {
+	case *Builtin, *Unit, *Unknown:
+		return true
+	case *Named:
+		// Class types are excluded (use refEq); sum / record
+		// nominal types are comparable by tag / field-wise.
+		if _, isClass := x.Decl.(*ast.ClassDecl); isClass {
+			return false
+		}
+		return true
+	case *Slice, *Map, *Set, *Stack, *Func, *Never:
+		return false
 	default:
 		return false
 	}

@@ -63,9 +63,10 @@ func (c *checker) checkStmt(s ast.Stmt) {
 	case *ast.AssignStmt:
 		lt := c.inferExpr(v.LValue)
 		vt := c.inferExpr(v.Value)
-		if concrete(lt) && concrete(vt) && !assignable(lt, vt) {
+		if concrete(lt) && concrete(vt) && !assignable(lt, vt) && !intLiteralAdaptsTo(lt, v.Value) {
 			c.report("E0201", "Type mismatch — cannot assign "+vt.String()+" to "+lt.String(), v.Span)
 		}
+		c.checkIntLitRange(lt, v.Value)
 	case *ast.IfStmt:
 		c.inferExpr(v.Cond)
 		if v.ThenBlock != nil {
@@ -97,12 +98,21 @@ func (c *checker) checkStmt(s ast.Stmt) {
 // or the VarStmt itself); a destructuring let with no single
 // IdentPat passes a nil pattern and only type-checks the value.
 func (c *checker) checkBinding(bindNode ast.Node, pat ast.Pattern, ann ast.TypeExpr, value ast.Expr) {
-	vt := c.inferExpr(value)
+	var vt Type = &Unknown{}
+	if value != nil {
+		vt = c.inferExpr(value)
+	}
 	var declared Type
 	if ann != nil {
 		declared = c.typeFromExpr(ann)
-		if concrete(declared) && concrete(vt) && !assignable(declared, vt) {
+		// Only compare against an actual initialiser; a bare
+		// `var x: T` (no value) is a separate concern, not a
+		// type mismatch.
+		if value != nil && concrete(declared) && concrete(vt) && !assignable(declared, vt) && !intLiteralAdaptsTo(declared, value) {
 			c.report("E0201", "Type mismatch — annotation is "+declared.String()+" but value is "+vt.String(), value.NodeSpan())
+		}
+		if value != nil {
+			c.checkIntLitRange(declared, value)
 		}
 	}
 	// The binding's static type is the annotation when present,

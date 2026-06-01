@@ -31,8 +31,7 @@ func (c *checker) typeFromExprSeen(t ast.TypeExpr, seen map[string]bool) Type {
 		}
 		return &Builtin{N: v.Name}
 	case *ast.SliceType:
-		// Slice element typing lands with the collection PR.
-		return &Unknown{}
+		return &Slice{Elem: c.typeFromExprSeen(v.Elem, seen)}
 	case *ast.NamedType:
 		return c.namedTypeToType(v, seen)
 	default:
@@ -62,11 +61,27 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 
 	switch sym.Kind {
 	case SymBuiltinType:
-		// `Any` / `Dynamic` are opaque builtins; the predeclared
-		// containers (Option / Result / Map / …) are not modelled
-		// until the collection / Dynamic PRs.
-		if head == "Any" || head == "Dynamic" {
+		// `Any` / `Dynamic` are opaque builtins; Map / Set / Stack
+		// are the modelled containers; Option / Result / Channel
+		// stay Unknown until their own PRs.
+		switch head {
+		case "Any", "Dynamic":
 			return &Builtin{N: head}
+		case "Map":
+			if len(v.Args) == 2 {
+				return &Map{Key: c.typeFromExprSeen(v.Args[0], seen), Val: c.typeFromExprSeen(v.Args[1], seen)}
+			}
+			return &Unknown{}
+		case "Set":
+			if len(v.Args) == 1 {
+				return &Set{Elem: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
+		case "Stack":
+			if len(v.Args) == 1 {
+				return &Stack{Elem: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
 		}
 		return &Unknown{}
 	case SymTypeParam:
