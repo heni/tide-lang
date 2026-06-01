@@ -225,7 +225,18 @@ func (c *checker) numericResult(lt, rt Type, b *ast.Binary) Type {
 
 // expectSame fires E0201 when both operand types are concrete and
 // unequal. The diagnostic points at the right operand.
+//
+// Named operands (class / sum types) are left alone: `==`/`!=` on
+// class types routes to E0206 (`refEq`) and comparability of
+// nominal types is the comparability PR's job, so reporting a
+// generic E0201 here would mislabel the eventual diagnostic.
 func (c *checker) expectSame(lt, rt Type, b *ast.Binary, what string) {
+	if _, ok := lt.(*Named); ok {
+		return
+	}
+	if _, ok := rt.(*Named); ok {
+		return
+	}
 	if concrete(lt) && concrete(rt) && !equal(lt, rt) {
 		c.report("E0201", "Type mismatch — "+what+" require equal types, got "+lt.String()+" and "+rt.String(), b.Right.NodeSpan())
 	}
