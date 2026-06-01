@@ -294,6 +294,132 @@ func main() { let _ = Point(1) }
 	}
 }
 
+// --- Barrier C scalar inference (PR-Sema-C1) ---------------------
+
+func TestLetAnnotationMismatchFiresE0201(t *testing.T) {
+	src := `func main() {
+  let x: int = "hello"
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (annotation mismatch), got %v", codes)
+	}
+}
+
+func TestLetAnnotationMatchPasses(t *testing.T) {
+	src := `func main() {
+  let x: int = 3
+  let s: string = "ok"
+  let b: bool = true
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean, got %v", codes)
+	}
+}
+
+func TestAssignTypeMismatchFiresE0201(t *testing.T) {
+	src := `func main() {
+  var n: int = 0
+  n = "nope"
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (assign mismatch), got %v", codes)
+	}
+}
+
+func TestArgTypeMismatchFiresE0201(t *testing.T) {
+	src := `func greet(name: string) {}
+func main() { greet(42) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (arg mismatch), got %v", codes)
+	}
+}
+
+func TestArgTypeMatchPasses(t *testing.T) {
+	src := `func add(a: int, b: int): int { return a + b }
+func main() { let _ = add(1, 2) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean, got %v", codes)
+	}
+}
+
+func TestBinaryOperandMismatchFiresE0201(t *testing.T) {
+	src := `func main() {
+  let x = 1 + true
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (numeric op on bool), got %v", codes)
+	}
+}
+
+func TestLogicalOperandMismatchFiresE0201(t *testing.T) {
+	src := `func main() {
+  let x = true && 1
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (&& on int), got %v", codes)
+	}
+}
+
+func TestReturnTypeMismatchFiresE0203(t *testing.T) {
+	src := `func count(): int { return "no" }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0203") {
+		t.Errorf("expected E0203 (return mismatch), got %v", codes)
+	}
+}
+
+func TestReturnTypeMatchPasses(t *testing.T) {
+	src := `func count(): int { return 7 }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean, got %v", codes)
+	}
+}
+
+func TestFieldAccessTypeMismatchFiresE0201(t *testing.T) {
+	src := `class Counter { var n: int }
+func main() {
+  let c = Counter(0)
+  let s: string = c.n
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (field type used as string), got %v", codes)
+	}
+}
+
+func TestTransparentAliasMatchesUnderlying(t *testing.T) {
+	src := `type Cents = int
+func price(): Cents { return 100 }
+func main() {
+  let total: int = price()
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (alias transparent to int), got %v", codes)
+	}
+}
+
+func TestUnmodelledCalleeReturnNoFalsePositive(t *testing.T) {
+	// `panic` is a builtin func whose result type PR-C1 does not
+	// model (Unknown); returning it must not fire E0203.
+	src := `func pick(b: bool): int {
+  if b { return 1 }
+  return panic("unreachable")
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (unknown callee result), got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

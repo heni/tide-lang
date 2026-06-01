@@ -21,6 +21,13 @@ type checker struct {
 	file  string
 	info  *Info
 	diags []*Diag
+
+	// Per-body context, set before walking each function / method
+	// body in Barrier C. v1 is single-threaded so plain fields are
+	// safe; the parallel-per-body story (sema.md §8) would thread
+	// these instead.
+	curReturn Type // declared return type of the body being checked
+	curThis   Type // receiver type inside an instance method, else nil
 }
 
 func (c *checker) report(code, message string, span ast.Span) {

@@ -38,17 +38,34 @@ func (c *checker) resolveClassDecl(cd *ast.ClassDecl, parent *Scope) {
 		c.checkReservedName(tp, cd.Span)
 		classScope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
 	}
+	// Resolve every field / method annotation against classScope
+	// before building member symbols, so the signatures are fully
+	// typed (Barrier B) regardless of declaration order.
+	for _, f := range cd.Fields {
+		c.resolveTypeExpr(f.DeclType, classScope)
+	}
+	for _, m := range cd.Methods {
+		for _, p := range m.Params {
+			c.resolveTypeExpr(p.DeclType, classScope)
+		}
+		if m.ReturnType != nil {
+			c.resolveTypeExpr(m.ReturnType, classScope)
+		}
+	}
 	// Class member scope: fields + methods visible inside any
 	// instance method body via implicit receiver
 	// (name-resolution.md §Implicit receiver).
 	memberScope := newScope(classScope)
 	for _, f := range cd.Fields {
 		c.checkReservedName(f.Name, f.Span)
-		memberScope.declare(&Symbol{Name: f.Name, Kind: SymField, Decl: f, Type: &Unknown{}})
-		c.resolveTypeExpr(f.DeclType, classScope)
+		fsym := &Symbol{Name: f.Name, Kind: SymField, Decl: f, Type: c.typeFromExpr(f.DeclType)}
+		memberScope.declare(fsym)
+		c.info.Def[f] = fsym
 	}
 	for _, m := range cd.Methods {
-		memberScope.declare(&Symbol{Name: m.Name, Kind: SymMethod, Decl: m, Type: &Unknown{}})
+		msym := &Symbol{Name: m.Name, Kind: SymMethod, Decl: m, Type: c.methodSigType(m)}
+		memberScope.declare(msym)
+		c.info.Def[m] = msym
 	}
 	for _, m := range cd.Methods {
 		c.resolveMethod(cd, m, classScope, memberScope)
@@ -71,7 +88,9 @@ func (c *checker) resolveMethod(cd *ast.ClassDecl, m *ast.Method, classScope, me
 	for _, p := range m.Params {
 		c.checkReservedName(p.Name, p.Span)
 		c.resolveTypeExpr(p.DeclType, classScope)
-		bodyScope.declare(&Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: &Unknown{}})
+		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.typeFromExpr(p.DeclType)}
+		bodyScope.declare(psym)
+		c.info.Def[p] = psym
 	}
 	if m.ReturnType != nil {
 		c.resolveTypeExpr(m.ReturnType, classScope)
@@ -91,10 +110,17 @@ func (c *checker) resolveFuncDecl(fn *ast.FuncDecl, parent *Scope) {
 	for _, p := range fn.Params {
 		c.checkReservedName(p.Name, p.Span)
 		c.resolveTypeExpr(p.DeclType, fnScope)
-		fnScope.declare(&Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: &Unknown{}})
+		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.typeFromExpr(p.DeclType)}
+		fnScope.declare(psym)
+		c.info.Def[p] = psym
 	}
 	if fn.ReturnType != nil {
 		c.resolveTypeExpr(fn.ReturnType, fnScope)
+	}
+	// Freeze the function's external signature on its file-scope
+	// symbol (Barrier B). The symbol lives in the parent scope.
+	if sym := parent.lookup(fn.Name); sym != nil && sym.Kind == SymFunc {
+		sym.Type = c.funcSigType(fn)
 	}
 	if fn.Body != nil {
 		c.resolveBlock(fn.Body, fnScope)
@@ -135,7 +161,9 @@ func (c *checker) resolveStmt(s ast.Stmt, scope *Scope) {
 		}
 		if v.Name != "" && v.Name != "_" {
 			c.checkReservedName(v.Name, v.Span)
-			scope.declare(&Symbol{Name: v.Name, Kind: SymLocal, Decl: v, Type: &Unknown{}})
+			vsym := &Symbol{Name: v.Name, Kind: SymLocal, Decl: v, Type: &Unknown{}}
+			scope.declare(vsym)
+			c.info.Def[v] = vsym
 		}
 	case *ast.AssignStmt:
 		c.resolveExpr(v.LValue, scope)
@@ -184,7 +212,9 @@ func (c *checker) bindPattern(p ast.Pattern, scope *Scope, decl any) {
 			return
 		}
 		c.checkReservedName(v.Name, v.Span)
-		scope.declare(&Symbol{Name: v.Name, Kind: SymLocal, Decl: decl, Type: &Unknown{}})
+		sym := &Symbol{Name: v.Name, Kind: SymLocal, Decl: decl, Type: &Unknown{}}
+		scope.declare(sym)
+		c.info.Def[v] = sym
 	case *ast.VariantPat:
 		for _, sub := range v.Sub {
 			c.bindPattern(sub, scope, decl)

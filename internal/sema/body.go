@@ -1,28 +1,43 @@
 package sema
 
 import (
-	"strconv"
-
 	"github.com/heni/tide-lang/internal/ast"
 )
 
-// checkBodies — Barrier C. Walks every function body /
-// method body after Sema-2 has frozen the external surface.
-// Sema-3a covers call arity (E0202); type inference + the
-// rest of E0201–E0208 land in follow-up PRs.
+// checkBodies — Barrier C. Walks every function / method body
+// after Barrier B has frozen the external surface, inferring a
+// type for every expression (recorded in Info.Type) and emitting
+// the typing diagnostics whose premises are local to a body.
+//
+// PR-Sema-C1 covers the scalar core: literal types, identifier /
+// receiver types, arithmetic / logical operators, let / var / and
+// assignment type agreement (E0201), return-type agreement
+// (E0203), and call arity (E0202). Collection, conversion,
+// Dynamic, exhaustiveness and context rules land in later PRs;
+// every shape this PR cannot yet type degrades to *Unknown, so an
+// unfinished checker never reports a false positive.
 // See docs/internals/sema.md §4.
 func (c *checker) checkBodies(f *ast.File) {
 	for _, d := range f.Decls {
 		switch v := d.(type) {
 		case *ast.FuncDecl:
 			if v.Body != nil {
+				c.curReturn = c.typeFromExpr(v.ReturnType)
+				c.curThis = nil
 				c.checkBlock(v.Body)
 			}
 		case *ast.ClassDecl:
 			for _, m := range v.Methods {
-				if m.Body != nil {
-					c.checkBlock(m.Body)
+				if m.Body == nil {
+					continue
 				}
+				c.curReturn = c.typeFromExpr(m.ReturnType)
+				if m.IsStatic {
+					c.curThis = nil
+				} else {
+					c.curThis = &Named{N: v.Name, Decl: v}
+				}
+				c.checkBlock(m.Body)
 			}
 		}
 	}
@@ -33,23 +48,26 @@ func (c *checker) checkBlock(b *ast.Block) {
 		c.checkStmt(s)
 	}
 	if b.Trailing != nil {
-		c.checkExpr(b.Trailing)
+		c.inferExpr(b.Trailing)
 	}
 }
 
 func (c *checker) checkStmt(s ast.Stmt) {
 	switch v := s.(type) {
 	case *ast.ExprStmt:
-		c.checkExpr(v.Expr)
+		c.inferExpr(v.Expr)
 	case *ast.LetStmt:
-		c.checkExpr(v.Value)
+		c.checkBinding(v, v.Pattern, v.DeclType, v.Value)
 	case *ast.VarStmt:
-		c.checkExpr(v.Value)
+		c.checkBinding(v, nil, v.DeclType, v.Value)
 	case *ast.AssignStmt:
-		c.checkExpr(v.LValue)
-		c.checkExpr(v.Value)
+		lt := c.inferExpr(v.LValue)
+		vt := c.inferExpr(v.Value)
+		if concrete(lt) && concrete(vt) && !assignable(lt, vt) {
+			c.report("E0201", "Type mismatch — cannot assign "+vt.String()+" to "+lt.String(), v.Span)
+		}
 	case *ast.IfStmt:
-		c.checkExpr(v.Cond)
+		c.inferExpr(v.Cond)
 		if v.ThenBlock != nil {
 			c.checkBlock(v.ThenBlock)
 		}
@@ -60,12 +78,13 @@ func (c *checker) checkStmt(s ast.Stmt) {
 			c.checkBlock(e)
 		}
 	case *ast.ForStmt:
+		c.checkForBinding(v)
 		switch it := v.Iterable.(type) {
 		case *ast.RangeExpr:
-			c.checkExpr(it.Low)
-			c.checkExpr(it.High)
+			c.inferExpr(it.Low)
+			c.inferExpr(it.High)
 		case ast.Expr:
-			c.checkExpr(it)
+			c.inferExpr(it)
 		}
 		if v.Body != nil {
 			c.checkBlock(v.Body)
@@ -73,94 +92,59 @@ func (c *checker) checkStmt(s ast.Stmt) {
 	}
 }
 
-func (c *checker) checkExpr(e ast.Expr) {
-	if e == nil {
+// checkBinding handles let / var. bindNode is the AST node keyed
+// in Info.Def for the introduced binding (the LetStmt's IdentPat
+// or the VarStmt itself); a destructuring let with no single
+// IdentPat passes a nil pattern and only type-checks the value.
+func (c *checker) checkBinding(bindNode ast.Node, pat ast.Pattern, ann ast.TypeExpr, value ast.Expr) {
+	vt := c.inferExpr(value)
+	var declared Type
+	if ann != nil {
+		declared = c.typeFromExpr(ann)
+		if concrete(declared) && concrete(vt) && !assignable(declared, vt) {
+			c.report("E0201", "Type mismatch — annotation is "+declared.String()+" but value is "+vt.String(), value.NodeSpan())
+		}
+	}
+	// The binding's static type is the annotation when present,
+	// else the inferred value type. Hang it on the shared Symbol so
+	// use sites read it back through Info.Symbol.
+	bound := declared
+	if bound == nil {
+		bound = vt
+	}
+	c.setBindingType(bindNode, pat, bound)
+}
+
+// setBindingType records the resolved type on the binding's
+// Symbol via Info.Def (LetStmt → its IdentPat; VarStmt → itself).
+func (c *checker) setBindingType(bindNode ast.Node, pat ast.Pattern, t Type) {
+	if t == nil {
 		return
 	}
-	switch v := e.(type) {
-	case *ast.Call:
-		c.checkExpr(v.Callee)
-		for _, a := range v.Args {
-			c.checkExpr(a)
+	if ip, ok := pat.(*ast.IdentPat); ok {
+		if sym := c.info.Def[ip]; sym != nil {
+			sym.Type = t
 		}
-		c.checkCallArity(v)
-	case *ast.Field:
-		c.checkExpr(v.Receiver)
-	case *ast.Binary:
-		c.checkExpr(v.Left)
-		c.checkExpr(v.Right)
-	case *ast.Unary:
-		c.checkExpr(v.Operand)
-	case *ast.SliceLit:
-		for _, it := range v.Items {
-			c.checkExpr(it)
-		}
-	case *ast.Index:
-		c.checkExpr(v.Receiver)
-		c.checkExpr(v.Idx)
-	case *ast.Slice:
-		c.checkExpr(v.Receiver)
-		c.checkExpr(v.Low)
-		c.checkExpr(v.High)
-	case *ast.MatchExpr:
-		c.checkExpr(v.Subject)
-		for _, arm := range v.Arms {
-			c.checkExpr(arm.Body)
-		}
-	case *ast.ReturnExpr:
-		c.checkExpr(v.Value)
-	case *ast.TryExpr:
-		c.checkExpr(v.Inner)
+		return
+	}
+	if sym := c.info.Def[bindNode]; sym != nil {
+		sym.Type = t
 	}
 }
 
-// checkCallArity — E0202. Compares the call's positional
-// argument count against the callee's declared parameter
-// count when the callee is a user-declared func or method
-// reachable through the Info side-table. Variadic /
-// stdlib-binding / class-constructor calls are skipped
-// because the binding layer doesn't expose arities yet.
-func (c *checker) checkCallArity(call *ast.Call) {
-	id, ok := call.Callee.(*ast.Ident)
+// checkForBinding gives a simple loop variable its element type.
+// A numeric range binds the variable to int; any other iterable's
+// element type is not modelled until the collection PR (Unknown).
+func (c *checker) checkForBinding(f *ast.ForStmt) {
+	ip, ok := f.Pattern.(*ast.IdentPat)
 	if !ok {
-		// Methods (`a.b()`) need receiver-type info — Sema-3b.
 		return
 	}
-	sym, ok := c.info.Symbol[id]
-	if !ok || sym == nil {
+	sym := c.info.Def[ip]
+	if sym == nil {
 		return
 	}
-	switch sym.Kind {
-	case SymFunc:
-		fn, ok := sym.Decl.(*ast.FuncDecl)
-		if !ok {
-			return
-		}
-		// Generic funcs may rely on inference at the call site;
-		// arity is still well-defined.
-		want := len(fn.Params)
-		got := len(call.Args)
-		if want != got {
-			c.report("E0202",
-				"Wrong arity in call to "+fn.Name+
-					": expects "+strconv.Itoa(want)+" "+pluralArgs(want)+
-					", got "+strconv.Itoa(got),
-				call.Span)
-		}
-	case SymClass:
-		// Constructor call `ClassName(args)`. Arity = number of fields.
-		cd, ok := sym.Decl.(*ast.ClassDecl)
-		if !ok {
-			return
-		}
-		want := len(cd.Fields)
-		got := len(call.Args)
-		if want != got {
-			c.report("E0202",
-				"Wrong arity in constructor "+cd.Name+
-					": expects "+strconv.Itoa(want)+" field "+pluralArgs(want)+
-					", got "+strconv.Itoa(got),
-				call.Span)
-		}
+	if _, isRange := f.Iterable.(*ast.RangeExpr); isRange {
+		sym.Type = &Builtin{N: "int"}
 	}
 }
