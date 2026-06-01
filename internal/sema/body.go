@@ -24,6 +24,7 @@ func (c *checker) checkBodies(f *ast.File) {
 			if v.Body != nil {
 				c.curReturn = c.typeFromExpr(v.ReturnType)
 				c.curThis = nil
+				c.curTryForbidden = c.definitelyNotTryable(v.ReturnType)
 				c.checkBlock(v.Body)
 			}
 		case *ast.ClassDecl:
@@ -32,6 +33,7 @@ func (c *checker) checkBodies(f *ast.File) {
 					continue
 				}
 				c.curReturn = c.typeFromExpr(m.ReturnType)
+				c.curTryForbidden = c.definitelyNotTryable(m.ReturnType)
 				if m.IsStatic {
 					c.curThis = nil
 				} else {

@@ -713,6 +713,82 @@ func main() { sink(reflect.box(5)) }
 	}
 }
 
+// --- Barrier D: exhaustiveness + context legality (PR-Sema-4) ----
+
+func TestNonExhaustiveSumMatchFiresE0303(t *testing.T) {
+	src := `type Color = | Red | Green | Blue
+func f(c: Color): int { return match c { Red => 1, Green => 2 } }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0303") {
+		t.Errorf("expected E0303 (missing Blue), got %v", codes)
+	}
+}
+
+func TestExhaustiveSumMatchPasses(t *testing.T) {
+	src := `type Color = | Red | Green | Blue
+func f(c: Color): int { return match c { Red => 1, Green => 2, Blue => 3 } }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (all variants covered), got %v", codes)
+	}
+}
+
+func TestCatchAllMatchPasses(t *testing.T) {
+	src := `type Color = | Red | Green | Blue
+func f(c: Color): int { return match c { Red => 1, _ => 0 } }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (wildcard covers rest), got %v", codes)
+	}
+}
+
+func TestArmAfterCatchAllFiresE0304(t *testing.T) {
+	src := `type Color = | Red | Green | Blue
+func f(c: Color): int { return match c { Red => 1, _ => 0, Green => 2 } }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0304") {
+		t.Errorf("expected E0304 (unreachable arm), got %v", codes)
+	}
+}
+
+func TestTryOutsideResultFnFiresE0402(t *testing.T) {
+	src := `func g(): Result<int, error> { return Ok(1) }
+func f(): int { let x = try g() }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0402") {
+		t.Errorf("expected E0402 (try in int fn), got %v", codes)
+	}
+}
+
+func TestTryInsideResultFnPasses(t *testing.T) {
+	src := `func g(): Result<int, error> { return Ok(1) }
+func f(): Result<int, error> { let x = try g() return Ok(x) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (try in Result fn), got %v", codes)
+	}
+}
+
+func TestThisOutsideInstanceMethodFiresE0501(t *testing.T) {
+	src := `func f(): int { return this.n }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0501") {
+		t.Errorf("expected E0501 (this in free fn), got %v", codes)
+	}
+}
+
+func TestThisInsideInstanceMethodPasses(t *testing.T) {
+	src := `class Counter {
+  var n: int
+  get(): int { return this.n }
+}
+func main() { let _ = Counter(0).get() }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (this in instance method), got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

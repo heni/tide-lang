@@ -27,6 +27,7 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		if c.curThis != nil {
 			t = c.curThis
 		} else {
+			c.report("E0501", "`this` outside an instance-method body", v.Span)
 			t = &Unknown{}
 		}
 	case *ast.Ident:
@@ -46,7 +47,10 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = &Never{}
 	case *ast.TryExpr:
 		c.inferExpr(v.Inner)
-		t = &Unknown{} // try-unwrap typing lands with the collection / Result PR
+		if c.curTryForbidden {
+			c.report("E0402", "`try` outside a Result/Option-returning function", v.Span)
+		}
+		t = &Unknown{} // try-unwrap result typing lands with the Result/Option PR
 	case *ast.SliceLit:
 		t = c.inferSliceLit(v)
 	case *ast.Index:
@@ -313,7 +317,8 @@ func (c *checker) inferUnary(u *ast.Unary) Type {
 // (arms are required to agree, but arm-agreement diagnostics and
 // exhaustiveness are Barrier D — here we only need a result type).
 func (c *checker) inferMatch(m *ast.MatchExpr) Type {
-	c.inferExpr(m.Subject)
+	subjectType := c.inferExpr(m.Subject)
+	c.checkExhaustive(m, subjectType)
 	var result Type = &Unknown{}
 	for _, arm := range m.Arms {
 		at := c.inferExpr(arm.Body)
