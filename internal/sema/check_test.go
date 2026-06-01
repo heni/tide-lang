@@ -789,6 +789,80 @@ func main() { let _ = Counter(0).get() }
 	}
 }
 
+// --- Generic type-argument inference (PR-Sema-5) -----------------
+
+func TestGenericExplicitTypeArgReturnPasses(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let n: int = id<int>(5) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (explicit type arg), got %v", codes)
+	}
+}
+
+func TestGenericInferredTypeArgReturnPasses(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let n: int = id(5) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (inferred type arg), got %v", codes)
+	}
+}
+
+func TestGenericArgMismatchFiresE0201(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let _ = id<int>("hi") }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (string arg vs <int>), got %v", codes)
+	}
+}
+
+func TestGenericReturnTypeMismatchFiresE0201(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let n: string = id<int>(5) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (string annotation vs int return), got %v", codes)
+	}
+}
+
+func TestGenericSliceInferencePasses(t *testing.T) {
+	src := `func first<T>(xs: []T): T { return xs[0] }
+func main() { let n: int = first<int>(makeSlice<int>(3)) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (slice generic infer), got %v", codes)
+	}
+}
+
+func TestGenericDynamicTypeArgFiresE0211(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let _ = id<Dynamic>(reflect.box(5)) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0211") {
+		t.Errorf("expected E0211 (Dynamic type arg), got %v", codes)
+	}
+}
+
+func TestGenericCallWrongTypeArityFiresE0207(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let _ = id<int, string>(5) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0207") {
+		t.Errorf("expected E0207 (wrong type-arg count), got %v", codes)
+	}
+}
+
+func TestGenericBodyNoFalsePositive(t *testing.T) {
+	src := `func pair<T>(a: T, b: T): bool { return a == b }
+func wrap<T>(x: T): []T { return [x] }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (generic body), got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

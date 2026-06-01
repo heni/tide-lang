@@ -87,8 +87,7 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 		}
 		return &Unknown{}
 	case SymTypeParam:
-		// Generic type parameters resolve in the inference PR.
-		return &Unknown{}
+		return &Generic{Name: head}
 	case SymClass:
 		return &Named{N: head, Decl: sym.Decl}
 	case SymTypeDecl:
