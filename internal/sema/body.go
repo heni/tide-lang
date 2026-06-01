@@ -63,10 +63,9 @@ func (c *checker) checkStmt(s ast.Stmt) {
 	case *ast.AssignStmt:
 		lt := c.inferExpr(v.LValue)
 		vt := c.inferExpr(v.Value)
-		if concrete(lt) && concrete(vt) && !assignable(lt, vt) && !intLiteralAdaptsTo(lt, v.Value) {
+		if !c.fits(lt, v.Value, vt) {
 			c.report("E0201", "Type mismatch — cannot assign "+vt.String()+" to "+lt.String(), v.Span)
 		}
-		c.checkIntLitRange(lt, v.Value)
 	case *ast.IfStmt:
 		c.inferExpr(v.Cond)
 		if v.ThenBlock != nil {
@@ -107,12 +106,10 @@ func (c *checker) checkBinding(bindNode ast.Node, pat ast.Pattern, ann ast.TypeE
 		declared = c.typeFromExpr(ann)
 		// Only compare against an actual initialiser; a bare
 		// `var x: T` (no value) is a separate concern, not a
-		// type mismatch.
-		if value != nil && concrete(declared) && concrete(vt) && !assignable(declared, vt) && !intLiteralAdaptsTo(declared, value) {
+		// type mismatch. fits() applies integer-literal and
+		// slice-literal narrowing and the E0204 range check.
+		if value != nil && !c.fits(declared, value, vt) {
 			c.report("E0201", "Type mismatch — annotation is "+declared.String()+" but value is "+vt.String(), value.NodeSpan())
-		}
-		if value != nil {
-			c.checkIntLitRange(declared, value)
 		}
 	}
 	// The binding's static type is the annotation when present,

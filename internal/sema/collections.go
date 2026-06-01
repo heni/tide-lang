@@ -8,16 +8,15 @@ import (
 
 // inferSliceLit types `[]T{...}` (annotated) and `[e1, ...]`
 // (inferred) per T-Slice-Lit-*. An empty inferred literal has no
-// element source and fires E0208.
+// element source to infer from; see the note below on E0208.
 func (c *checker) inferSliceLit(s *ast.SliceLit) Type {
 	if s.ElemType != nil {
 		elem := c.typeFromExpr(s.ElemType)
 		for _, it := range s.Items {
 			at := c.inferExpr(it)
-			if concrete(elem) && concrete(at) && !assignable(elem, at) && !intLiteralAdaptsTo(elem, it) {
+			if !c.fits(elem, it, at) {
 				c.report("E0201", "Type mismatch — slice element is "+at.String()+", expected "+elem.String(), it.NodeSpan())
 			}
-			c.checkIntLitRange(elem, it)
 		}
 		return &Slice{Elem: elem}
 	}
@@ -53,7 +52,7 @@ func (c *checker) inferIndex(ix *ast.Index) Type {
 		c.expectIntType(idx, ix.Idx)
 		return r.Elem
 	case *Map:
-		if concrete(r.Key) && concrete(idx) && !assignable(r.Key, idx) {
+		if !c.fits(r.Key, ix.Idx, idx) {
 			c.report("E0201", "Type mismatch — map key is "+idx.String()+", expected "+r.Key.String(), ix.Idx.NodeSpan())
 		}
 		return r.Val
@@ -121,10 +120,10 @@ func (c *checker) inferBuiltinTypeCall(name string, call *ast.Call, args []Type)
 func (c *checker) inferBuiltinFuncCall(name string, call *ast.Call, args []Type) Type {
 	switch name {
 	case "refEq":
-		if len(args) == 2 {
-			if !sameClass(args[0], args[1]) {
-				c.report("E0206", "`refEq` requires class operands of the same class", call.Span)
-			}
+		// Only judge when both operands are concretely known; an
+		// Unknown operand stays silent (conservative).
+		if len(args) == 2 && concrete(args[0]) && concrete(args[1]) && !sameClass(args[0], args[1]) {
+			c.report("E0206", "`refEq` requires class operands of the same class", call.Span)
 		}
 		return &Builtin{N: "bool"}
 	case "makeSlice":
@@ -200,8 +199,46 @@ func intLiteralAdaptsTo(target Type, e ast.Expr) bool {
 	if _, ok := e.(*ast.IntLitExpr); !ok {
 		return false
 	}
-	b, ok := target.(*Builtin)
-	return ok && isIntegerPrim(b.N)
+	return isIntegerType(target)
+}
+
+// fits reports whether expression e (already inferred to `got`) is
+// admissible at expected type `want`, applying bidirectional
+// narrowing: an integer literal narrows to an integer `want`, and
+// an inferred slice literal `[e1, ...]` narrows to a `Slice` want
+// when every element narrows to the element type. On a successful
+// narrow it updates Info.Type and runs the E0204 range check; it
+// never emits E0201 itself — the caller owns the site-specific
+// mismatch message. Element types are read from Info.Type (the
+// literal was already inferred), so nothing is re-inferred and no
+// diagnostic double-fires.
+func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
+	if !concrete(want) || !concrete(got) {
+		return true
+	}
+	if assignable(want, got) {
+		return true
+	}
+	if intLiteralAdaptsTo(want, e) {
+		c.info.Type[e] = want
+		c.checkIntLitRange(want, e)
+		return true
+	}
+	if w, ok := want.(*Slice); ok {
+		if sl, ok := e.(*ast.SliceLit); ok && sl.ElemType == nil && len(sl.Items) > 0 {
+			all := true
+			for _, it := range sl.Items {
+				if !c.fits(w.Elem, it, c.info.Type[it]) {
+					all = false
+				}
+			}
+			if all {
+				c.info.Type[e] = want
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // checkIntLitRange fires E0204 when an integer literal is used at

@@ -142,13 +142,12 @@ func (c *checker) checkArgTypes(params, args []Type, nodes []ast.Expr, callee st
 		n = len(args)
 	}
 	for i := 0; i < n; i++ {
-		if concrete(params[i]) && concrete(args[i]) && !assignable(params[i], args[i]) && !intLiteralAdaptsTo(params[i], nodes[i]) {
+		if !c.fits(params[i], nodes[i], args[i]) {
 			c.report("E0201",
 				"Type mismatch — argument "+strconv.Itoa(i+1)+" to "+callee+
 					" expects "+params[i].String()+", got "+args[i].String(),
 				nodes[i].NodeSpan())
 		}
-		c.checkIntLitRange(params[i], nodes[i])
 	}
 }
 
@@ -181,6 +180,7 @@ func (c *checker) inferField(f *ast.Field) Type {
 func (c *checker) inferBinary(b *ast.Binary) Type {
 	lt := c.inferExpr(b.Left)
 	rt := c.inferExpr(b.Right)
+	lt, rt = c.adaptIntLiteralOperands(b, lt, rt)
 	switch b.Op {
 	case "+":
 		// `+` is numeric addition or string concatenation.
@@ -217,6 +217,26 @@ func (c *checker) inferBinary(b *ast.Binary) Type {
 	default:
 		return &Unknown{}
 	}
+}
+
+// adaptIntLiteralOperands narrows an integer-literal operand to the
+// other operand's concrete integer type (type-system.md §Literals):
+// `b == 0` on a `byte`, `r + 1` on a `rune`. Returns the adjusted
+// operand types and records the narrowed type / range-checks the
+// literal. When both operands are literals nothing changes (both
+// stay `int`).
+func (c *checker) adaptIntLiteralOperands(b *ast.Binary, lt, rt Type) (Type, Type) {
+	if _, ok := b.Right.(*ast.IntLitExpr); ok && isIntegerType(lt) {
+		c.info.Type[b.Right] = lt
+		c.checkIntLitRange(lt, b.Right)
+		rt = lt
+	}
+	if _, ok := b.Left.(*ast.IntLitExpr); ok && isIntegerType(rt) {
+		c.info.Type[b.Left] = rt
+		c.checkIntLitRange(rt, b.Left)
+		lt = rt
+	}
+	return lt, rt
 }
 
 // numericResult checks both operands are the same numeric type and
@@ -304,11 +324,16 @@ func (c *checker) checkReturn(r *ast.ReturnExpr) {
 	if want == nil {
 		want = &Unit{}
 	}
-	if concrete(want) && concrete(got) && !assignable(want, got) && !(r.Value != nil && intLiteralAdaptsTo(want, r.Value)) {
-		c.report("E0203", "Wrong return type — function returns "+want.String()+", got "+got.String(), r.Span)
+	// A bare `return` yields unit; only narrow / range-check when
+	// there is an actual value expression.
+	if r.Value == nil {
+		if concrete(want) && !assignable(want, got) {
+			c.report("E0203", "Wrong return type — function returns "+want.String()+", got "+got.String(), r.Span)
+		}
+		return
 	}
-	if r.Value != nil {
-		c.checkIntLitRange(want, r.Value)
+	if !c.fits(want, r.Value, got) {
+		c.report("E0203", "Wrong return type — function returns "+want.String()+", got "+got.String(), r.Span)
 	}
 }
 

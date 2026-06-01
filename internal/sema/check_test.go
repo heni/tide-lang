@@ -430,11 +430,22 @@ func TestSliceIndexInfersElementType(t *testing.T) {
 	}
 }
 
-func TestSliceIndexWrongResultFiresE0201(t *testing.T) {
+func TestSliceIndexResultFlowsToReturnFiresE0203(t *testing.T) {
 	src := `func first(xs: []int): string { return xs[0] }
 `
 	if codes := runCheck(t, src); !contains(codes, "E0203") {
 		t.Errorf("expected E0203 (int element vs string return), got %v", codes)
+	}
+}
+
+func TestStringFromIntSliceFiresE0205(t *testing.T) {
+	src := `func main() {
+  let xs = makeSlice<int>(2)
+  let s = string(xs)
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0205") {
+		t.Errorf("expected E0205 (string from []int), got %v", codes)
 	}
 }
 
@@ -572,6 +583,64 @@ func TestEqOnIntPasses(t *testing.T) {
 `
 	if codes := runCheck(t, src); len(codes) != 0 {
 		t.Errorf("expected clean (== on int), got %v", codes)
+	}
+}
+
+// --- Integer-literal narrowing regressions (PR #72 review C1–C3) -
+
+func TestSizedIntComparisonWithLiteralPasses(t *testing.T) {
+	src := `func f(x: byte): bool { return x == 0 }
+func g(r: rune): bool { return r >= 'a' }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (literal narrows to operand type), got %v", codes)
+	}
+}
+
+func TestSizedIntArithWithLiteralPasses(t *testing.T) {
+	src := `func g(x: byte): byte { return x + 1 }
+func h(r: rune): rune { return r - 32 }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (literal narrows in arithmetic), got %v", codes)
+	}
+}
+
+func TestMapIntLiteralKeyPasses(t *testing.T) {
+	src := `func look(m: Map<byte, int>): int { return m[0] }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (literal map key narrows), got %v", codes)
+	}
+}
+
+func TestSliceLiteralNarrowsToSizedElem(t *testing.T) {
+	src := `func main() {
+  let xs: []byte = [1, 2, 3]
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (slice literal narrows to []byte), got %v", codes)
+	}
+}
+
+func TestSliceLiteralElementOutOfRangeFiresE0204(t *testing.T) {
+	src := `func main() {
+  let xs: []byte = [1, 999]
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0204") {
+		t.Errorf("expected E0204 (999 out of byte range), got %v", codes)
+	}
+}
+
+func TestSliceLiteralElementMismatchFiresE0201(t *testing.T) {
+	src := `func main() {
+  let xs: []int = [1, true]
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 (bool element in []int), got %v", codes)
 	}
 }
 

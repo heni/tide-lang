@@ -219,6 +219,11 @@ func isString(t Type) bool {
 	return ok && b.N == "string"
 }
 
+func isIntegerType(t Type) bool {
+	b, ok := t.(*Builtin)
+	return ok && isIntegerPrim(b.N)
+}
+
 // concrete reports whether t is pinned down enough to justify a
 // diagnostic. Diagnostics fire only when both operands are
 // concrete — an Unknown on either side stays silent.
