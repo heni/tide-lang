@@ -1,6 +1,10 @@
 package sema
 
-import "github.com/heni/tide-lang/internal/ast"
+import (
+	"strings"
+
+	"github.com/heni/tide-lang/internal/ast"
+)
 
 // Barrier D — exhaustiveness + reachability over a single match.
 // See docs/internals/sema.md §4.2 and lang-spec/type-system.md
@@ -67,7 +71,7 @@ func (c *checker) checkSumExhaustive(m *ast.MatchExpr, body *ast.SumTypeBody) {
 		}
 	}
 	if len(missing) > 0 {
-		c.report("E0303", "Non-exhaustive match — missing "+joinNames(missing), m.Span)
+		c.report("E0303", "Non-exhaustive match — missing "+strings.Join(missing, ", "), m.Span)
 	}
 }
 
@@ -96,17 +100,6 @@ func isCatchAll(p ast.Pattern) bool {
 		return true
 	}
 	return false
-}
-
-func joinNames(ns []string) string {
-	out := ""
-	for i, n := range ns {
-		if i > 0 {
-			out += ", "
-		}
-		out += n
-	}
-	return out
 }
 
 // definitelyNotTryable reports whether a function's declared return
