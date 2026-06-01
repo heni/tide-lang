@@ -1,6 +1,10 @@
 package sema
 
-import "github.com/heni/tide-lang/internal/ast"
+import (
+	"strconv"
+
+	"github.com/heni/tide-lang/internal/ast"
+)
 
 // Generic instantiation at a call site (type-system.md T-Call-Generic
 // + the unify skeleton). A generic function's signature is expressed
@@ -18,12 +22,23 @@ import "github.com/heni/tide-lang/internal/ast"
 func (c *checker) instantiate(fn *Func, call *ast.Call, args []Type) *Func {
 	subst := map[string]Type{}
 
-	if len(call.TypeArgs) == len(fn.TypeParams) {
+	switch {
+	case len(call.TypeArgs) == len(fn.TypeParams):
 		// Explicit type arguments.
 		for i, name := range fn.TypeParams {
 			subst[name] = c.typeFromExpr(call.TypeArgs[i])
 		}
-	} else {
+	case len(call.TypeArgs) > 0:
+		// A non-empty but wrong number of explicit type arguments
+		// is E0207; fall through to inference so the rest of the
+		// call still type-checks against what can be bound.
+		c.report("E0207",
+			"Wrong type arity on generic instantiation: expects "+
+				strconv.Itoa(len(fn.TypeParams))+" type "+pluralArgs(len(fn.TypeParams))+
+				", got "+strconv.Itoa(len(call.TypeArgs)),
+			call.Span)
+		fallthrough
+	default:
 		// Infer from the argument types (Algorithm-W skeleton).
 		for i := range fn.Params {
 			if i < len(args) {
@@ -31,6 +46,10 @@ func (c *checker) instantiate(fn *Func, call *ast.Call, args []Type) *Func {
 			}
 		}
 	}
+
+	// A type parameter that no argument pins down stays *Generic in
+	// fn.Return (a residual wildcard), so a return-only `T` is
+	// intentionally left unchecked rather than guessed.
 
 	for _, name := range fn.TypeParams {
 		if ty, ok := subst[name]; ok && isDynamic(ty) {

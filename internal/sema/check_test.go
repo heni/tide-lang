@@ -845,6 +845,15 @@ func main() { let _ = id<Dynamic>(reflect.box(5)) }
 	}
 }
 
+func TestGenericCallWrongTypeArityFiresE0207(t *testing.T) {
+	src := `func id<T>(x: T): T { return x }
+func main() { let _ = id<int, string>(5) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0207") {
+		t.Errorf("expected E0207 (wrong type-arg count), got %v", codes)
+	}
+}
+
 func TestGenericBodyNoFalsePositive(t *testing.T) {
 	src := `func pair<T>(a: T, b: T): bool { return a == b }
 func wrap<T>(x: T): []T { return [x] }
