@@ -190,13 +190,26 @@ func isIntegerPrim(name string) bool {
 	return false
 }
 
+// unparen strips ParenExpr wrappers so literal-shape narrowing
+// (int-literal, slice-literal) sees through author grouping like
+// `(5)` or `([1, 2])`.
+func unparen(e ast.Expr) ast.Expr {
+	for {
+		p, ok := e.(*ast.ParenExpr)
+		if !ok {
+			return e
+		}
+		e = p.Inner
+	}
+}
+
 // intLiteralAdaptsTo reports whether expression e is an integer
 // literal being placed at an integer target type. Such a literal
 // narrows to the target (type-system.md §Literals) rather than
 // being a type mismatch — the range is policed separately by
 // checkIntLitRange (E0204).
 func intLiteralAdaptsTo(target Type, e ast.Expr) bool {
-	if _, ok := e.(*ast.IntLitExpr); !ok {
+	if _, ok := unparen(e).(*ast.IntLitExpr); !ok {
 		return false
 	}
 	return isIntegerType(target)
@@ -231,7 +244,7 @@ func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
 		return true
 	}
 	if w, ok := want.(*Slice); ok {
-		if sl, ok := e.(*ast.SliceLit); ok && sl.ElemType == nil && len(sl.Items) > 0 {
+		if sl, ok := unparen(e).(*ast.SliceLit); ok && sl.ElemType == nil && len(sl.Items) > 0 {
 			all := true
 			for _, it := range sl.Items {
 				if !c.fits(w.Elem, it, c.info.Type[it]) {
@@ -253,7 +266,7 @@ func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
 // sized Builtin target; the default `int` is full-width and never
 // narrows.
 func (c *checker) checkIntLitRange(target Type, e ast.Expr) {
-	lit, ok := e.(*ast.IntLitExpr)
+	lit, ok := unparen(e).(*ast.IntLitExpr)
 	if !ok {
 		return
 	}

@@ -41,6 +41,8 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		c.resolveExpr(v.Right, scope)
 	case *ast.Unary:
 		c.resolveExpr(v.Operand, scope)
+	case *ast.ParenExpr:
+		c.resolveExpr(v.Inner, scope)
 	case *ast.SliceLit:
 		c.resolveTypeExpr(v.ElemType, scope)
 		for _, it := range v.Items {

@@ -408,6 +408,10 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 	case *ContinueExpr:
 		writeSpan(b, v.Span)
+	case *ParenExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Inner, depth+1)
 	case *IdentPat:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)

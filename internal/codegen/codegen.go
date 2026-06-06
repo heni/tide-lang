@@ -1099,6 +1099,8 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			}
 		case *ast.Field:
 			walk(v.Receiver)
+		case *ast.ParenExpr:
+			walk(v.Inner)
 		case *ast.Binary:
 			walk(v.Left)
 			walk(v.Right)
@@ -2526,6 +2528,15 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return g.emitBlockAsExpr(v)
 	case *ast.IfExpr:
 		return g.emitIfExprAsValue(v)
+	case *ast.ParenExpr:
+		// Reproduce the author's grouping so Go preserves the same
+		// operator precedence (`a * (b + c)` must not re-associate).
+		g.b.WriteByte('(')
+		if err := g.emitExpr(v.Inner); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
 	case *ast.BreakExpr, *ast.ContinueExpr:
 		// Diverging loop expressions lower to statements, not Go
 		// expressions — they're handled in emitStmt. Reaching here

@@ -1,0 +1,26 @@
+--- TITLE ---
+ParenExpr lowering — grouping reproduced so Go keeps the same precedence
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let n = 2
+  fmt.println(n * (n + 1), (n + 1) * (n + 2), n * n)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var n = 2
+	fmt.Println(n*(n+1), (n+1)*(n+2), n*n)
+}
+
+--- STDOUT ---
+6 12 4
+
+--- EXIT ---
+0

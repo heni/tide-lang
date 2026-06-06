@@ -1568,15 +1568,24 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		return &ast.Ident{Span: spanFromToken(t), Name: t.Lexeme}, nil
 	case lexer.KindPunct:
 		if t.Lexeme == "(" {
-			p.advance()
+			open := p.advance()
 			e, err := p.parseExpr()
 			if err != nil {
 				return nil, err
 			}
-			if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+			closeTok, err := p.expect(lexer.KindPunct, ")")
+			if err != nil {
 				return nil, err
 			}
-			return e, nil
+			// Keep the grouping as a node — flattening to `e` would
+			// drop the author's precedence intent (`a * (b + c)`).
+			return &ast.ParenExpr{
+				Span: ast.Span{
+					StartLine: open.Line, StartCol: open.Col,
+					EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+				},
+				Inner: e,
+			}, nil
 		}
 		if t.Lexeme == "[" {
 			return p.parseSliceLit()

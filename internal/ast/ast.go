@@ -699,6 +699,19 @@ func (n *ContinueExpr) NodeSpan() Span   { return n.Span }
 func (n *ContinueExpr) NodeKind() string { return "ContinueExpr" }
 func (n *ContinueExpr) exprMarker()      {}
 
+// ParenExpr — `( inner )`. Per ast.md §Expr. Preserved as a node
+// (not flattened to `inner`) so codegen reproduces the author's
+// grouping verbatim — dropping it loses operator-precedence intent
+// (`a * (b + c)` would re-associate to `a * b + c`).
+type ParenExpr struct {
+	Span  Span
+	Inner Expr
+}
+
+func (n *ParenExpr) NodeSpan() Span   { return n.Span }
+func (n *ParenExpr) NodeKind() string { return "ParenExpr" }
+func (n *ParenExpr) exprMarker()      {}
+
 // TryExpr — `try e`. Per `lang-spec/ast.md` §Expr and
 // `lang-spec/desugaring.md` §T-Try, evaluates the inner
 // expression (which must be of `Result<T, E>` or `Option<T>`

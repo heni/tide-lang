@@ -40,6 +40,8 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = c.inferBinary(v)
 	case *ast.Unary:
 		t = c.inferUnary(v)
+	case *ast.ParenExpr:
+		t = c.inferExpr(v.Inner)
 	case *ast.Block:
 		t = c.inferBlock(v)
 	case *ast.IfExpr:
@@ -286,12 +288,12 @@ func (c *checker) inferBinary(b *ast.Binary) Type {
 // literal. When both operands are literals nothing changes (both
 // stay `int`).
 func (c *checker) adaptIntLiteralOperands(b *ast.Binary, lt, rt Type) (Type, Type) {
-	if _, ok := b.Right.(*ast.IntLitExpr); ok && isIntegerType(lt) {
+	if _, ok := unparen(b.Right).(*ast.IntLitExpr); ok && isIntegerType(lt) {
 		c.info.Type[b.Right] = lt
 		c.checkIntLitRange(lt, b.Right)
 		rt = lt
 	}
-	if _, ok := b.Left.(*ast.IntLitExpr); ok && isIntegerType(rt) {
+	if _, ok := unparen(b.Left).(*ast.IntLitExpr); ok && isIntegerType(rt) {
 		c.info.Type[b.Left] = rt
 		c.checkIntLitRange(rt, b.Left)
 		lt = rt

@@ -254,6 +254,20 @@ func TestContinueOutsideLoopFiresE0404(t *testing.T) {
 	}
 }
 
+func TestParenLiteralNarrowingNoFalsePositive(t *testing.T) {
+	// Int-literal narrowing must see through a ParenExpr — `(5)` at
+	// a byte target narrows like a bare `5`, no false E0201/E0204.
+	src := `import fmt
+func main() {
+  let b: byte = (5)
+  fmt.println(b)
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (paren literal narrowing), got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {
