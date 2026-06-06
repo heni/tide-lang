@@ -116,6 +116,10 @@ func (c *checker) inferBraceLit(b *ast.BraceLit) Type {
 				if !c.fits(ft, en.Value, vt) {
 					c.report("E0201", "Type mismatch — field "+en.Name+" expects "+ft.String()+", got "+vt.String(), en.Value.NodeSpan())
 				}
+			} else if isRecordType(rt) {
+				// Unknown field on a known record — catch it here in
+				// .td coordinates rather than leaking a go/types error.
+				c.report("E0201", "Record "+rt.String()+" has no field "+en.Name, en.Span)
 			}
 		case *ast.MapEntry:
 			c.inferExpr(en.Key)
@@ -128,6 +132,21 @@ func (c *checker) inferBraceLit(b *ast.BraceLit) Type {
 		return rt
 	}
 	return &Unknown{}
+}
+
+// isRecordType reports whether t is a nominal record (a Named whose
+// decl is a RecordTypeBody).
+func isRecordType(t Type) bool {
+	named, ok := t.(*Named)
+	if !ok {
+		return false
+	}
+	td, ok := named.Decl.(*ast.TypeDecl)
+	if !ok {
+		return false
+	}
+	_, ok = td.Body.(*ast.RecordTypeBody)
+	return ok
 }
 
 // recordFieldType returns the declared type of field `name` on a
