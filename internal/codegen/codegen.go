@@ -1767,71 +1767,11 @@ func (g *gen) emitIfExprAsValue(e *ast.IfExpr) error {
 // else }` body of a value-position IfExpr. Each branch returns its
 // block's trailing value; a missing trailing value (statement-only
 // branch) is a value-context error.
+// emitIfExprReturning lowers a value-position IfExpr — each branch
+// `return`s its trailing value, and both arms are required (see
+// emitIf). Defined alongside emitIfStmt / emitIfExprAsStmt.
 func (g *gen) emitIfExprReturning(e *ast.IfExpr) error {
-	g.line(e.Span.StartLine)
-	g.writeIndent()
-	g.b.WriteString("if ")
-	if err := g.emitExpr(e.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBranchReturn(e.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch x := e.Else.(type) {
-	case *ast.IfExpr:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		return g.emitElseIfExprReturning(x)
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBranchReturn(x); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	default:
-		return fmt.Errorf("codegen: value-position `if` requires an `else` branch")
-	}
-	return nil
-}
-
-func (g *gen) emitElseIfExprReturning(e *ast.IfExpr) error {
-	g.line(e.Span.StartLine)
-	g.b.WriteString("if ")
-	if err := g.emitExpr(e.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBranchReturn(e.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch x := e.Else.(type) {
-	case *ast.IfExpr:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		return g.emitElseIfExprReturning(x)
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBranchReturn(x); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	default:
-		return fmt.Errorf("codegen: value-position `if` requires an `else` branch")
-	}
-	return nil
+	return g.emitIf(ifExprShape(e), false, g.emitBranchReturn, asIfExprShape, true)
 }
 
 // emitBranchReturn emits a value-block's statements followed by
@@ -2270,163 +2210,108 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 	return nil
 }
 
+// ifShape is the position-independent view of an `if` chain that
+// emitIf lowers. Both *ast.IfStmt and *ast.IfExpr collapse to it, so
+// one walk serves statement and value position (lowering-go.md
+// §Source maps / §If).
+type ifShape struct {
+	cond      ast.Expr
+	thenBlock *ast.Block
+	elseNode  ast.Node // nil | *ast.Block | nested *ast.IfStmt|*ast.IfExpr
+	startLine int
+}
+
+func ifStmtShape(s *ast.IfStmt) ifShape {
+	return ifShape{cond: s.Cond, thenBlock: s.ThenBlock, elseNode: s.Else, startLine: s.Span.StartLine}
+}
+
+func ifExprShape(e *ast.IfExpr) ifShape {
+	return ifShape{cond: e.Cond, thenBlock: e.ThenBlock, elseNode: e.Else, startLine: e.Span.StartLine}
+}
+
+func asIfStmtShape(n ast.Node) (ifShape, bool) {
+	if s, ok := n.(*ast.IfStmt); ok {
+		return ifStmtShape(s), true
+	}
+	return ifShape{}, false
+}
+
+func asIfExprShape(n ast.Node) (ifShape, bool) {
+	if e, ok := n.(*ast.IfExpr); ok {
+		return ifExprShape(e), true
+	}
+	return ifShape{}, false
+}
+
+// emitIf lowers one `if`/`else` chain. The three axes that distinguish
+// statement vs value position and IfStmt vs IfExpr are parameters:
+//   - emitBody: how a branch block lowers — discard the trailing value
+//     (emitBlockBody) or `return` it (emitBranchReturn).
+//   - nestedShape: detects an else-if of the same node kind and adapts
+//     it, so the recursion is kind-agnostic.
+//   - requireElse: value position needs both arms; an else-less chain
+//     is an error rather than a bare `}`.
+//
+// isElseIf is true when the caller has already written `} else ` — the
+// `if` then continues inline without a fresh indent. A //line directive
+// is emitted at every `if` boundary (§Source maps).
+func (g *gen) emitIf(sh ifShape, isElseIf bool, emitBody func(*ast.Block) error,
+	nestedShape func(ast.Node) (ifShape, bool), requireElse bool) error {
+	g.line(sh.startLine)
+	if !isElseIf {
+		g.writeIndent()
+	}
+	g.b.WriteString("if ")
+	if err := g.emitExpr(sh.cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := emitBody(sh.thenBlock); err != nil {
+		return err
+	}
+	g.indent--
+	switch {
+	case sh.elseNode == nil:
+		if requireElse {
+			return fmt.Errorf("codegen: value-position `if` requires an `else` branch")
+		}
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	default:
+		if nested, ok := nestedShape(sh.elseNode); ok {
+			g.writeIndent()
+			g.b.WriteString("} else ")
+			return g.emitIf(nested, true, emitBody, nestedShape, requireElse)
+		}
+		blk, ok := sh.elseNode.(*ast.Block)
+		if !ok {
+			return fmt.Errorf("codegen: unexpected else branch %T", sh.elseNode)
+		}
+		g.writeIndent()
+		g.b.WriteString("} else {\n")
+		g.indent++
+		if err := emitBody(blk); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	}
+	return nil
+}
+
+// emitIfStmt lowers a statement-position `if` (IfStmt) — branch values
+// discarded.
 func (g *gen) emitIfStmt(s *ast.IfStmt) error {
-	g.line(s.Span.StartLine)
-	g.writeIndent()
-	g.b.WriteString("if ")
-	if err := g.emitExpr(s.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBlockBody(s.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch e := s.Else.(type) {
-	case nil:
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	case *ast.IfStmt:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		// emit the nested IfStmt without re-indenting the `if`.
-		if err := g.emitElseIf(e); err != nil {
-			return err
-		}
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBlockBody(e); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	default:
-		return fmt.Errorf("codegen: unexpected else branch %T", s.Else)
-	}
-	return nil
+	return g.emitIf(ifStmtShape(s), false, g.emitBlockBody, asIfStmtShape, false)
 }
 
-// emitElseIf emits an IfStmt as the continuation of `} else `.
-// It does NOT write a leading newline or indent — the caller has
-// already emitted those.
-func (g *gen) emitElseIf(s *ast.IfStmt) error {
-	// //line directive maps the nested if's condition back to the
-	// source position the developer typed `else if` on, not the
-	// outer if's line. lowering-go.md §Source maps requires the
-	// directive at every statement boundary.
-	g.line(s.Span.StartLine)
-	g.b.WriteString("if ")
-	if err := g.emitExpr(s.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBlockBody(s.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch e := s.Else.(type) {
-	case nil:
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	case *ast.IfStmt:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		return g.emitElseIf(e)
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBlockBody(e); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	}
-	return nil
-}
-
-// emitIfExprAsStmt lowers an IfExpr appearing in statement position
-// (e.g. a match-arm body in a statement-position match) to a Go
-// `if`. Branch trailing values are discarded by emitBlockBody. It
-// mirrors emitIfStmt; the only difference is the else-branch carries
-// an *ast.IfExpr rather than an *ast.IfStmt.
+// emitIfExprAsStmt lowers an IfExpr in statement position (e.g. a
+// match-arm body in a statement-position match) — branch values
+// discarded.
 func (g *gen) emitIfExprAsStmt(e *ast.IfExpr) error {
-	g.line(e.Span.StartLine)
-	g.writeIndent()
-	g.b.WriteString("if ")
-	if err := g.emitExpr(e.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBlockBody(e.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch x := e.Else.(type) {
-	case nil:
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	case *ast.IfExpr:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		return g.emitElseIfExpr(x)
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBlockBody(x); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	default:
-		return fmt.Errorf("codegen: unexpected if-expr else branch %T", e.Else)
-	}
-	return nil
-}
-
-// emitElseIfExpr is the IfExpr analogue of emitElseIf — continues a
-// `} else ` without re-indenting the `if`.
-func (g *gen) emitElseIfExpr(e *ast.IfExpr) error {
-	g.line(e.Span.StartLine)
-	g.b.WriteString("if ")
-	if err := g.emitExpr(e.Cond); err != nil {
-		return err
-	}
-	g.b.WriteString(" {\n")
-	g.indent++
-	if err := g.emitBlockBody(e.ThenBlock); err != nil {
-		return err
-	}
-	g.indent--
-	switch x := e.Else.(type) {
-	case nil:
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	case *ast.IfExpr:
-		g.writeIndent()
-		g.b.WriteString("} else ")
-		return g.emitElseIfExpr(x)
-	case *ast.Block:
-		g.writeIndent()
-		g.b.WriteString("} else {\n")
-		g.indent++
-		if err := g.emitBlockBody(x); err != nil {
-			return err
-		}
-		g.indent--
-		g.writeIndent()
-		g.b.WriteString("}\n")
-	}
-	return nil
+	return g.emitIf(ifExprShape(e), false, g.emitBlockBody, asIfExprShape, false)
 }
 
 // emitWhileStmt lowers `while cond { body }` to Go's condition-only
