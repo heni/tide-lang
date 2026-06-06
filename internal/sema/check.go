@@ -29,6 +29,7 @@ type checker struct {
 	curReturn       Type // declared return type of the body being checked
 	curThis         Type // receiver type inside an instance method, else nil
 	curTryForbidden bool // body returns a type that is definitely not Result/Option
+	loopDepth       int  // enclosing for/while nesting — 0 ⇒ break/continue illegal (E0404)
 }
 
 func (c *checker) report(code, message string, span ast.Span) {

@@ -778,6 +778,8 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 		return p.parseIfStmt()
 	case p.at(lexer.KindKeyword, "for"):
 		return p.parseForStmt()
+	case p.at(lexer.KindKeyword, "while"):
+		return p.parseWhileStmt()
 	case p.at(lexer.KindKeyword, "let"):
 		return p.parseLetOrVar(true)
 	case p.at(lexer.KindKeyword, "const"):
@@ -1019,6 +1021,30 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 		Pattern:  pat,
 		Iterable: iter,
 		Body:     body,
+	}, nil
+}
+
+// parseWhileStmt parses `while Cond Block` (grammar.ebnf WhileStmt).
+// The condition is a plain expression; like `if`/`for` headers it
+// stops at the body's `{` (a bare `{` is never an expression
+// continuation).
+func (p *parser) parseWhileStmt() (*ast.WhileStmt, *Diag) {
+	kw := p.advance() // consume 'while'
+	cond, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.WhileStmt{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Cond: cond,
+		Body: body,
 	}, nil
 }
 
@@ -1513,6 +1539,12 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			return p.parseMatchExpr()
 		case "if":
 			return p.parseIfExpr()
+		case "break":
+			bt := p.advance()
+			return &ast.BreakExpr{Span: spanFromToken(bt)}, nil
+		case "continue":
+			ct := p.advance()
+			return &ast.ContinueExpr{Span: spanFromToken(ct)}, nil
 		case "this":
 			p.advance()
 			return &ast.ThisExpr{Span: spanFromToken(t)}, nil

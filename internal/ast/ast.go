@@ -346,6 +346,17 @@ func (n *ForStmt) NodeSpan() Span   { return n.Span }
 func (n *ForStmt) NodeKind() string { return "ForStmt" }
 func (n *ForStmt) stmtMarker()      {}
 
+// WhileStmt — `while <cond> { body }`. Per ast.md §Stmt.
+type WhileStmt struct {
+	Span Span
+	Cond Expr
+	Body *Block
+}
+
+func (n *WhileStmt) NodeSpan() Span   { return n.Span }
+func (n *WhileStmt) NodeKind() string { return "WhileStmt" }
+func (n *WhileStmt) stmtMarker()      {}
+
 // Iterable marks the type of values legal at the right-hand side
 // of `for x in ...`. Per ast.md §Iterable, the cases are
 // `RangeExpr | Expr`; both *RangeExpr and any concrete Expr type
@@ -666,6 +677,27 @@ type ReturnExpr struct {
 func (n *ReturnExpr) NodeSpan() Span   { return n.Span }
 func (n *ReturnExpr) NodeKind() string { return "ReturnExpr" }
 func (n *ReturnExpr) exprMarker()      {}
+
+// BreakExpr — `break`. A DivergingExpr (Never-typed) per ast.md
+// §Expr; legal only inside a loop body (sema E0404). Appears at
+// statement position wrapped in an ExprStmt.
+type BreakExpr struct {
+	Span Span
+}
+
+func (n *BreakExpr) NodeSpan() Span   { return n.Span }
+func (n *BreakExpr) NodeKind() string { return "BreakExpr" }
+func (n *BreakExpr) exprMarker()      {}
+
+// ContinueExpr — `continue`. A DivergingExpr (Never-typed) per
+// ast.md §Expr; legal only inside a loop body (sema E0404).
+type ContinueExpr struct {
+	Span Span
+}
+
+func (n *ContinueExpr) NodeSpan() Span   { return n.Span }
+func (n *ContinueExpr) NodeKind() string { return "ContinueExpr" }
+func (n *ContinueExpr) exprMarker()      {}
 
 // TryExpr — `try e`. Per `lang-spec/ast.md` §Expr and
 // `lang-spec/desugaring.md` §T-Try, evaluates the inner

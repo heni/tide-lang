@@ -84,7 +84,16 @@ func (c *checker) checkStmt(s ast.Stmt) {
 			c.inferExpr(it)
 		}
 		if v.Body != nil {
+			c.loopDepth++
 			c.checkBlock(v.Body)
+			c.loopDepth--
+		}
+	case *ast.WhileStmt:
+		c.inferExpr(v.Cond)
+		if v.Body != nil {
+			c.loopDepth++
+			c.checkBlock(v.Body)
+			c.loopDepth--
 		}
 	}
 }

@@ -211,6 +211,49 @@ func main() {
 	}
 }
 
+func TestBreakInLoopPasses(t *testing.T) {
+	src := `import fmt
+func main() {
+  var i = 0
+  while i < 10 {
+    if i == 3 { break }
+    i += 1
+  }
+  for j in 0..5 {
+    if j == 2 { continue }
+    fmt.println(j)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (break/continue in loops), got %v", codes)
+	}
+}
+
+func TestBreakOutsideLoopFiresE0404(t *testing.T) {
+	src := `func main() {
+  break
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0404") {
+		t.Errorf("expected E0404 for break outside loop, got %v", codes)
+	}
+}
+
+func TestContinueOutsideLoopFiresE0404(t *testing.T) {
+	// A `continue` in a function body that is not inside any loop —
+	// even nested in an if — is illegal.
+	src := `func main() {
+  if true {
+    continue
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0404") {
+		t.Errorf("expected E0404 for continue outside loop, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

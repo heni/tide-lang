@@ -1078,6 +1078,9 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.Pattern)
 			walk(v.Iterable)
 			walk(v.Body)
+		case *ast.WhileStmt:
+			walk(v.Cond)
+			walk(v.Body)
 		case *ast.ReturnExpr:
 			walk(v.Value)
 		case *ast.MatchExpr:
@@ -1465,6 +1468,19 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 			_, err := g.emitTryPreamble(try)
 			return err
 		}
+		// Diverging loop expressions lower to Go statements.
+		if _, ok := v.Expr.(*ast.BreakExpr); ok {
+			g.line(v.Span.StartLine)
+			g.writeIndent()
+			g.b.WriteString("break\n")
+			return nil
+		}
+		if _, ok := v.Expr.(*ast.ContinueExpr); ok {
+			g.line(v.Span.StartLine)
+			g.writeIndent()
+			g.b.WriteString("continue\n")
+			return nil
+		}
 		// MatchExpr: lower to Go `switch` statement.
 		if m, ok := v.Expr.(*ast.MatchExpr); ok {
 			return g.emitMatchAsStmt(m)
@@ -1487,6 +1503,8 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		return nil
 	case *ast.IfStmt:
 		return g.emitIfStmt(v)
+	case *ast.WhileStmt:
+		return g.emitWhileStmt(v)
 	case *ast.ForStmt:
 		return g.emitForStmt(v)
 	case *ast.LetStmt:
@@ -2411,6 +2429,26 @@ func (g *gen) emitElseIfExpr(e *ast.IfExpr) error {
 	return nil
 }
 
+// emitWhileStmt lowers `while cond { body }` to Go's condition-only
+// `for cond { body }` (lowering-go.md §Loops).
+func (g *gen) emitWhileStmt(s *ast.WhileStmt) error {
+	g.line(s.Span.StartLine)
+	g.writeIndent()
+	g.b.WriteString("for ")
+	if err := g.emitExpr(s.Cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBlockBody(s.Body); err != nil {
+		return err
+	}
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}\n")
+	return nil
+}
+
 func (g *gen) emitForStmt(s *ast.ForStmt) error {
 	g.line(s.Span.StartLine)
 	g.writeIndent()
@@ -2607,6 +2645,12 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return g.emitBlockAsExpr(v)
 	case *ast.IfExpr:
 		return g.emitIfExprAsValue(v)
+	case *ast.BreakExpr, *ast.ContinueExpr:
+		// Diverging loop expressions lower to statements, not Go
+		// expressions — they're handled in emitStmt. Reaching here
+		// means one was used in value position (e.g. a value-arm
+		// `match x { A => break }`), which v1 codegen does not lower.
+		return fmt.Errorf("codegen: `break`/`continue` is not usable in value position")
 	case *ast.Field:
 		return g.emitField(v)
 	case *ast.Call:

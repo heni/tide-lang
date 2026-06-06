@@ -49,6 +49,16 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 	case *ast.ReturnExpr:
 		c.checkReturn(v)
 		t = &Never{}
+	case *ast.BreakExpr:
+		if c.loopDepth == 0 {
+			c.report("E0404", "`break` outside a loop", v.Span)
+		}
+		t = &Never{}
+	case *ast.ContinueExpr:
+		if c.loopDepth == 0 {
+			c.report("E0404", "`continue` outside a loop", v.Span)
+		}
+		t = &Never{}
 	case *ast.TryExpr:
 		c.inferExpr(v.Inner)
 		if c.curTryForbidden {

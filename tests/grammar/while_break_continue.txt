@@ -1,0 +1,36 @@
+--- TITLE ---
+WhileStmt with `break` and `continue` (diverging exprs, ExprStmt-wrapped)
+
+--- INPUT ---
+func main() {
+  var i = 0
+  while i < 3 {
+    if i == 1 {
+      continue
+    }
+    break
+  }
+}
+
+--- AST ---
+(File @1:1-9:2
+  (FuncDecl "main" @1:1-9:2
+    (type-params)
+    (params)
+    (Block @1:13-9:2
+      (VarStmt "i" @2:3-2:12
+        (IntLitExpr 0 @2:11-2:12))
+      (WhileStmt @3:3-8:4
+        (Binary "<" @3:9-3:14
+          (Ident "i" @3:9-3:10)
+          (IntLitExpr 3 @3:13-3:14))
+        (Block @3:15-8:4
+          (IfStmt @4:5-6:6
+            (Binary "==" @4:8-4:14
+              (Ident "i" @4:8-4:9)
+              (IntLitExpr 1 @4:13-4:14))
+            (Block @4:15-6:6
+              (ExprStmt @5:7-5:15
+                (ContinueExpr @5:7-5:15))))
+          (ExprStmt @7:5-7:10
+            (BreakExpr @7:5-7:10)))))))
