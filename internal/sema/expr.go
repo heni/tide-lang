@@ -53,6 +53,18 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		c.resolveExpr(v.Receiver, scope)
 		c.resolveExpr(v.Low, scope)
 		c.resolveExpr(v.High, scope)
+	case *ast.Block:
+		// Block-as-expression — its own scope, like any block body.
+		c.resolveBlock(v, scope)
+	case *ast.IfExpr:
+		c.resolveExpr(v.Cond, scope)
+		c.resolveBlock(v.ThenBlock, scope)
+		switch e := v.Else.(type) {
+		case *ast.IfExpr:
+			c.resolveExpr(e, scope)
+		case *ast.Block:
+			c.resolveBlock(e, scope)
+		}
 	case *ast.MatchExpr:
 		c.resolveExpr(v.Subject, scope)
 		for _, arm := range v.Arms {

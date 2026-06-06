@@ -156,6 +156,61 @@ func main() {
 	}
 }
 
+func TestMatchArmBlockBodyResolves(t *testing.T) {
+	// A block-as-expression arm body: its locals are in scope for
+	// its trailing value, and the whole thing types cleanly.
+	src := `import fmt
+type Color = | Red | Green
+func name(c: Color): string {
+  return match c {
+    Red => {
+      let s = "red"
+      s
+    },
+    Green => "green",
+  }
+}
+func main() { fmt.println(name(Red)) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (block arm body), got %v", codes)
+	}
+}
+
+func TestIfExprArmBodyResolves(t *testing.T) {
+	// An if-expression arm body types cleanly across both branches.
+	src := `import fmt
+type Color = | Red | Green
+func name(c: Color): string {
+  return match c {
+    Red => if true { "red" } else { "crimson" },
+    Green => "green",
+  }
+}
+func main() { fmt.println(name(Green)) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (if-expr arm body), got %v", codes)
+	}
+}
+
+func TestBlockExprScopeIsLocal(t *testing.T) {
+	// A binding introduced inside a block-as-expression must not
+	// leak past the block — referencing it outside is E0103.
+	src := `import fmt
+func main() {
+  let v = {
+    let inner = 1
+    inner
+  }
+  fmt.println(inner)
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0103") {
+		t.Errorf("expected E0103 for block-local leak, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

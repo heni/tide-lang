@@ -219,16 +219,16 @@ func (n *PrimitiveType) typeMarker()      {}
 // PrimitiveNames is the closed set of primitive type names per
 // ast.md §PrimitiveName.
 var PrimitiveNames = map[string]bool{
-	"bool":    true,
-	"int":     true,
-	"int8":    true, "int16": true, "int32": true, "int64": true,
-	"uint":    true,
-	"uint8":   true, "uint16": true, "uint32": true, "uint64": true,
+	"bool": true,
+	"int":  true,
+	"int8": true, "int16": true, "int32": true, "int64": true,
+	"uint":  true,
+	"uint8": true, "uint16": true, "uint32": true, "uint64": true,
 	"float32": true, "float64": true,
-	"byte":    true,
-	"rune":    true,
-	"string":  true,
-	"unit":    true,
+	"byte":   true,
+	"rune":   true,
+	"string": true,
+	"unit":   true,
 }
 
 // SliceType — `[]T`. Per ast.md §TypeExpr.
@@ -368,6 +368,10 @@ type Block struct {
 
 func (n *Block) NodeSpan() Span   { return n.Span }
 func (n *Block) NodeKind() string { return "Block" }
+
+// Block is also an expression (PrimaryExpr → Block, grammar.ebnf):
+// its value is `trailing`, or unit when absent.
+func (n *Block) exprMarker() {}
 
 // ---------------------------------------------------------------
 // Patterns
@@ -612,6 +616,20 @@ type Slice struct {
 func (n *Slice) NodeSpan() Span   { return n.Span }
 func (n *Slice) NodeKind() string { return "Slice" }
 func (n *Slice) exprMarker()      {}
+
+// IfExpr — `if cond { ... } else { ... }` in value position. Per
+// ast.md §Expr; the value form requires both arms (else non-nil) —
+// sema enforces that when the result is used as a value.
+type IfExpr struct {
+	Span      Span
+	Cond      Expr
+	ThenBlock *Block
+	Else      Node // nil | *IfExpr (else-if) | *Block
+}
+
+func (n *IfExpr) NodeSpan() Span   { return n.Span }
+func (n *IfExpr) NodeKind() string { return "IfExpr" }
+func (n *IfExpr) exprMarker()      {}
 
 // MatchExpr — `match subject { pat1 => body1, pat2 => body2 }`.
 // Arms count ≥ 1 (parser enforces).

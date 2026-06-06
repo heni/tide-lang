@@ -1070,6 +1070,10 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.Cond)
 			walk(v.ThenBlock)
 			walk(v.Else)
+		case *ast.IfExpr:
+			walk(v.Cond)
+			walk(v.ThenBlock)
+			walk(v.Else)
 		case *ast.ForStmt:
 			walk(v.Pattern)
 			walk(v.Iterable)
@@ -1416,9 +1420,10 @@ func (g *gen) emitBlockBody(b *ast.Block) error {
 		}
 	}
 	if b.Trailing != nil {
-		// PR-C: trailing-expression block (used by IfExpr / ScopeExpr)
-		// isn't reached for hello/fizzbuzz. Reserve.
-		return fmt.Errorf("codegen: trailing-expression block not supported in PR-C")
+		// Statement-context block: the trailing value is discarded.
+		// Value-context blocks are lowered to an IIFE by
+		// emitBlockAsExpr, which never calls this.
+		return g.emitStmt(&ast.ExprStmt{Span: b.Trailing.NodeSpan(), Expr: b.Trailing})
 	}
 	return nil
 }
@@ -1463,6 +1468,15 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		// MatchExpr: lower to Go `switch` statement.
 		if m, ok := v.Expr.(*ast.MatchExpr); ok {
 			return g.emitMatchAsStmt(m)
+		}
+		// Block-as-expression in statement position: run the
+		// statements inline, discarding the trailing value.
+		if blk, ok := v.Expr.(*ast.Block); ok {
+			return g.emitBlockBody(blk)
+		}
+		// IfExpr in statement position: same shape as an if-statement.
+		if ie, ok := v.Expr.(*ast.IfExpr); ok {
+			return g.emitIfExprAsStmt(ie)
 		}
 		g.line(v.Span.StartLine)
 		g.writeIndent()
@@ -1676,6 +1690,153 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	return nil
 }
 
+// emitBlockAsExpr lowers a block in value position to an IIFE
+// `func() T { stmts; return trailing }()`. T comes from the trailing
+// expression's shallow type peek. A block with no trailing value has
+// no Go value to yield and is rejected.
+func (g *gen) emitBlockAsExpr(b *ast.Block) error {
+	if b.Trailing == nil {
+		return fmt.Errorf("codegen: value-position block needs a trailing expression")
+	}
+	rt, err := g.inferArmResultType(b.Trailing)
+	if err != nil {
+		return fmt.Errorf("codegen: block-as-expression: %w", err)
+	}
+	g.b.WriteString("func() ")
+	g.b.WriteString(rt)
+	g.b.WriteString(" {\n")
+	g.indent++
+	for _, s := range b.Stmts {
+		if err := g.emitStmt(s); err != nil {
+			return err
+		}
+	}
+	g.line(b.Trailing.NodeSpan().StartLine)
+	g.writeIndent()
+	g.b.WriteString("return ")
+	if err := g.emitExpr(b.Trailing); err != nil {
+		return err
+	}
+	g.b.WriteByte('\n')
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}()")
+	return nil
+}
+
+// emitIfExprAsValue lowers an IfExpr in value position to an IIFE
+// whose branches `return` their trailing values:
+// `func() T { if c { return a } else { return b } }()`.
+func (g *gen) emitIfExprAsValue(e *ast.IfExpr) error {
+	rt, err := g.inferArmResultType(e)
+	if err != nil {
+		return fmt.Errorf("codegen: if-as-expression: %w", err)
+	}
+	g.b.WriteString("func() ")
+	g.b.WriteString(rt)
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitIfExprReturning(e); err != nil {
+		return err
+	}
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}()")
+	return nil
+}
+
+// emitIfExprReturning emits the `if cond { return then } else { return
+// else }` body of a value-position IfExpr. Each branch returns its
+// block's trailing value; a missing trailing value (statement-only
+// branch) is a value-context error.
+func (g *gen) emitIfExprReturning(e *ast.IfExpr) error {
+	g.line(e.Span.StartLine)
+	g.writeIndent()
+	g.b.WriteString("if ")
+	if err := g.emitExpr(e.Cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBranchReturn(e.ThenBlock); err != nil {
+		return err
+	}
+	g.indent--
+	switch x := e.Else.(type) {
+	case *ast.IfExpr:
+		g.writeIndent()
+		g.b.WriteString("} else ")
+		return g.emitElseIfExprReturning(x)
+	case *ast.Block:
+		g.writeIndent()
+		g.b.WriteString("} else {\n")
+		g.indent++
+		if err := g.emitBranchReturn(x); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	default:
+		return fmt.Errorf("codegen: value-position `if` requires an `else` branch")
+	}
+	return nil
+}
+
+func (g *gen) emitElseIfExprReturning(e *ast.IfExpr) error {
+	g.line(e.Span.StartLine)
+	g.b.WriteString("if ")
+	if err := g.emitExpr(e.Cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBranchReturn(e.ThenBlock); err != nil {
+		return err
+	}
+	g.indent--
+	switch x := e.Else.(type) {
+	case *ast.IfExpr:
+		g.writeIndent()
+		g.b.WriteString("} else ")
+		return g.emitElseIfExprReturning(x)
+	case *ast.Block:
+		g.writeIndent()
+		g.b.WriteString("} else {\n")
+		g.indent++
+		if err := g.emitBranchReturn(x); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	default:
+		return fmt.Errorf("codegen: value-position `if` requires an `else` branch")
+	}
+	return nil
+}
+
+// emitBranchReturn emits a value-block's statements followed by
+// `return <trailing>`.
+func (g *gen) emitBranchReturn(b *ast.Block) error {
+	for _, s := range b.Stmts {
+		if err := g.emitStmt(s); err != nil {
+			return err
+		}
+	}
+	if b.Trailing == nil {
+		return fmt.Errorf("codegen: value-position `if` branch needs a trailing expression")
+	}
+	g.line(b.Trailing.NodeSpan().StartLine)
+	g.writeIndent()
+	g.b.WriteString("return ")
+	if err := g.emitExpr(b.Trailing); err != nil {
+		return err
+	}
+	g.b.WriteByte('\n')
+	return nil
+}
+
 // inferArmResultType returns the Go-side type name for an
 // expression at a match arm position. Covers sum-variant refs
 // (owner sum-type), variant constructor calls, primitive
@@ -1683,6 +1844,8 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 // kind read from the sema side-table). Returns an error for
 // shapes not yet covered by this shallow arm-type peek.
 func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
+	// AST fast paths — resolvable without sema (variant refs map to
+	// their owner sum type; literals to their natural Go type).
 	switch v := e.(type) {
 	case *ast.Ident:
 		if info, ok := g.variant[v.Name]; ok {
@@ -1691,14 +1854,12 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 		if k := g.varKindOf(v); k != "" {
 			return k, nil
 		}
-		return "", fmt.Errorf("cannot infer type from identifier %q (annotate match's surrounding binding)", v.Name)
 	case *ast.Call:
 		if id, ok := v.Callee.(*ast.Ident); ok {
 			if info, ok := g.variant[id.Name]; ok {
 				return goIdent(info.owner), nil
 			}
 		}
-		return "", fmt.Errorf("cannot infer type from call expression")
 	case *ast.IntLitExpr:
 		return "int", nil
 	case *ast.StringLitExpr:
@@ -1707,8 +1868,54 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 		return "bool", nil
 	case *ast.RuneLitExpr:
 		return "rune", nil
+	case *ast.Block:
+		// A value block's type is its trailing expression's type.
+		if v.Trailing != nil {
+			if s, err := g.inferArmResultType(v.Trailing); err == nil {
+				return s, nil
+			}
+		}
+	case *ast.IfExpr:
+		// An if-expression's type is its then-branch value's type
+		// (branches are required to agree — sema's concern).
+		if v.ThenBlock != nil && v.ThenBlock.Trailing != nil {
+			if s, err := g.inferArmResultType(v.ThenBlock.Trailing); err == nil {
+				return s, nil
+			}
+		}
 	}
-	return "", fmt.Errorf("cannot infer type from %T expression in first arm — annotate the surrounding binding", e)
+	// Fallback: sema's inferred type for the expression. Covers
+	// locals, typed calls, and any value the shallow peek misses.
+	if g.info != nil {
+		if t := g.info.Type[e]; t != nil {
+			if s, ok := g.goTypeFromSema(t); ok {
+				return s, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("cannot infer Go type for %T arm/branch result — annotate the surrounding binding", e)
+}
+
+// goTypeFromSema renders a sema type to its Go spelling for the
+// shapes a value-position block / if / match result can take. Tide
+// primitives map 1:1 (lowering-go.md §Primitive type lowering);
+// classes are reference types (`*T`). Shapes outside this set return
+// false — the caller then reports an un-inferrable arm result.
+func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
+	switch v := t.(type) {
+	case *sema.Builtin:
+		return v.N, true
+	case *sema.Named:
+		if _, isClass := g.class[v.N]; isClass {
+			return "*" + goIdent(v.N), true
+		}
+		return goIdent(v.N), true
+	case *sema.Slice:
+		if elem, ok := g.goTypeFromSema(v.Elem); ok {
+			return "[]" + elem, true
+		}
+	}
+	return "", false
 }
 
 // emitPayloadBindings writes one `b := <subject>.<PayloadField>`
@@ -2121,6 +2328,84 @@ func (g *gen) emitElseIf(s *ast.IfStmt) error {
 	return nil
 }
 
+// emitIfExprAsStmt lowers an IfExpr appearing in statement position
+// (e.g. a match-arm body in a statement-position match) to a Go
+// `if`. Branch trailing values are discarded by emitBlockBody. It
+// mirrors emitIfStmt; the only difference is the else-branch carries
+// an *ast.IfExpr rather than an *ast.IfStmt.
+func (g *gen) emitIfExprAsStmt(e *ast.IfExpr) error {
+	g.line(e.Span.StartLine)
+	g.writeIndent()
+	g.b.WriteString("if ")
+	if err := g.emitExpr(e.Cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBlockBody(e.ThenBlock); err != nil {
+		return err
+	}
+	g.indent--
+	switch x := e.Else.(type) {
+	case nil:
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	case *ast.IfExpr:
+		g.writeIndent()
+		g.b.WriteString("} else ")
+		return g.emitElseIfExpr(x)
+	case *ast.Block:
+		g.writeIndent()
+		g.b.WriteString("} else {\n")
+		g.indent++
+		if err := g.emitBlockBody(x); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	default:
+		return fmt.Errorf("codegen: unexpected if-expr else branch %T", e.Else)
+	}
+	return nil
+}
+
+// emitElseIfExpr is the IfExpr analogue of emitElseIf — continues a
+// `} else ` without re-indenting the `if`.
+func (g *gen) emitElseIfExpr(e *ast.IfExpr) error {
+	g.line(e.Span.StartLine)
+	g.b.WriteString("if ")
+	if err := g.emitExpr(e.Cond); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBlockBody(e.ThenBlock); err != nil {
+		return err
+	}
+	g.indent--
+	switch x := e.Else.(type) {
+	case nil:
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	case *ast.IfExpr:
+		g.writeIndent()
+		g.b.WriteString("} else ")
+		return g.emitElseIfExpr(x)
+	case *ast.Block:
+		g.writeIndent()
+		g.b.WriteString("} else {\n")
+		g.indent++
+		if err := g.emitBlockBody(x); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+	}
+	return nil
+}
+
 func (g *gen) emitForStmt(s *ast.ForStmt) error {
 	g.line(s.Span.StartLine)
 	g.writeIndent()
@@ -2313,6 +2598,10 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return nil
 	case *ast.MatchExpr:
 		return g.emitMatchAsExpr(v)
+	case *ast.Block:
+		return g.emitBlockAsExpr(v)
+	case *ast.IfExpr:
+		return g.emitIfExprAsValue(v)
 	case *ast.Field:
 		return g.emitField(v)
 	case *ast.Call:

@@ -377,6 +377,19 @@ func write(b *strings.Builder, n Node, depth int) {
 			write(b, v.Else, depth+2)
 			b.WriteByte(')')
 		}
+	case *IfExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Cond, depth+1)
+		b.WriteByte('\n')
+		write(b, v.ThenBlock, depth+1)
+		if v.Else != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(else\n")
+			write(b, v.Else, depth+2)
+			b.WriteByte(')')
+		}
 	case *ForStmt:
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')

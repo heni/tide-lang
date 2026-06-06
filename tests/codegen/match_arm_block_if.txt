@@ -1,0 +1,92 @@
+--- TITLE ---
+Match-arm bodies — block + if-expression arms, in value and statement position
+
+--- INPUT ---
+import fmt
+
+type Sig = | Stop | Slow | Go
+
+func label(s: Sig): string {
+  return match s {
+    Stop => {
+      let base = "h"
+      base
+    },
+    Slow => if true { "s" } else { "S" },
+    Go => "g",
+  }
+}
+
+func main() {
+  for i in 0..3 {
+    match i {
+      0 => {
+        fmt.println("a")
+        fmt.println("b")
+      },
+      _ => fmt.println("c"),
+    }
+  }
+  fmt.println(label(Go))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Sig struct {
+	Tag uint8
+}
+
+var (
+	SigStop = Sig{Tag: 0}
+	SigSlow = Sig{Tag: 1}
+	SigGo   = Sig{Tag: 2}
+)
+
+func label(s Sig) string {
+	return func() string {
+		switch s.Tag {
+		case 0:
+			return func() string {
+				var base = "h"
+				return base
+			}()
+		case 1:
+			return func() string {
+				if true {
+					return "s"
+				} else {
+					return "S"
+				}
+			}()
+		case 2:
+			return "g"
+		}
+		var __zero string
+		return __zero
+	}()
+}
+func main() {
+	for i := 0; i < 3; i++ {
+		switch i {
+		case 0:
+			fmt.Println("a")
+			fmt.Println("b")
+		default:
+			fmt.Println("c")
+		}
+	}
+	fmt.Println(label(SigGo))
+}
+
+--- STDOUT ---
+a
+b
+c
+c
+g
+
+--- EXIT ---
+0

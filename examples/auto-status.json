@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 49,
+    "parse_fail": 44,
     "sema_fail": 0,
-    "emit_fail": 0,
+    "emit_fail": 5,
     "build_ok": 3
   },
   "files": [
@@ -41,7 +41,7 @@
     {
       "path": "examples/aoc/2025/d07.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
     },
     {
       "path": "examples/aoc/2025/d08.td",
@@ -101,7 +101,7 @@
     {
       "path": "examples/concurrency/rate_limited.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected expression, got Punct \":\""
     },
     {
       "path": "examples/concurrency/select_showcase.td",
@@ -136,7 +136,7 @@
     {
       "path": "examples/interview/rpn_calculator.td",
       "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"if\" in expression"
+      "blocker": "error[E0112]: expected expression, got FloatLit \"0.0\""
     },
     {
       "path": "examples/interview/vending_machine.td",
@@ -225,18 +225,18 @@
     },
     {
       "path": "examples/timus/p1335.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1349.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1404.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1423.td",
@@ -245,8 +245,8 @@
     },
     {
       "path": "examples/timus/p1605.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1683.td",
@@ -255,13 +255,13 @@
     },
     {
       "path": "examples/timus/p1786.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/timus/p1820.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected pattern, got Punct \"(\""
     },
     {
       "path": "user_tests/leetcode_3131_idiomatic.td",

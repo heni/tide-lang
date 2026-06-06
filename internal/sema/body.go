@@ -46,12 +46,7 @@ func (c *checker) checkBodies(f *ast.File) {
 }
 
 func (c *checker) checkBlock(b *ast.Block) {
-	for _, s := range b.Stmts {
-		c.checkStmt(s)
-	}
-	if b.Trailing != nil {
-		c.inferExpr(b.Trailing)
-	}
+	c.inferBlock(b)
 }
 
 func (c *checker) checkStmt(s ast.Stmt) {

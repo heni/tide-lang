@@ -85,6 +85,15 @@ func (p *parser) skipNewlines() {
 	}
 }
 
+// skipStmtSeps consumes statement terminators between block
+// statements — newlines and `;` in any interleaving, per grammar.ebnf
+// Stmtterm = Newline+ | ";" Newline*.
+func (p *parser) skipStmtSeps() {
+	for p.at(lexer.KindNewline) || p.at(lexer.KindPunct, ";") {
+		p.pos++
+	}
+}
+
 func (p *parser) advance() lexer.Token {
 	t := p.peek()
 	p.pos++
@@ -673,14 +682,14 @@ func (p *parser) parseBlock() (*ast.Block, *Diag) {
 		return nil, err
 	}
 	blk := &ast.Block{}
-	p.skipNewlines()
+	p.skipStmtSeps()
 	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
 		s, err := p.parseStmt()
 		if err != nil {
 			return nil, err
 		}
 		blk.Stmts = append(blk.Stmts, s)
-		p.skipNewlines()
+		p.skipStmtSeps()
 	}
 	closeTok, err := p.expect(lexer.KindPunct, "}")
 	if err != nil {
@@ -691,6 +700,74 @@ func (p *parser) parseBlock() (*ast.Block, *Diag) {
 		EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
 	}
 	return blk, nil
+}
+
+// parseValueBlock parses a `{ ... }` block used in expression
+// position (block-as-expression, `if`/`match`-arm bodies). It is
+// `parseBlock` plus trailing-expression promotion: per grammar.ebnf
+// `Block = "{" ( Stmt Stmtterm )* TrailingExpr? "}"`, a final bare
+// expression (one not consumed as a statement-only form) becomes the
+// block's value. Diverging trailing forms (`return`) stay statements
+// — they have no value to yield.
+func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
+	blk, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	if n := len(blk.Stmts); n > 0 {
+		if es, ok := blk.Stmts[n-1].(*ast.ExprStmt); ok {
+			if _, diverges := es.Expr.(*ast.ReturnExpr); !diverges {
+				blk.Trailing = es.Expr
+				blk.Stmts = blk.Stmts[:n-1]
+			}
+		}
+	}
+	return blk, nil
+}
+
+// parseIfExpr parses `if Cond Block ( "else" ( IfExpr | Block ) )?`
+// in expression position. The `else` is syntactically optional here
+// (a value-position `if` without `else` yields unit); sema enforces
+// the both-arms-required rule when the result is consumed as a
+// value. Branch blocks are value-blocks so their trailing expression
+// becomes the branch value.
+func (p *parser) parseIfExpr() (*ast.IfExpr, *Diag) {
+	kw := p.advance() // consume 'if'
+	cond, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	then, err := p.parseValueBlock()
+	if err != nil {
+		return nil, err
+	}
+	ie := &ast.IfExpr{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: then.Span.EndLine, EndCol: then.Span.EndCol,
+		},
+		Cond:      cond,
+		ThenBlock: then,
+	}
+	if p.at(lexer.KindKeyword, "else") {
+		p.advance() // consume 'else'
+		if p.at(lexer.KindKeyword, "if") {
+			elseIf, err := p.parseIfExpr()
+			if err != nil {
+				return nil, err
+			}
+			ie.Else = elseIf
+			ie.Span.EndLine, ie.Span.EndCol = elseIf.Span.EndLine, elseIf.Span.EndCol
+		} else {
+			elseBlk, err := p.parseValueBlock()
+			if err != nil {
+				return nil, err
+			}
+			ie.Else = elseBlk
+			ie.Span.EndLine, ie.Span.EndCol = elseBlk.Span.EndLine, elseBlk.Span.EndCol
+		}
+	}
+	return ie, nil
 }
 
 func (p *parser) parseStmt() (ast.Stmt, *Diag) {
@@ -1432,6 +1509,8 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			return &ast.BoolLitExpr{Span: spanFromToken(t), Value: false}, nil
 		case "match":
 			return p.parseMatchExpr()
+		case "if":
+			return p.parseIfExpr()
 		case "this":
 			p.advance()
 			return &ast.ThisExpr{Span: spanFromToken(t)}, nil
@@ -1467,6 +1546,12 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		}
 		if t.Lexeme == "[" {
 			return p.parseSliceLit()
+		}
+		if t.Lexeme == "{" {
+			// Block-as-expression. Only reached in true expression
+			// position — control-flow headers consume their `{`
+			// through parseBlock, never through parsePrimary.
+			return p.parseValueBlock()
 		}
 	}
 	return nil, p.diag("E0112",
@@ -1785,6 +1870,7 @@ func isCapitalised(s string) bool {
 // parseSliceLit parses either of:
 //   - `[expr, expr, ...]`         — inferred-element-type form
 //   - `[]T{}` or `[]T{e1, ...}`   — annotated-type form
+//
 // The cursor is at the leading `[`.
 func (p *parser) parseSliceLit() (*ast.SliceLit, *Diag) {
 	openTok := p.advance() // consume '['

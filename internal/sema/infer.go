@@ -40,6 +40,10 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = c.inferBinary(v)
 	case *ast.Unary:
 		t = c.inferUnary(v)
+	case *ast.Block:
+		t = c.inferBlock(v)
+	case *ast.IfExpr:
+		t = c.inferIfExpr(v)
 	case *ast.MatchExpr:
 		t = c.inferMatch(v)
 	case *ast.ReturnExpr:
@@ -368,6 +372,39 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 		}
 	}
 	return result
+}
+
+// inferBlock checks a block's statements and yields its value: the
+// trailing expression's type, or unit when there is none. It is the
+// single implementation behind both block-as-expression typing and
+// statement-position block checking (checkBlock).
+func (c *checker) inferBlock(b *ast.Block) Type {
+	for _, s := range b.Stmts {
+		c.checkStmt(s)
+	}
+	if b.Trailing != nil {
+		return c.inferExpr(b.Trailing)
+	}
+	return &Unit{}
+}
+
+// inferIfExpr types an `if`-expression. The result is the branch
+// type when concrete; an `if` with no `else`, or with disagreeing /
+// non-concrete branches, stays conservative-Unknown so no false
+// positive fires (branch-agreement is a later Barrier-D concern).
+func (c *checker) inferIfExpr(e *ast.IfExpr) Type {
+	c.inferExpr(e.Cond)
+	thenT := c.inferBlock(e.ThenBlock)
+	switch x := e.Else.(type) {
+	case *ast.IfExpr:
+		c.inferIfExpr(x)
+	case *ast.Block:
+		c.inferBlock(x)
+	}
+	if concrete(thenT) {
+		return thenT
+	}
+	return &Unknown{}
 }
 
 // checkReturn fires E0203 when a `return e` value disagrees with

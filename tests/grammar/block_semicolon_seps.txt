@@ -1,0 +1,26 @@
+--- TITLE ---
+Block statements separated by `;` (Stmtterm = ";" Newline*) — two lets on one line
+
+--- INPUT ---
+func main() {
+  let a = 1; let b = 2
+  foo(a, b)
+}
+
+--- AST ---
+(File @1:1-4:2
+  (FuncDecl "main" @1:1-4:2
+    (type-params)
+    (params)
+    (Block @1:13-4:2
+      (LetStmt @2:3-2:12
+        (IdentPat "a" @2:7-2:8)
+        (IntLitExpr 1 @2:11-2:12))
+      (LetStmt @2:14-2:23
+        (IdentPat "b" @2:18-2:19)
+        (IntLitExpr 2 @2:22-2:23))
+      (ExprStmt @3:3-3:12
+        (Call @3:3-3:12
+          (Ident "foo" @3:3-3:6)
+          (Ident "a" @3:7-3:8)
+          (Ident "b" @3:10-3:11))))))
