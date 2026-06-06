@@ -268,6 +268,41 @@ func main() {
 	}
 }
 
+func TestTupleTypingNoFalsePositive(t *testing.T) {
+	// Tuple type in a signature, tuple literal, `.N` field access,
+	// and a `for (i, v)` destructuring loop all type cleanly.
+	src := `import fmt
+func swap(p: (int, string)): (string, int) {
+  return (p.1, p.0)
+}
+func main() {
+  let s = swap((1, "a"))
+  fmt.println(s.0, s.1)
+  for (i, v) in ["x", "y"] {
+    fmt.println(i, v)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (tuples), got %v", codes)
+	}
+}
+
+func TestTuplePatternForMapResolves(t *testing.T) {
+	src := `import fmt
+func main() {
+  let m = Map<string, int>.new()
+  m["a"] = 1
+  for (k, v) in m {
+    fmt.println(k, v)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (for (k,v) over map), got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

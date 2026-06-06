@@ -1,0 +1,53 @@
+--- TITLE ---
+Tuples — anonymous-struct lowering: types, literal, .N access, for (i, v) over a slice
+
+--- INPUT ---
+import fmt
+
+func swap(p: (int, string)): (string, int) {
+  return (p.1, p.0)
+}
+
+func main() {
+  let s = swap((1, "a"))
+  fmt.println(s.0, s.1)
+  for (i, v) in ["x", "y"] {
+    fmt.println(i, v)
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func swap(p struct {
+	_0 int
+	_1 string
+}) struct {
+	_0 string
+	_1 int
+} {
+	return struct {
+		_0 string
+		_1 int
+	}{_0: p._1, _1: p._0}
+}
+func main() {
+	var s = swap(struct {
+		_0 int
+		_1 string
+	}{_0: 1, _1: "a"})
+	fmt.Println(s._0, s._1)
+	for i, v := range []string{"x", "y"} {
+		fmt.Println(i, v)
+	}
+}
+
+--- STDOUT ---
+a 1
+0 x
+1 y
+
+--- EXIT ---
+0

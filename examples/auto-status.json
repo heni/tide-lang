@@ -2,10 +2,10 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 43,
+    "parse_fail": 39,
     "sema_fail": 0,
-    "emit_fail": 0,
-    "build_ok": 9
+    "emit_fail": 3,
+    "build_ok": 10
   },
   "files": [
     {
@@ -21,22 +21,22 @@
     {
       "path": "examples/aoc/2025/d02.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
     },
     {
       "path": "examples/aoc/2025/d03.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected loop variable name"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/aoc/2025/d04.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/aoc/2025/d05.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
     },
     {
       "path": "examples/aoc/2025/d07.td",
@@ -46,12 +46,12 @@
     {
       "path": "examples/aoc/2025/d08.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected expression, got Punct \":\""
     },
     {
       "path": "examples/aoc/2025/d09.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected field name after `.`"
     },
     {
       "path": "examples/aoc/2025/d11.td",
@@ -81,7 +81,7 @@
     {
       "path": "examples/borgo/match_on_tuples.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Punct \",\""
+      "blocker": "error[E0112]: expected expression, got Punct \")\""
     },
     {
       "path": "examples/concurrency/nested_scopes.td",
@@ -141,7 +141,7 @@
     {
       "path": "examples/interview/vending_machine.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Punct \",\""
+      "blocker": "error[E0112]: expected expression, got Newline \"\""
     },
     {
       "path": "examples/leetcode/invert_binary_tree.td",
@@ -161,7 +161,7 @@
     {
       "path": "examples/leetcode/two_sum.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
     },
     {
       "path": "examples/leetcode/valid_parentheses.td",
@@ -171,7 +171,7 @@
     {
       "path": "examples/raku/deep_destructure.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
     },
     {
       "path": "examples/raku/error_chain.td",
@@ -211,12 +211,12 @@
     {
       "path": "examples/timus/p1033.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"let\""
     },
     {
       "path": "examples/timus/p1133.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+      "blocker": "error[E0112]: expected parameter name"
     },
     {
       "path": "examples/timus/p1242.td",
@@ -240,8 +240,8 @@
     },
     {
       "path": "examples/timus/p1423.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected loop variable name"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/timus/p1605.td",
@@ -260,8 +260,8 @@
     },
     {
       "path": "examples/timus/p1820.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected pattern, got Punct \"(\""
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "user_tests/leetcode_3131_idiomatic.td",

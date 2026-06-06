@@ -79,6 +79,19 @@ type Stack struct{ Elem Type }
 func (*Stack) typeMarker()      {}
 func (s *Stack) String() string { return "Stack<" + s.Elem.String() + ">" }
 
+// Tuple — `(A, B, ...)`, arity ≥ 2. Structural identity: two tuples
+// are equal iff their components are pairwise equal.
+type Tuple struct{ Comps []Type }
+
+func (*Tuple) typeMarker() {}
+func (t *Tuple) String() string {
+	parts := make([]string, len(t.Comps))
+	for i, c := range t.Comps {
+		parts[i] = c.String()
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
 // Dynamic — the runtime-erased reflection wrapper (RFC-0003 / D18).
 // Governed by the introduction whitelist in dynamic.go; equality
 // is nominal (only Dynamic equals Dynamic).
@@ -193,6 +206,17 @@ func equal(a, b Type) bool {
 	case *Stack:
 		y, ok := b.(*Stack)
 		return ok && equal(x.Elem, y.Elem)
+	case *Tuple:
+		y, ok := b.(*Tuple)
+		if !ok || len(x.Comps) != len(y.Comps) {
+			return false
+		}
+		for i := range x.Comps {
+			if !equal(x.Comps[i], y.Comps[i]) {
+				return false
+			}
+		}
+		return true
 	default:
 		return false
 	}
@@ -216,6 +240,14 @@ func comparable(t Type) bool {
 		// nominal types are comparable by tag / field-wise.
 		if _, isClass := x.Decl.(*ast.ClassDecl); isClass {
 			return false
+		}
+		return true
+	case *Tuple:
+		// A tuple is comparable iff every component is.
+		for _, c := range x.Comps {
+			if concrete(c) && !comparable(c) {
+				return false
+			}
 		}
 		return true
 	case *Slice, *Map, *Set, *Stack, *Func, *Never:

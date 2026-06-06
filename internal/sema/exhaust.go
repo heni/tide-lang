@@ -116,6 +116,8 @@ func (c *checker) definitelyNotTryable(rt ast.TypeExpr) bool {
 		return true
 	case *ast.SliceType:
 		return true
+	case *ast.TupleType:
+		return true
 	case *ast.NamedType:
 		if len(v.QName) == 0 {
 			return false

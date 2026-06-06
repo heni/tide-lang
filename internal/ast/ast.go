@@ -241,6 +241,16 @@ func (n *SliceType) NodeSpan() Span   { return n.Span }
 func (n *SliceType) NodeKind() string { return "SliceType" }
 func (n *SliceType) typeMarker()      {}
 
+// TupleType — `(A, B, ...)`. Per ast.md §TypeExpr; arity ≥ 2.
+type TupleType struct {
+	Span       Span
+	Components []TypeExpr
+}
+
+func (n *TupleType) NodeSpan() Span   { return n.Span }
+func (n *TupleType) NodeKind() string { return "TupleType" }
+func (n *TupleType) typeMarker()      {}
+
 // NamedType is a possibly-qualified identifier (`Result`,
 // `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1. Args is empty
 // when the type carries no generic arguments.
@@ -415,6 +425,17 @@ type WildcardPat struct {
 func (n *WildcardPat) NodeSpan() Span   { return n.Span }
 func (n *WildcardPat) NodeKind() string { return "WildcardPat" }
 func (n *WildcardPat) patternMarker()   {}
+
+// TuplePat — `(p1, p2, ...)`. Per ast.md §Pattern; arity ≥ 2.
+// Destructures a tuple, binding each sub-pattern to a component.
+type TuplePat struct {
+	Span Span
+	Sub  []Pattern
+}
+
+func (n *TuplePat) NodeSpan() Span   { return n.Span }
+func (n *TuplePat) NodeKind() string { return "TuplePat" }
+func (n *TuplePat) patternMarker()   {}
 
 // IntLitPat — match against a literal integer.
 type IntLitPat struct {
@@ -698,6 +719,28 @@ type ContinueExpr struct {
 func (n *ContinueExpr) NodeSpan() Span   { return n.Span }
 func (n *ContinueExpr) NodeKind() string { return "ContinueExpr" }
 func (n *ContinueExpr) exprMarker()      {}
+
+// TupleLit — `(e1, e2, ...)`. Per ast.md §Expr; arity ≥ 2.
+type TupleLit struct {
+	Span       Span
+	Components []Expr
+}
+
+func (n *TupleLit) NodeSpan() Span   { return n.Span }
+func (n *TupleLit) NodeKind() string { return "TupleLit" }
+func (n *TupleLit) exprMarker()      {}
+
+// TupleField — `recv.N` tuple element access (position ≥ 0). Per
+// ast.md §Expr; distinct from Field (which has a name).
+type TupleField struct {
+	Span     Span
+	Receiver Expr
+	Position int
+}
+
+func (n *TupleField) NodeSpan() Span   { return n.Span }
+func (n *TupleField) NodeKind() string { return "TupleField" }
+func (n *TupleField) exprMarker()      {}
 
 // ParenExpr — `( inner )`. Per ast.md §Expr. Preserved as a node
 // (not flattened to `inner`) so codegen reproduces the author's

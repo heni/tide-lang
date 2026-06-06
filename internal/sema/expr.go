@@ -43,6 +43,12 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		c.resolveExpr(v.Operand, scope)
 	case *ast.ParenExpr:
 		c.resolveExpr(v.Inner, scope)
+	case *ast.TupleLit:
+		for _, ce := range v.Components {
+			c.resolveExpr(ce, scope)
+		}
+	case *ast.TupleField:
+		c.resolveExpr(v.Receiver, scope)
 	case *ast.SliceLit:
 		c.resolveTypeExpr(v.ElemType, scope)
 		for _, it := range v.Items {

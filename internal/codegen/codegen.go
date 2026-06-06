@@ -1151,6 +1151,12 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.Receiver)
 		case *ast.ParenExpr:
 			walk(v.Inner)
+		case *ast.TupleLit:
+			for _, ce := range v.Components {
+				walk(ce)
+			}
+		case *ast.TupleField:
+			walk(v.Receiver)
 		case *ast.Binary:
 			walk(v.Left)
 			walk(v.Right)
@@ -1170,6 +1176,10 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			}
 		case *ast.SliceType:
 			walk(v.Elem)
+		case *ast.TupleType:
+			for _, ct := range v.Components {
+				walk(ct)
+			}
 		case *ast.RangeExpr:
 			walk(v.Low)
 			walk(v.High)
@@ -1440,6 +1450,25 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 	case *ast.SliceType:
 		g.b.WriteString("[]")
 		return g.emitTypeExpr(v.Elem)
+	case *ast.TupleType:
+		// Tuples lower to anonymous Go structs with positional
+		// fields `_0`, `_1`, … — structurally typed, so equal-shape
+		// tuples share a Go type without a named declaration
+		// (lowering-go.md §Tuple lowering).
+		g.b.WriteString("struct { ")
+		for i, ct := range v.Components {
+			if i > 0 {
+				g.b.WriteString("; ")
+			}
+			g.b.WriteString("_")
+			g.b.WriteString(strconv.Itoa(i))
+			g.b.WriteByte(' ')
+			if err := g.emitTypeExpr(ct); err != nil {
+				return err
+			}
+		}
+		g.b.WriteString(" }")
+		return nil
 	case *ast.NamedType:
 		// Per G16 / lowering-go.md §Implicit receiver, classes
 		// are reference types — a NamedType naming a class in
@@ -2020,6 +2049,39 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 // primitives map 1:1 (lowering-go.md §Primitive type lowering);
 // classes are reference types (`*T`). Shapes outside this set return
 // false — the caller then reports an un-inferrable arm result.
+// emitTupleLit lowers `(e0, e1, …)` to an anonymous Go struct
+// literal `struct { _0 T0; … }{ _0: e0, … }`. The struct type comes
+// from sema's inferred Tuple type so the literal shares its Go type
+// with any matching annotation / field access.
+func (g *gen) emitTupleLit(t *ast.TupleLit) error {
+	var structType string
+	if g.info != nil {
+		if tt, ok := g.info.Type[t].(*sema.Tuple); ok {
+			if s, ok := g.goTypeFromSema(tt); ok {
+				structType = s
+			}
+		}
+	}
+	if structType == "" {
+		return fmt.Errorf("codegen: cannot infer Go type for tuple literal — annotate the binding")
+	}
+	g.b.WriteString(structType)
+	g.b.WriteByte('{')
+	for i, ce := range t.Components {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		g.b.WriteString("_")
+		g.b.WriteString(strconv.Itoa(i))
+		g.b.WriteString(": ")
+		if err := g.emitExpr(ce); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte('}')
+	return nil
+}
+
 func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 	switch v := t.(type) {
 	case *sema.Builtin:
@@ -2038,6 +2100,24 @@ func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 		if elem, ok := g.goTypeFromSema(v.Elem); ok {
 			return "[]" + elem, true
 		}
+	case *sema.Tuple:
+		var sb strings.Builder
+		sb.WriteString("struct { ")
+		for i, c := range v.Comps {
+			ct, ok := g.goTypeFromSema(c)
+			if !ok {
+				return "", false
+			}
+			if i > 0 {
+				sb.WriteString("; ")
+			}
+			sb.WriteString("_")
+			sb.WriteString(strconv.Itoa(i))
+			sb.WriteByte(' ')
+			sb.WriteString(ct)
+		}
+		sb.WriteString(" }")
+		return sb.String(), true
 	}
 	return "", false
 }
@@ -2495,7 +2575,99 @@ func (g *gen) emitWhileStmt(s *ast.WhileStmt) error {
 	return nil
 }
 
+// patGoName renders a for-loop sub-pattern as a Go binding: the
+// identifier name, or `_` for a wildcard. Other shapes are rejected.
+func patGoName(p ast.Pattern) (string, error) {
+	switch v := p.(type) {
+	case *ast.IdentPat:
+		return goIdent(v.Name), nil
+	case *ast.WildcardPat:
+		return "_", nil
+	}
+	return "", fmt.Errorf("codegen: for-loop tuple component must be a name or `_`, got %T", p)
+}
+
+// emitForTuple lowers `for (a, b) in coll { … }`. For a Map it walks
+// the insertion-order key slice and indexes the value (deterministic,
+// like the single-key form); for slices/other it uses Go's native
+// `range` index/value pair.
+func (g *gen) emitForTuple(s *ast.ForStmt, tp *ast.TuplePat) error {
+	if len(tp.Sub) != 2 {
+		return fmt.Errorf("codegen: tuple-pattern for-loop supports exactly 2 components, got %d", len(tp.Sub))
+	}
+	a, err := patGoName(tp.Sub[0])
+	if err != nil {
+		return err
+	}
+	b, err := patGoName(tp.Sub[1])
+	if err != nil {
+		return err
+	}
+	iterExpr, ok := s.Iterable.(ast.Expr)
+	if !ok {
+		return fmt.Errorf("codegen: tuple-pattern for-loop needs a collection iterable, got %T", s.Iterable)
+	}
+	g.line(s.Span.StartLine)
+	g.writeIndent()
+	if id, ok := iterExpr.(*ast.Ident); ok && g.varKindOf(id) == "Map" {
+		// `for (k, v) in m` — deterministic over insertion order; the
+		// value is fetched per key. A `_` key still needs a name to
+		// index with when the value is bound.
+		keyVar := a
+		if keyVar == "_" && b != "_" {
+			keyVar = g.nextMatchTemp()
+		}
+		g.b.WriteString("for _, ")
+		g.b.WriteString(keyVar)
+		g.b.WriteString(" := range ")
+		if err := g.emitExpr(id); err != nil {
+			return err
+		}
+		g.b.WriteString(".order {\n")
+		g.indent++
+		if b != "_" {
+			g.writeIndent()
+			g.b.WriteString(b)
+			g.b.WriteString(" := ")
+			if err := g.emitExpr(id); err != nil {
+				return err
+			}
+			g.b.WriteString(".m[")
+			g.b.WriteString(keyVar)
+			g.b.WriteString("]\n")
+		}
+		if err := g.emitBlockBody(s.Body); err != nil {
+			return err
+		}
+		g.indent--
+		g.writeIndent()
+		g.b.WriteString("}\n")
+		return nil
+	}
+	// Slice / other collection — Go-native index/value range.
+	g.b.WriteString("for ")
+	g.b.WriteString(a)
+	g.b.WriteString(", ")
+	g.b.WriteString(b)
+	g.b.WriteString(" := range ")
+	if err := g.emitExpr(iterExpr); err != nil {
+		return err
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitBlockBody(s.Body); err != nil {
+		return err
+	}
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}\n")
+	return nil
+}
+
 func (g *gen) emitForStmt(s *ast.ForStmt) error {
+	if tp, ok := s.Pattern.(*ast.TuplePat); ok {
+		return g.emitForTuple(s, tp)
+	}
 	g.line(s.Span.StartLine)
 	g.writeIndent()
 	idPat, ok := s.Pattern.(*ast.IdentPat)
@@ -2699,6 +2871,15 @@ func (g *gen) emitExpr(e ast.Expr) error {
 			return err
 		}
 		g.b.WriteByte(')')
+		return nil
+	case *ast.TupleLit:
+		return g.emitTupleLit(v)
+	case *ast.TupleField:
+		if err := g.emitExpr(v.Receiver); err != nil {
+			return err
+		}
+		g.b.WriteString("._")
+		g.b.WriteString(strconv.Itoa(v.Position))
 		return nil
 	case *ast.BreakExpr, *ast.ContinueExpr:
 		// Diverging loop expressions lower to statements, not Go

@@ -236,6 +236,24 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Elem, depth+1)
+	case *TupleType:
+		writeSpan(b, v.Span)
+		for _, c := range v.Components {
+			b.WriteByte('\n')
+			write(b, c, depth+1)
+		}
+	case *TupleLit:
+		writeSpan(b, v.Span)
+		for _, c := range v.Components {
+			b.WriteByte('\n')
+			write(b, c, depth+1)
+		}
+	case *TupleField:
+		b.WriteByte(' ')
+		b.WriteString(strconv.Itoa(v.Position))
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Receiver, depth+1)
 	case *SliceLit:
 		writeSpan(b, v.Span)
 		if v.ElemType != nil {
@@ -321,6 +339,12 @@ func write(b *strings.Builder, n Node, depth int) {
 		write(b, v.Pattern, depth+1)
 		b.WriteByte('\n')
 		write(b, v.Body, depth+1)
+	case *TuplePat:
+		writeSpan(b, v.Span)
+		for _, s := range v.Sub {
+			b.WriteByte('\n')
+			write(b, s, depth+1)
+		}
 	case *WildcardPat:
 		writeSpan(b, v.Span)
 	case *IntLitPat:

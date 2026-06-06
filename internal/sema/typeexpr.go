@@ -32,6 +32,12 @@ func (c *checker) typeFromExprSeen(t ast.TypeExpr, seen map[string]bool) Type {
 		return &Builtin{N: v.Name}
 	case *ast.SliceType:
 		return &Slice{Elem: c.typeFromExprSeen(v.Elem, seen)}
+	case *ast.TupleType:
+		comps := make([]Type, len(v.Components))
+		for i, ce := range v.Components {
+			comps[i] = c.typeFromExprSeen(ce, seen)
+		}
+		return &Tuple{Comps: comps}
 	case *ast.NamedType:
 		return c.namedTypeToType(v, seen)
 	default:

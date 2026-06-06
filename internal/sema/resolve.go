@@ -222,6 +222,10 @@ func (c *checker) bindPattern(p ast.Pattern, scope *Scope, decl any) {
 		for _, sub := range v.Sub {
 			c.bindPattern(sub, scope, decl)
 		}
+	case *ast.TuplePat:
+		for _, sub := range v.Sub {
+			c.bindPattern(sub, scope, decl)
+		}
 	}
 }
 
@@ -244,5 +248,9 @@ func (c *checker) resolveTypeExpr(t ast.TypeExpr, scope *Scope) {
 		}
 	case *ast.SliceType:
 		c.resolveTypeExpr(v.Elem, scope)
+	case *ast.TupleType:
+		for _, ct := range v.Components {
+			c.resolveTypeExpr(ct, scope)
+		}
 	}
 }

@@ -85,6 +85,12 @@ func aliasRefs(t ast.TypeExpr) []string {
 		return out
 	case *ast.SliceType:
 		return aliasRefs(v.Elem)
+	case *ast.TupleType:
+		var out []string
+		for _, ct := range v.Components {
+			out = append(out, aliasRefs(ct)...)
+		}
+		return out
 	case *ast.PrimitiveType:
 		return nil
 	default:

@@ -97,6 +97,10 @@ func (c *checker) checkTypeArity(t ast.TypeExpr, scope *Scope) {
 		}
 	case *ast.SliceType:
 		c.checkTypeArity(v.Elem, scope)
+	case *ast.TupleType:
+		for _, ct := range v.Components {
+			c.checkTypeArity(ct, scope)
+		}
 	case *ast.PrimitiveType:
 		// no args
 	default:

@@ -588,6 +588,39 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 // `Map<string, int>` parse cleanly), even though the only
 // type-bearing positions in PR-F1's corpus use bare primitives.
 func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
+	// TupleType: `(A, B, ...)` — arity ≥ 2.
+	if p.at(lexer.KindPunct, "(") {
+		open := p.advance() // consume '('
+		p.skipNewlines()
+		var comps []ast.TypeExpr
+		for !p.at(lexer.KindPunct, ")") && !p.at(lexer.KindEOF) {
+			c, err := p.parseTypeExpr()
+			if err != nil {
+				return nil, err
+			}
+			comps = append(comps, c)
+			p.skipNewlines()
+			if !p.at(lexer.KindPunct, ",") {
+				break
+			}
+			p.advance() // consume ','
+			p.skipNewlines()
+		}
+		closeTok, err := p.expect(lexer.KindPunct, ")")
+		if err != nil {
+			return nil, err
+		}
+		if len(comps) < 2 {
+			return nil, p.diag("E0112", "tuple type needs at least two components", open.Line, open.Col)
+		}
+		return &ast.TupleType{
+			Span: ast.Span{
+				StartLine: open.Line, StartCol: open.Col,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+			},
+			Components: comps,
+		}, nil
+	}
 	// SliceType: `[]T`.
 	if p.at(lexer.KindPunct, "[") {
 		openTok := p.advance() // consume '['
@@ -992,15 +1025,15 @@ func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
 
 func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 	kw := p.advance() // consume 'for'
-	if !p.at(lexer.KindIdent) {
+	// Loop variable is a pattern: a bare name, or a tuple pattern
+	// `for (k, v) in m` for key/value (or paired) iteration.
+	if !p.at(lexer.KindIdent) && !p.at(lexer.KindPunct, "(") {
 		t := p.peek()
-		return nil, p.diag("E0112", "expected loop variable name", t.Line, t.Col)
+		return nil, p.diag("E0112", "expected loop variable name or tuple pattern", t.Line, t.Col)
 	}
-	id := p.advance()
-	var pat ast.Pattern = &ast.IdentPat{
-		Span: ast.Span{StartLine: id.Line, StartCol: id.Col,
-			EndLine: id.Line, EndCol: id.Col + len(id.Lexeme)},
-		Name: id.Lexeme,
+	pat, err := p.parsePattern()
+	if err != nil {
+		return nil, err
 	}
 	if _, err := p.expect(lexer.KindKeyword, "in"); err != nil {
 		return nil, err
@@ -1283,6 +1316,23 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 			}
 		case p.at(lexer.KindPunct, "."):
 			p.advance()
+			// `.N` (integer) is tuple-field access; `.name` is a field.
+			if p.at(lexer.KindIntLit) {
+				idxTok := p.advance()
+				pos, perr := strconv.Atoi(idxTok.Lexeme)
+				if perr != nil {
+					return nil, p.diag("E0112", "malformed tuple index", idxTok.Line, idxTok.Col)
+				}
+				e = &ast.TupleField{
+					Span: ast.Span{
+						StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+						EndLine: idxTok.Line, EndCol: idxTok.Col + len(idxTok.Lexeme),
+					},
+					Receiver: e,
+					Position: pos,
+				}
+				break
+			}
 			if !p.at(lexer.KindIdent) {
 				t := p.peek()
 				return nil, p.diag("E0112", "expected field name after `.`", t.Line, t.Col)
@@ -1569,9 +1619,38 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 	case lexer.KindPunct:
 		if t.Lexeme == "(" {
 			open := p.advance()
+			p.skipNewlines()
 			e, err := p.parseExpr()
 			if err != nil {
 				return nil, err
+			}
+			// `(e, e, ...)` is a tuple literal; `(e)` is grouping.
+			if p.at(lexer.KindPunct, ",") {
+				comps := []ast.Expr{e}
+				for p.at(lexer.KindPunct, ",") {
+					p.advance() // consume ','
+					p.skipNewlines()
+					if p.at(lexer.KindPunct, ")") {
+						break // trailing comma
+					}
+					c, err := p.parseExpr()
+					if err != nil {
+						return nil, err
+					}
+					comps = append(comps, c)
+					p.skipNewlines()
+				}
+				closeTok, err := p.expect(lexer.KindPunct, ")")
+				if err != nil {
+					return nil, err
+				}
+				return &ast.TupleLit{
+					Span: ast.Span{
+						StartLine: open.Line, StartCol: open.Col,
+						EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+					},
+					Components: comps,
+				}, nil
 			}
 			closeTok, err := p.expect(lexer.KindPunct, ")")
 			if err != nil {
@@ -1787,11 +1866,43 @@ func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 }
 
 // parsePattern admits IdentPat, WildcardPat (`_`),
-// IntLitPat, StringLitPat, BoolLitPat, and VariantPat (with
-// optional payload subpatterns). Tuple, record, AltPat land
-// later.
+// IntLitPat, StringLitPat, BoolLitPat, TuplePat, and VariantPat
+// (with optional payload subpatterns). Record, AltPat land later.
 func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 	t := p.peek()
+	// TuplePat: `(p1, p2, ...)` — arity ≥ 2.
+	if t.Kind == lexer.KindPunct && t.Lexeme == "(" {
+		open := p.advance() // consume '('
+		p.skipNewlines()
+		var sub []ast.Pattern
+		for !p.at(lexer.KindPunct, ")") && !p.at(lexer.KindEOF) {
+			sp, err := p.parsePattern()
+			if err != nil {
+				return nil, err
+			}
+			sub = append(sub, sp)
+			p.skipNewlines()
+			if !p.at(lexer.KindPunct, ",") {
+				break
+			}
+			p.advance() // consume ','
+			p.skipNewlines()
+		}
+		closeTok, err := p.expect(lexer.KindPunct, ")")
+		if err != nil {
+			return nil, err
+		}
+		if len(sub) < 2 {
+			return nil, p.diag("E0112", "tuple pattern needs at least two components", open.Line, open.Col)
+		}
+		return &ast.TuplePat{
+			Span: ast.Span{
+				StartLine: open.Line, StartCol: open.Col,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+			},
+			Sub: sub,
+		}, nil
+	}
 	switch t.Kind {
 	case lexer.KindIdent:
 		// Could be IdentPat or VariantPat. PR-F2 uses

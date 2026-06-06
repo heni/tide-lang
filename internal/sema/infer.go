@@ -42,6 +42,19 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = c.inferUnary(v)
 	case *ast.ParenExpr:
 		t = c.inferExpr(v.Inner)
+	case *ast.TupleLit:
+		comps := make([]Type, len(v.Components))
+		for i, ce := range v.Components {
+			comps[i] = c.inferExpr(ce)
+		}
+		t = &Tuple{Comps: comps}
+	case *ast.TupleField:
+		rt := c.inferExpr(v.Receiver)
+		if tup, ok := rt.(*Tuple); ok && v.Position >= 0 && v.Position < len(tup.Comps) {
+			t = tup.Comps[v.Position]
+		} else {
+			t = &Unknown{}
+		}
 	case *ast.Block:
 		t = c.inferBlock(v)
 	case *ast.IfExpr:
