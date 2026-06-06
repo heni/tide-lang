@@ -2645,6 +2645,12 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return g.emitBlockAsExpr(v)
 	case *ast.IfExpr:
 		return g.emitIfExprAsValue(v)
+	case *ast.BreakExpr, *ast.ContinueExpr:
+		// Diverging loop expressions lower to statements, not Go
+		// expressions — they're handled in emitStmt. Reaching here
+		// means one was used in value position (e.g. a value-arm
+		// `match x { A => break }`), which v1 codegen does not lower.
+		return fmt.Errorf("codegen: `break`/`continue` is not usable in value position")
 	case *ast.Field:
 		return g.emitField(v)
 	case *ast.Call:
