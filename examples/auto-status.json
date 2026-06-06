@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "totals": {
+    "total": 53,
+    "parse_fail": 49,
+    "sema_fail": 0,
+    "emit_fail": 0,
+    "build_ok": 4
+  },
+  "files": [
+    {
+      "path": "examples/agents/counterstack/pentix_agent.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"let\""
+    },
+    {
+      "path": "examples/aoc/2025/d01.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/aoc/2025/d02.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/aoc/2025/d03.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"continue\" in expression"
+    },
+    {
+      "path": "examples/aoc/2025/d04.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"continue\" in expression"
+    },
+    {
+      "path": "examples/aoc/2025/d05.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/aoc/2025/d07.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/aoc/2025/d08.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/aoc/2025/d09.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/aoc/2025/d11.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+    },
+    {
+      "path": "examples/borgo/concurrency.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+    },
+    {
+      "path": "examples/borgo/defer_demo.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"defer\" in expression"
+    },
+    {
+      "path": "examples/borgo/errors_as_types.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+    },
+    {
+      "path": "examples/borgo/interfaces.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"interface\""
+    },
+    {
+      "path": "examples/borgo/match_on_tuples.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected Punct \")\", got Punct \",\""
+    },
+    {
+      "path": "examples/concurrency/nested_scopes.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/concurrency/pipeline.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+    },
+    {
+      "path": "examples/concurrency/pubsub.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+    },
+    {
+      "path": "examples/concurrency/rate_limited.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/concurrency/select_showcase.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"unit\" in expression"
+    },
+    {
+      "path": "examples/concurrency/worker_pool.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/hello.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/interview/config_loader.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/interview/fizzbuzz.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/interview/lru_cache.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+    },
+    {
+      "path": "examples/interview/rpn_calculator.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"if\" in expression"
+    },
+    {
+      "path": "examples/interview/vending_machine.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected Punct \")\", got Punct \",\""
+    },
+    {
+      "path": "examples/leetcode/invert_binary_tree.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected Op \"=\", got Op \"<\""
+    },
+    {
+      "path": "examples/leetcode/merge_intervals.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/leetcode/reverse_linked_list.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"while\" in expression"
+    },
+    {
+      "path": "examples/leetcode/two_sum.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/leetcode/valid_parentheses.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected pattern, got RuneLit \"')'\""
+    },
+    {
+      "path": "examples/raku/deep_destructure.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/raku/error_chain.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+    },
+    {
+      "path": "examples/raku/set_algebra.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+    },
+    {
+      "path": "examples/services/graceful_server.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+    },
+    {
+      "path": "examples/services/healthcheck_server.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+    },
+    {
+      "path": "examples/services/parallel_fetcher.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/services/todo_api.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/services/wc.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1033.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/timus/p1133.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"(\""
+    },
+    {
+      "path": "examples/timus/p1242.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1335.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1349.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1404.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1423.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"while\" in expression"
+    },
+    {
+      "path": "examples/timus/p1605.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1683.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: unexpected keyword \"while\" in expression"
+    },
+    {
+      "path": "examples/timus/p1786.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "examples/timus/p1820.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \"{\""
+    },
+    {
+      "path": "user_tests/leetcode_3131.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "user_tests/leetcode_3131_idiomatic.td",
+      "stage": "build",
+      "blocker": ""
+    }
+  ]
+}
