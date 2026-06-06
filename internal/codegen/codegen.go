@@ -1904,6 +1904,11 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 	switch v := t.(type) {
 	case *sema.Builtin:
+		// `unit` has no first-class Go spelling — a unit-valued
+		// block as a value is rejected rather than emitting `unit`.
+		if v.N == "unit" {
+			return "", false
+		}
 		return v.N, true
 	case *sema.Named:
 		if _, isClass := g.class[v.N]; isClass {

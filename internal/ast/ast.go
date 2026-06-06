@@ -618,8 +618,9 @@ func (n *Slice) NodeKind() string { return "Slice" }
 func (n *Slice) exprMarker()      {}
 
 // IfExpr — `if cond { ... } else { ... }` in value position. Per
-// ast.md §Expr; the value form requires both arms (else non-nil) —
-// sema enforces that when the result is used as a value.
+// ast.md §Expr the value form requires both arms (else non-nil);
+// that rule is enforced at lowering today (codegen rejects an
+// else-less value `if`), with the Barrier-D diagnostic a follow-up.
 type IfExpr struct {
 	Span      Span
 	Cond      Expr

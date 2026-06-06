@@ -727,10 +727,12 @@ func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
 
 // parseIfExpr parses `if Cond Block ( "else" ( IfExpr | Block ) )?`
 // in expression position. The `else` is syntactically optional here
-// (a value-position `if` without `else` yields unit); sema enforces
-// the both-arms-required rule when the result is consumed as a
-// value. Branch blocks are value-blocks so their trailing expression
-// becomes the branch value.
+// (a value-position `if` without `else` yields unit). The
+// both-arms-required rule for a value `if` (grammar.ebnf IfExpr) is
+// not yet enforced in sema — codegen rejects an else-less branch used
+// as a value; the proper Barrier-D diagnostic is a follow-up. Branch
+// blocks are value-blocks so their trailing expression becomes the
+// branch value.
 func (p *parser) parseIfExpr() (*ast.IfExpr, *Diag) {
 	kw := p.advance() // consume 'if'
 	cond, err := p.parseExpr()
