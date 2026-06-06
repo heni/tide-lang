@@ -27,10 +27,11 @@ func Emit(f *ast.File, file string) (string, error) {
 // EmitWithInfo is Emit with a pre-computed sema side-table.
 func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 	g := &gen{
-		file:    file,
-		info:    info,
-		variant: map[string]variantInfo{},
-		class:   map[string]classInfo{},
+		file:       file,
+		info:       info,
+		variant:    map[string]variantInfo{},
+		class:      map[string]classInfo{},
+		usedGoPkgs: map[string]bool{},
 	}
 	// Predeclared sum-type variants per `lang-spec/builtins.md`
 	// §Option / §Result / §Variant constructors. Registered up
@@ -249,6 +250,12 @@ type gen struct {
 	usesReflect   bool
 	usesMakeSlice bool
 	usesScan      bool
+	// usedGoPkgs — Go stdlib packages actually referenced in the
+	// emitted output (a `pkg.Sym`). Populated by the pre-walk; the
+	// import block is this set ∩ the .td imports, so a binding that
+	// lowers to a Go conversion (strings.fromBytes → string(...))
+	// does not drag in an unused import.
+	usedGoPkgs map[string]bool
 	// descriptors collected during emit — for each user-declared
 	// type that has a Tide-side descriptor, we emit a
 	// `tideDesc_<Name>` package-level var plus an init()
@@ -331,6 +338,13 @@ func (g *gen) writeHeader(f *ast.File) {
 	for _, im := range f.Imports {
 		if im.Path == "reflect" {
 			continue // Tide-internal
+		}
+		// Drop a stdlib import the generated Go never references —
+		// e.g. a program whose only `strings` use is the
+		// conversion-binding `strings.fromBytes`. Non-stdlib paths
+		// (user modules) are always kept.
+		if isStdlibNamespaceName(im.Path) && !g.usedGoPkgs[im.Path] {
+			continue
 		}
 		add(im.Path)
 	}
@@ -1125,6 +1139,15 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				walk(a)
 			}
 		case *ast.Field:
+			// A `pkg.method` reference marks the Go package used —
+			// unless the (pkg, method) pair lowers to a Go conversion
+			// rather than a package call (strings.fromBytes →
+			// string(...)), which needs no import.
+			if recv, ok := v.Receiver.(*ast.Ident); ok && isStdlibNamespaceName(recv.Name) {
+				if !isConversionBinding(recv.Name, v.Name) {
+					g.usedGoPkgs[recv.Name] = true
+				}
+			}
 			walk(v.Receiver)
 		case *ast.ParenExpr:
 			walk(v.Inner)
@@ -2644,6 +2667,17 @@ func (g *gen) emitCall(c *ast.Call) error {
 		g.b.WriteString("()")
 		return nil
 	}
+	// strings.fromBytes(b) — the []byte → string round-trip binding
+	// (binding-surface.md §strings). Lowers to Go's `string(b)`
+	// conversion.
+	if isFieldCall(c.Callee, "strings", "fromBytes") && len(c.Args) == 1 {
+		g.b.WriteString("string(")
+		if err := g.emitExpr(c.Args[0]); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
+	}
 	// makeSlice<T>(n, v) — predeclared generic builtin lowering
 	// to the inline tideMakeSlice helper.
 	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "makeSlice" {
@@ -2777,6 +2811,18 @@ func (g *gen) emitCall(c *ast.Call) error {
 			}
 			g.b.WriteByte(')')
 			return nil
+		case "bytes":
+			// `s.bytes()` views a string as []byte — Go's
+			// `[]byte(s)` conversion (binding-surface.md §strings).
+			if len(c.Args) != 0 {
+				return fmt.Errorf("codegen: .bytes takes no arguments, got %d", len(c.Args))
+			}
+			g.b.WriteString("[]byte(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
 		}
 	}
 	if err := g.emitExpr(c.Callee); err != nil {
@@ -2852,15 +2898,23 @@ func (g *gen) varKindOf(id *ast.Ident) string {
 // method call.
 func isStdlibNamespace(e ast.Expr) bool {
 	id, ok := e.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	switch id.Name {
+	return ok && isStdlibNamespaceName(id.Name)
+}
+
+func isStdlibNamespaceName(name string) bool {
+	switch name {
 	case "fmt", "os", "strings", "strconv", "bufio", "context",
 		"time", "sync", "io", "log", "net", "encoding", "math":
 		return true
 	}
 	return false
+}
+
+// isConversionBinding reports whether the stdlib binding pkg.method
+// lowers to a Go type conversion (not a pkg.* call), so it needs no
+// import. Currently only `strings.fromBytes` → `string(b)`.
+func isConversionBinding(pkg, method string) bool {
+	return pkg == "strings" && method == "fromBytes"
 }
 
 // mapFieldName is the PR-C shortcut for binding calls. Tide
@@ -2889,6 +2943,13 @@ func mapFieldName(receiver ast.Expr, name string) string {
 		case "exit":
 			return "Exit"
 		}
+	case "math":
+		switch name {
+		case "floor":
+			return "Floor"
+		case "log10":
+			return "Log10"
+		}
 	}
 	return goIdent(name)
 }
@@ -2896,12 +2957,19 @@ func mapFieldName(receiver ast.Expr, name string) string {
 // isFmtScan reports whether e is the callee `fmt.scan` (the single-
 // value stdin binding). Multi-value scan2/scan3 land later.
 func isFmtScan(e ast.Expr) bool {
+	return isFieldCall(e, "fmt", "scan")
+}
+
+// isFieldCall reports whether e is the field access `recv.name`
+// where recv is the bare identifier `recvName` — used to recognise
+// namespaced stdlib bindings (`strings.fromBytes`, `fmt.scan`).
+func isFieldCall(e ast.Expr, recvName, name string) bool {
 	f, ok := e.(*ast.Field)
-	if !ok {
+	if !ok || f.Name != name {
 		return false
 	}
 	recv, ok := f.Receiver.(*ast.Ident)
-	return ok && recv.Name == "fmt" && f.Name == "scan"
+	return ok && recv.Name == recvName
 }
 
 // goIdent maps a Tide identifier to its Go form. PR-C handles

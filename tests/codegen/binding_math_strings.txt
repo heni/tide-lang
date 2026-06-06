@@ -1,0 +1,36 @@
+--- TITLE ---
+math.floor/log10 + strings.fromBytes/.bytes bindings; conversion-only import dropped
+
+--- INPUT ---
+import fmt
+import math
+import strings
+
+func main() {
+  let d = math.floor(math.log10(float64(1000)))
+  fmt.println(int(d))
+  let s = "hi"
+  fmt.println(strings.fromBytes(s.bytes()))
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	var d = math.Floor(math.Log10(float64(1000)))
+	fmt.Println(int(d))
+	var s = "hi"
+	fmt.Println(string([]byte(s)))
+}
+
+--- STDOUT ---
+3
+hi
+
+--- EXIT ---
+0

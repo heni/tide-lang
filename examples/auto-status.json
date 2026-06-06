@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 43,
     "sema_fail": 0,
-    "emit_fail": 3,
-    "build_ok": 6
+    "emit_fail": 1,
+    "build_ok": 8
   },
   "files": [
     {
@@ -235,8 +235,8 @@
     },
     {
       "path": "examples/timus/p1404.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/timus/p1423.td",
@@ -245,8 +245,8 @@
     },
     {
       "path": "examples/timus/p1605.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/timus/p1683.td",
