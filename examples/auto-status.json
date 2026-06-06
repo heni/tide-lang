@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "totals": {
-    "total": 53,
+    "total": 52,
     "parse_fail": 49,
     "sema_fail": 0,
     "emit_fail": 0,
-    "build_ok": 4
+    "build_ok": 3
   },
   "files": [
     {
@@ -262,11 +262,6 @@
       "path": "examples/timus/p1820.td",
       "stage": "parse",
       "blocker": "error[E0112]: expected expression, got Punct \"{\""
-    },
-    {
-      "path": "user_tests/leetcode_3131.td",
-      "stage": "build",
-      "blocker": ""
     },
     {
       "path": "user_tests/leetcode_3131_idiomatic.td",

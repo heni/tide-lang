@@ -48,13 +48,13 @@ def repo_root() -> str:
 
 
 def corpus_files() -> list[str]:
-    files = []
-    for root in ("examples", "user_tests"):
-        for dirpath, _, names in os.walk(root):
-            for n in names:
-                if n.endswith(".td"):
-                    files.append(os.path.join(dirpath, n).replace(os.sep, "/"))
-    return sorted(files)
+    # Only git-tracked files, so the snapshot reflects the committed
+    # suite and reproduces on a clean checkout (untracked scratch
+    # .td files don't perturb the metric).
+    out = subprocess.check_output(
+        ["git", "ls-files", "examples", "user_tests"], text=True
+    )
+    return sorted(p for p in out.splitlines() if p.endswith(".td"))
 
 
 def build_tide(tmp: str) -> str:
@@ -68,24 +68,30 @@ def build_tide(tmp: str) -> str:
     return binpath
 
 
+def _diag_pos(line: str) -> int:
+    """Index of a tide diagnostic marker (`error[` / `internal[`) in line, or -1."""
+    for marker in ("error[", "internal["):
+        i = line.find(marker)
+        if i >= 0:
+            return i
+    return -1
+
+
 def error_code(line: str) -> str:
-    i = line.find("error[")
+    i = _diag_pos(line)
     if i < 0:
         return ""
-    rest = line[i + len("error["):]
+    rest = line[line.find("[", i) + 1:]
     j = rest.find("]")
     return rest[:j] if j >= 0 else ""
 
 
-def first_error_line(out: str) -> str:
+def first_diag_line(out: str) -> str:
     for ln in out.splitlines():
-        k = ln.find("error[")
+        k = _diag_pos(ln)
         if k >= 0:
             return ln[k:].strip()  # strip "<path>:<line>:<col>: " position
-    for ln in out.splitlines():
-        if ln.strip():
-            return ln.strip()
-    return "unknown failure"
+    return ""
 
 
 def classify(tide: str, file: str, out: str) -> tuple[str, str]:
@@ -96,15 +102,20 @@ def classify(tide: str, file: str, out: str) -> tuple[str, str]:
     if r.returncode == 0:
         return "build", ""
     combined = (r.stdout or "") + (r.stderr or "")
-    first = first_error_line(combined)
-    code = error_code(first)
+    diag = first_diag_line(combined)
+    code = error_code(diag)
     if code in PARSE_CODES:
-        return "parse", first
-    if "go build failed" in combined or code in EMIT_CODES:
-        return "emit", first
+        return "parse", diag
+    if code in EMIT_CODES:
+        return "emit", diag
+    if "go build failed" in combined:
+        # Raw Go-toolchain output is non-deterministic; record a stable
+        # blocker. (A tide-side //line-mapped diagnostic, if any, is
+        # preferred above via EMIT_CODES.)
+        return "emit", "go build failed"
     if code:
-        return "sema", first
-    return "emit", first
+        return "sema", diag
+    return "emit", diag or "unknown failure"
 
 
 def collect() -> dict:
@@ -204,9 +215,13 @@ def cmd_history() -> int:
         try:
             blob = subprocess.check_output(["git", "show", f"{sha}:{JSON_PATH}"], text=True)
             s = json.loads(blob)
-        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            # Skip blobs from an incompatible (future) schema rather
+            # than mis-reading them; tolerate any missing key.
+            if s.get("schema_version") != SCHEMA_VERSION:
+                continue
+            t = s["totals"]
+        except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
             continue
-        t = s["totals"]
         print(json.dumps({
             "date": date, "commit": sha[:12], "subject": subject,
             "total": t["total"], "build_ok": t["build_ok"],
