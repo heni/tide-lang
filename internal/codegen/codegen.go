@@ -1080,6 +1080,10 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 					walk(fd)
 				}
 			}
+		case *ast.RecordTypeBody:
+			for _, fd := range v.Fields {
+				walk(fd)
+			}
 		case *ast.FieldDecl:
 			walk(v.DeclType)
 		case *ast.Block:
@@ -1157,6 +1161,19 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			}
 		case *ast.TupleField:
 			walk(v.Receiver)
+		case *ast.BraceLit:
+			walk(v.TypeName)
+			for _, e := range v.Entries {
+				switch en := e.(type) {
+				case *ast.RecordEntry:
+					walk(en.Value)
+				case *ast.MapEntry:
+					walk(en.Key)
+					walk(en.Value)
+				case *ast.SetEntry:
+					walk(en.Value)
+				}
+			}
 		case *ast.Binary:
 			walk(v.Left)
 			walk(v.Right)
@@ -1204,6 +1221,28 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 			return err
 		}
 		g.b.WriteByte('\n')
+		return nil
+	case *ast.RecordTypeBody:
+		// A nominal record lowers to a named Go struct. All generated
+		// code is package `main`, so Tide field names map directly
+		// (unexported Go fields are visible within the package) — no
+		// capitalisation needed (lowering-go.md §Record lowering).
+		g.line(td.Span.StartLine)
+		g.b.WriteString("type ")
+		g.b.WriteString(goIdent(td.Name))
+		g.b.WriteString(" struct {\n")
+		g.indent++
+		for _, f := range body.Fields {
+			g.writeIndent()
+			g.b.WriteString(goIdent(f.Name))
+			g.b.WriteByte(' ')
+			if err := g.emitTypeExpr(f.DeclType); err != nil {
+				return err
+			}
+			g.b.WriteByte('\n')
+		}
+		g.indent--
+		g.b.WriteString("}\n")
 		return nil
 	case *ast.SumTypeBody:
 		// Lower to a tagged struct per lowering-go.md §MatchIR.
@@ -2049,6 +2088,36 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 // primitives map 1:1 (lowering-go.md §Primitive type lowering);
 // classes are reference types (`*T`). Shapes outside this set return
 // false — the caller then reports an un-inferrable arm result.
+// emitBraceLit lowers a brace literal. A record literal becomes a Go
+// struct literal `TypeName{ field: value, … }` (same-package field
+// names map directly). Map / Set / Stack literals are not yet lowered.
+func (g *gen) emitBraceLit(b *ast.BraceLit) error {
+	if b.Kind != ast.BraceRecord {
+		return fmt.Errorf("codegen: %s brace literal not yet supported — use the container constructor / `.new()`", b.Kind)
+	}
+	if len(b.TypeName.QName) != 1 {
+		return fmt.Errorf("codegen: qualified record type name not supported")
+	}
+	g.b.WriteString(goIdent(b.TypeName.QName[0]))
+	g.b.WriteByte('{')
+	for i, e := range b.Entries {
+		re, ok := e.(*ast.RecordEntry)
+		if !ok {
+			return fmt.Errorf("codegen: non-record entry %T in record literal", e)
+		}
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		g.b.WriteString(goIdent(re.Name))
+		g.b.WriteString(": ")
+		if err := g.emitExpr(re.Value); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte('}')
+	return nil
+}
+
 // emitTupleLit lowers `(e0, e1, …)` to an anonymous Go struct
 // literal `struct { _0 T0; … }{ _0: e0, … }`. The struct type comes
 // from sema's inferred Tuple type so the literal shares its Go type
@@ -2872,6 +2941,8 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		}
 		g.b.WriteByte(')')
 		return nil
+	case *ast.BraceLit:
+		return g.emitBraceLit(v)
 	case *ast.TupleLit:
 		return g.emitTupleLit(v)
 	case *ast.TupleField:

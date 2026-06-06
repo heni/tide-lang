@@ -1,0 +1,37 @@
+--- TITLE ---
+Record type → Go struct; record literal → struct literal; noBrace header
+
+--- INPUT ---
+import fmt
+
+type Point = { x: int, y: int }
+
+func main() {
+  let p = Point { x: 3, y: 4 }
+  if p.x > 0 {
+    fmt.println(p.x, p.y)
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Point struct {
+	x int
+	y int
+}
+
+func main() {
+	var p = Point{x: 3, y: 4}
+	if p.x > 0 {
+		fmt.Println(p.x, p.y)
+	}
+}
+
+--- STDOUT ---
+3 4
+
+--- EXIT ---
+0

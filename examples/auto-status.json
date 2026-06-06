@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 39,
-    "sema_fail": 0,
-    "emit_fail": 3,
+    "parse_fail": 36,
+    "sema_fail": 1,
+    "emit_fail": 5,
     "build_ok": 10
   },
   "files": [
@@ -15,8 +15,8 @@
     },
     {
       "path": "examples/aoc/2025/d01.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/aoc/2025/d02.td",
@@ -46,7 +46,7 @@
     {
       "path": "examples/aoc/2025/d08.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \":\""
+      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
     },
     {
       "path": "examples/aoc/2025/d09.td",
@@ -86,7 +86,7 @@
     {
       "path": "examples/concurrency/nested_scopes.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected type expression, got Newline \"\""
     },
     {
       "path": "examples/concurrency/pipeline.td",
@@ -101,7 +101,7 @@
     {
       "path": "examples/concurrency/rate_limited.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \":\""
+      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
     },
     {
       "path": "examples/concurrency/select_showcase.td",
@@ -111,7 +111,7 @@
     {
       "path": "examples/concurrency/worker_pool.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
     },
     {
       "path": "examples/hello.td",
@@ -120,8 +120,8 @@
     },
     {
       "path": "examples/interview/config_loader.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name json"
     },
     {
       "path": "examples/interview/fizzbuzz.td",
@@ -151,7 +151,7 @@
     {
       "path": "examples/leetcode/merge_intervals.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",
@@ -171,7 +171,7 @@
     {
       "path": "examples/raku/deep_destructure.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected expression, got Newline \"\""
     },
     {
       "path": "examples/raku/error_chain.td",
@@ -196,17 +196,17 @@
     {
       "path": "examples/services/parallel_fetcher.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected type expression, got Newline \"\""
     },
     {
       "path": "examples/services/todo_api.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
     },
     {
       "path": "examples/services/wc.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1033.td",
@@ -221,7 +221,7 @@
     {
       "path": "examples/timus/p1242.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Punct \"{\""
+      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
     },
     {
       "path": "examples/timus/p1335.td",

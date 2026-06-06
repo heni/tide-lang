@@ -248,6 +248,32 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteByte('\n')
 			write(b, c, depth+1)
 		}
+	case *BraceLit:
+		b.WriteByte(' ')
+		b.WriteString(string(v.Kind))
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.TypeName, depth+1)
+		for _, e := range v.Entries {
+			b.WriteByte('\n')
+			write(b, e, depth+1)
+		}
+	case *RecordEntry:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+	case *MapEntry:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Key, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+	case *SetEntry:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
 	case *TupleField:
 		b.WriteByte(' ')
 		b.WriteString(strconv.Itoa(v.Position))
@@ -318,6 +344,12 @@ func write(b *strings.Builder, n Node, depth int) {
 		for _, f := range v.Fields {
 			b.WriteByte('\n')
 			write(b, f, depth+1)
+		}
+	case *RecordTypeBody:
+		writeSpan(b, v.Span)
+		for _, fd := range v.Fields {
+			b.WriteByte('\n')
+			write(b, fd, depth+1)
 		}
 	case *FieldDecl:
 		b.WriteByte(' ')

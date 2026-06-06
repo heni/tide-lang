@@ -49,6 +49,19 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		}
 	case *ast.TupleField:
 		c.resolveExpr(v.Receiver, scope)
+	case *ast.BraceLit:
+		c.resolveTypeExpr(v.TypeName, scope)
+		for _, e := range v.Entries {
+			switch en := e.(type) {
+			case *ast.RecordEntry:
+				c.resolveExpr(en.Value, scope)
+			case *ast.MapEntry:
+				c.resolveExpr(en.Key, scope)
+				c.resolveExpr(en.Value, scope)
+			case *ast.SetEntry:
+				c.resolveExpr(en.Value, scope)
+			}
+		}
 	case *ast.SliceLit:
 		c.resolveTypeExpr(v.ElemType, scope)
 		for _, it := range v.Items {

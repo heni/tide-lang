@@ -25,8 +25,9 @@ func (c *checker) constructShapes(f *ast.File, fileScope *Scope) {
 }
 
 func (c *checker) constructTypeDecl(t *ast.TypeDecl, scope *Scope) {
-	if sb, ok := t.Body.(*ast.SumTypeBody); ok {
-		for _, va := range sb.Variants {
+	switch body := t.Body.(type) {
+	case *ast.SumTypeBody:
+		for _, va := range body.Variants {
 			seen := map[string]bool{}
 			for _, f := range va.Fields {
 				if seen[f.Name] {
@@ -36,6 +37,16 @@ func (c *checker) constructTypeDecl(t *ast.TypeDecl, scope *Scope) {
 				seen[f.Name] = true
 				c.checkTypeArity(f.DeclType, scope)
 			}
+		}
+	case *ast.RecordTypeBody:
+		seen := map[string]bool{}
+		for _, f := range body.Fields {
+			if seen[f.Name] {
+				c.report("E0105", "Duplicate field name "+f.Name+" in record "+t.Name, f.Span)
+				continue
+			}
+			seen[f.Name] = true
+			c.checkTypeArity(f.DeclType, scope)
 		}
 	}
 }

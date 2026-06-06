@@ -43,6 +43,23 @@ type parser struct {
 	toks []lexer.Token
 	pos  int
 	file string
+	// noBrace suppresses brace-literal parsing of a trailing `{` so
+	// control-flow headers (`if cond {`, `for x in it {`, `while
+	// cond {`, `match subj {`) read the `{` as their block rather
+	// than as `cond { … }` brace literal. Set while parsing a header
+	// expression; reset inside any delimited sub-expression where a
+	// `{` is unambiguous (parens, call args, brackets, brace body).
+	noBrace bool
+}
+
+// withBraces runs fn with brace-literal parsing re-enabled (used when
+// descending into a delimited context), restoring noBrace after.
+func (p *parser) withBraces(fn func() (ast.Expr, *Diag)) (ast.Expr, *Diag) {
+	saved := p.noBrace
+	p.noBrace = false
+	e, err := fn()
+	p.noBrace = saved
+	return e, err
 }
 
 // ---- token cursor helpers ----
@@ -54,6 +71,15 @@ func (p *parser) peek() lexer.Token {
 		return lexer.Token{Kind: lexer.KindEOF}
 	}
 	return p.toks[p.pos]
+}
+
+// peekAhead returns the token n positions past the cursor (n == 0 is
+// peek()), or a synthetic EOF past the end.
+func (p *parser) peekAhead(n int) lexer.Token {
+	if p.pos+n >= len(p.toks) {
+		return lexer.Token{Kind: lexer.KindEOF}
+	}
+	return p.toks[p.pos+n]
 }
 
 func (p *parser) at(k lexer.Kind, lex ...string) bool {
@@ -217,13 +243,20 @@ func (p *parser) parseTypeDecl() (*ast.TypeDecl, *Diag) {
 	}
 	p.skipNewlines()
 	var body ast.TypeBody
-	// SumTypeBody iff the body starts with `|`.
+	// SumTypeBody iff the body starts with `|`; RecordTypeBody iff
+	// it starts with `{`.
 	if p.at(lexer.KindOp, "|") {
 		sb, err := p.parseSumTypeBody()
 		if err != nil {
 			return nil, err
 		}
 		body = sb
+	} else if p.at(lexer.KindPunct, "{") {
+		rb, err := p.parseRecordTypeBody()
+		if err != nil {
+			return nil, err
+		}
+		body = rb
 	} else {
 		// AliasBody — single TypeExpr.
 		startLine, startCol := p.peek().Line, p.peek().Col
@@ -322,6 +355,59 @@ func (p *parser) parseSumTypeBody() (*ast.SumTypeBody, *Diag) {
 			EndLine: last.Span.EndLine, EndCol: last.Span.EndCol,
 		},
 		Variants: variants,
+	}, nil
+}
+
+// parseRecordTypeBody parses `{ f1: T1, f2: T2, ... }` (grammar.ebnf
+// RecordType). Fields are separated by commas and/or newlines; a
+// trailing separator is allowed. Cursor at the opening `{`.
+func (p *parser) parseRecordTypeBody() (*ast.RecordTypeBody, *Diag) {
+	open, err := p.expect(lexer.KindPunct, "{")
+	if err != nil {
+		return nil, err
+	}
+	p.skipStmtSeps()
+	var fields []*ast.FieldDecl
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		if !p.at(lexer.KindIdent) {
+			t := p.peek()
+			return nil, p.diag("E0112", "expected record field name", t.Line, t.Col)
+		}
+		nameTok := p.advance()
+		if _, err := p.expect(lexer.KindPunct, ":"); err != nil {
+			return nil, err
+		}
+		ft, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, &ast.FieldDecl{
+			Span: ast.Span{
+				StartLine: nameTok.Line, StartCol: nameTok.Col,
+				EndLine: ft.NodeSpan().EndLine, EndCol: ft.NodeSpan().EndCol,
+			},
+			Name:     nameTok.Lexeme,
+			DeclType: ft,
+		})
+		// Field separator: a comma and/or newlines, or the closing `}`.
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+		}
+		p.skipStmtSeps()
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 {
+		return nil, p.diag("E0112", "record type needs at least one field", open.Line, open.Col)
+	}
+	return &ast.RecordTypeBody{
+		Span: ast.Span{
+			StartLine: open.Line, StartCol: open.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Fields: fields,
 	}, nil
 }
 
@@ -768,7 +854,10 @@ func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
 // branch value.
 func (p *parser) parseIfExpr() (*ast.IfExpr, *Diag) {
 	kw := p.advance() // consume 'if'
+	saved := p.noBrace
+	p.noBrace = true
 	cond, err := p.parseExpr()
+	p.noBrace = saved
 	if err != nil {
 		return nil, err
 	}
@@ -984,7 +1073,10 @@ func (p *parser) parseReturnExpr() (*ast.ReturnExpr, *Diag) {
 
 func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
 	kw := p.advance() // consume 'if'
+	saved := p.noBrace
+	p.noBrace = true
 	cond, err := p.parseExpr()
+	p.noBrace = saved
 	if err != nil {
 		return nil, err
 	}
@@ -1038,7 +1130,10 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 	if _, err := p.expect(lexer.KindKeyword, "in"); err != nil {
 		return nil, err
 	}
+	savedNB := p.noBrace
+	p.noBrace = true
 	iter, err := p.parseIterable()
+	p.noBrace = savedNB
 	if err != nil {
 		return nil, err
 	}
@@ -1063,7 +1158,10 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 // continuation).
 func (p *parser) parseWhileStmt() (*ast.WhileStmt, *Diag) {
 	kw := p.advance() // consume 'while'
+	saved := p.noBrace
+	p.noBrace = true
 	cond, err := p.parseExpr()
+	p.noBrace = saved
 	if err != nil {
 		return nil, err
 	}
@@ -1352,15 +1450,115 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 				return nil, err
 			}
 			e = next
+		case p.at(lexer.KindPunct, "{") && !p.noBrace:
+			// `Ident { … }` brace literal — record / map / set /
+			// stack. Suppressed in control-flow headers (noBrace).
+			id, ok := e.(*ast.Ident)
+			if !ok {
+				return e, nil // `expr { … }` only forms a literal off a bare name
+			}
+			lit, err := p.parseBraceLitBody(id)
+			if err != nil {
+				return nil, err
+			}
+			e = lit
 		default:
 			return e, nil
 		}
 	}
 }
 
+// parseBraceLitBody parses `{ … }` after a type name, committing the
+// BraceKind on the first entry (RecordEntry `Ident:`, MapEntry
+// `MapKey:`, SetEntry bare expr); an empty `{}` stays Unknown for
+// sema. Cursor at the opening `{`. Brace-literal suppression is lifted
+// inside the body (entries may themselves contain literals).
+func (p *parser) parseBraceLitBody(name *ast.Ident) (*ast.BraceLit, *Diag) {
+	p.advance() // consume '{'
+	saved := p.noBrace
+	p.noBrace = false
+	defer func() { p.noBrace = saved }()
+	p.skipStmtSeps()
+	lit := &ast.BraceLit{
+		TypeName: &ast.NamedType{Span: name.Span, QName: []string{name.Name}},
+		Kind:     ast.BraceUnknown,
+	}
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		entryStart := p.peek()
+		// RecordEntry: `Ident :` where the key is a bare identifier.
+		if p.at(lexer.KindIdent) && p.peekAhead(1).Kind == lexer.KindPunct && p.peekAhead(1).Lexeme == ":" {
+			key := p.advance()
+			p.advance() // consume ':'
+			val, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			if lit.Kind == ast.BraceUnknown {
+				lit.Kind = ast.BraceRecord
+			} else if lit.Kind != ast.BraceRecord {
+				return nil, p.diag("E0112", "mixed brace-literal entry kinds", entryStart.Line, entryStart.Col)
+			}
+			lit.Entries = append(lit.Entries, &ast.RecordEntry{
+				Span:  ast.Span{StartLine: key.Line, StartCol: key.Col, EndLine: val.NodeSpan().EndLine, EndCol: val.NodeSpan().EndCol},
+				Name:  key.Lexeme,
+				Value: val,
+			})
+		} else {
+			// MapEntry (`key : value`) or SetEntry (bare value).
+			keyExpr, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			if p.at(lexer.KindPunct, ":") {
+				p.advance() // consume ':'
+				val, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				if lit.Kind == ast.BraceUnknown {
+					lit.Kind = ast.BraceMap
+				} else if lit.Kind != ast.BraceMap {
+					return nil, p.diag("E0112", "mixed brace-literal entry kinds", entryStart.Line, entryStart.Col)
+				}
+				lit.Entries = append(lit.Entries, &ast.MapEntry{
+					Span:  ast.Span{StartLine: entryStart.Line, StartCol: entryStart.Col, EndLine: val.NodeSpan().EndLine, EndCol: val.NodeSpan().EndCol},
+					Key:   keyExpr,
+					Value: val,
+				})
+			} else {
+				if lit.Kind == ast.BraceUnknown {
+					lit.Kind = ast.BraceSet
+				} else if lit.Kind != ast.BraceSet {
+					return nil, p.diag("E0112", "mixed brace-literal entry kinds", entryStart.Line, entryStart.Col)
+				}
+				lit.Entries = append(lit.Entries, &ast.SetEntry{
+					Span:  keyExpr.NodeSpan(),
+					Value: keyExpr,
+				})
+			}
+		}
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+		}
+		p.skipStmtSeps()
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	lit.Span = ast.Span{
+		StartLine: name.Span.StartLine, StartCol: name.Span.StartCol,
+		EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+	}
+	return lit, nil
+}
+
 // parseIndexOrSlice parses the postfix `[i]` or `[lo:hi]` /
 // `[lo:]` / `[:hi]` form. Cursor at `[`.
 func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
+	savedNB := p.noBrace
+	p.noBrace = false
+	defer func() { p.noBrace = savedNB }()
 	openTok := p.advance() // consume '['
 	_ = openTok
 	// `[:hi]` — leading colon.
@@ -1510,6 +1708,11 @@ func (p *parser) parseCallTypeArgs() ([]ast.TypeExpr, *Diag) {
 }
 
 func (p *parser) parseCallSuffix(callee ast.Expr, typeArgs []ast.TypeExpr) (*ast.Call, *Diag) {
+	// Inside `( … )` arguments a `{` is unambiguously a brace
+	// literal — lift any header brace-suppression.
+	savedNB := p.noBrace
+	p.noBrace = false
+	defer func() { p.noBrace = savedNB }()
 	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
 		return nil, err
 	}
@@ -1618,6 +1821,11 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		return &ast.Ident{Span: spanFromToken(t), Name: t.Lexeme}, nil
 	case lexer.KindPunct:
 		if t.Lexeme == "(" {
+			// Inside parens a `{` is unambiguous — lift header
+			// brace-suppression for the whole `( … )`.
+			savedNB := p.noBrace
+			p.noBrace = false
+			defer func() { p.noBrace = savedNB }()
 			open := p.advance()
 			p.skipNewlines()
 			e, err := p.parseExpr()
@@ -1801,7 +2009,10 @@ func decodeStringLit(s string) (string, error) {
 // Form: `match Subject { Pat => Body (,|nl) ... }`.
 func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 	kw := p.advance() // consume 'match'
+	saved := p.noBrace
+	p.noBrace = true
 	subject, err := p.parseExpr()
+	p.noBrace = saved
 	if err != nil {
 		return nil, err
 	}
@@ -2027,6 +2238,9 @@ func isCapitalised(s string) bool {
 //
 // The cursor is at the leading `[`.
 func (p *parser) parseSliceLit() (*ast.SliceLit, *Diag) {
+	savedNB := p.noBrace
+	p.noBrace = false
+	defer func() { p.noBrace = savedNB }()
 	openTok := p.advance() // consume '['
 	// Annotated form: `[` immediately followed by `]` is the
 	// SliceType prefix; the following `{...}` carries the items.

@@ -29,6 +29,10 @@ func (c *checker) resolveTypeDecl(t *ast.TypeDecl, parent *Scope) {
 				c.resolveTypeExpr(f.DeclType, parent)
 			}
 		}
+	case *ast.RecordTypeBody:
+		for _, f := range b.Fields {
+			c.resolveTypeExpr(f.DeclType, parent)
+		}
 	}
 }
 

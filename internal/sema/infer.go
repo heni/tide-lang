@@ -55,6 +55,8 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		} else {
 			t = &Unknown{}
 		}
+	case *ast.BraceLit:
+		t = c.inferBraceLit(v)
 	case *ast.Block:
 		t = c.inferBlock(v)
 	case *ast.IfExpr:
@@ -98,6 +100,57 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 	}
 	c.info.Type[e] = t
 	return t
+}
+
+// inferBraceLit types a brace literal. Record literals resolve to
+// their nominal type and check each field value against the declared
+// field type (E0201). Map / Set / Stack literals stay Unknown until
+// their own modelling lands — their entry values are still inferred.
+func (c *checker) inferBraceLit(b *ast.BraceLit) Type {
+	rt := c.typeFromExpr(b.TypeName)
+	for _, e := range b.Entries {
+		switch en := e.(type) {
+		case *ast.RecordEntry:
+			vt := c.inferExpr(en.Value)
+			if ft := c.recordFieldType(rt, en.Name); ft != nil {
+				if !c.fits(ft, en.Value, vt) {
+					c.report("E0201", "Type mismatch — field "+en.Name+" expects "+ft.String()+", got "+vt.String(), en.Value.NodeSpan())
+				}
+			}
+		case *ast.MapEntry:
+			c.inferExpr(en.Key)
+			c.inferExpr(en.Value)
+		case *ast.SetEntry:
+			c.inferExpr(en.Value)
+		}
+	}
+	if b.Kind == ast.BraceRecord {
+		return rt
+	}
+	return &Unknown{}
+}
+
+// recordFieldType returns the declared type of field `name` on a
+// record type, or nil when t is not a record / has no such field.
+func (c *checker) recordFieldType(t Type, name string) Type {
+	named, ok := t.(*Named)
+	if !ok {
+		return nil
+	}
+	td, ok := named.Decl.(*ast.TypeDecl)
+	if !ok {
+		return nil
+	}
+	rb, ok := td.Body.(*ast.RecordTypeBody)
+	if !ok {
+		return nil
+	}
+	for _, f := range rb.Fields {
+		if f.Name == name {
+			return c.typeFromExpr(f.DeclType)
+		}
+	}
+	return nil
 }
 
 func (c *checker) inferIdent(id *ast.Ident) Type {
@@ -231,6 +284,10 @@ func (c *checker) inferField(f *ast.Field) Type {
 	named, ok := recv.(*Named)
 	if !ok {
 		return &Unknown{}
+	}
+	// Record field access — `p.x` on a record type.
+	if ft := c.recordFieldType(named, f.Name); ft != nil {
+		return ft
 	}
 	cd, ok := named.Decl.(*ast.ClassDecl)
 	if !ok {

@@ -1,0 +1,31 @@
+--- TITLE ---
+Record type declaration + record brace literal
+
+--- INPUT ---
+type Point = { x: int, y: int }
+func make(): Point {
+  return Point { x: 3, y: 4 }
+}
+
+--- AST ---
+(File @1:1-4:2
+  (TypeDecl "Point" @1:1-1:32
+    (RecordTypeBody @1:14-1:32
+      (FieldDecl "x" @1:16-1:22
+        (PrimitiveType "int" @1:19-1:22))
+      (FieldDecl "y" @1:24-1:30
+        (PrimitiveType "int" @1:27-1:30))))
+  (FuncDecl "make" @2:1-4:2
+    (type-params)
+    (params)
+    (return
+      (NamedType "Point" @2:14-2:19))
+    (Block @2:20-4:2
+      (ExprStmt @3:3-3:30
+        (ReturnExpr @3:3-3:30
+          (BraceLit Record @3:10-3:30
+            (NamedType "Point" @3:10-3:15)
+            (RecordEntry "x" @3:18-3:22
+              (IntLitExpr 3 @3:21-3:22))
+            (RecordEntry "y" @3:24-3:28
+              (IntLitExpr 4 @3:27-3:28))))))))

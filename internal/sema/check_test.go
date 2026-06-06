@@ -303,6 +303,40 @@ func main() {
 	}
 }
 
+func TestRecordTypingNoFalsePositive(t *testing.T) {
+	src := `import fmt
+type Point = { x: int, y: int }
+func main() {
+  let p = Point { x: 3, y: 4 }
+  if p.x > 0 {
+    fmt.println(p.x, p.y)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (records), got %v", codes)
+	}
+}
+
+func TestRecordFieldMismatchFiresE0201(t *testing.T) {
+	src := `type Point = { x: int, y: int }
+func main() {
+  let p = Point { x: 3, y: "no" }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 for record field type mismatch, got %v", codes)
+	}
+}
+
+func TestDuplicateRecordFieldFiresE0105(t *testing.T) {
+	src := `type Bad = { a: int, a: int }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0105") {
+		t.Errorf("expected E0105 for duplicate record field, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

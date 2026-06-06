@@ -87,6 +87,18 @@ func (n *SumTypeBody) NodeSpan() Span   { return n.Span }
 func (n *SumTypeBody) NodeKind() string { return "SumTypeBody" }
 func (n *SumTypeBody) typeBodyMarker()  {}
 
+// RecordTypeBody — `type T = { f1: T1, f2: T2, ... }`. Nominal
+// record (D14): the declared name is its identity. All fields are
+// required in v1.
+type RecordTypeBody struct {
+	Span   Span
+	Fields []*FieldDecl
+}
+
+func (n *RecordTypeBody) NodeSpan() Span   { return n.Span }
+func (n *RecordTypeBody) NodeKind() string { return "RecordTypeBody" }
+func (n *RecordTypeBody) typeBodyMarker()  {}
+
 // Variant is one constructor of a sum type. Fields empty
 // ⇒ nullary; non-empty ⇒ tagged-payload variant.
 type Variant struct {
@@ -719,6 +731,72 @@ type ContinueExpr struct {
 func (n *ContinueExpr) NodeSpan() Span   { return n.Span }
 func (n *ContinueExpr) NodeKind() string { return "ContinueExpr" }
 func (n *ContinueExpr) exprMarker()      {}
+
+// BraceKind classifies a BraceLit, committed by the parser on the
+// first entry (or left Unknown for an empty `Type {}`, resolved by
+// sema from the type name). Per ast.md §BraceLit.
+type BraceKind string
+
+const (
+	BraceUnknown BraceKind = "Unknown"
+	BraceRecord  BraceKind = "Record"
+	BraceMap     BraceKind = "Map"
+	BraceSet     BraceKind = "Set"
+	BraceStack   BraceKind = "Stack"
+)
+
+// BraceEntry is the sum of brace-literal entry shapes.
+type BraceEntry interface {
+	Node
+	braceEntryMarker()
+}
+
+// RecordEntry — `name: value`. Per ast.md §BraceEntry.
+type RecordEntry struct {
+	Span  Span
+	Name  string
+	Value Expr
+}
+
+func (n *RecordEntry) NodeSpan() Span    { return n.Span }
+func (n *RecordEntry) NodeKind() string  { return "RecordEntry" }
+func (n *RecordEntry) braceEntryMarker() {}
+
+// MapEntry — `key: value` (key is a non-Ident expression).
+type MapEntry struct {
+	Span  Span
+	Key   Expr
+	Value Expr
+}
+
+func (n *MapEntry) NodeSpan() Span    { return n.Span }
+func (n *MapEntry) NodeKind() string  { return "MapEntry" }
+func (n *MapEntry) braceEntryMarker() {}
+
+// SetEntry — `value` (no `:`). Per ast.md §BraceEntry.
+type SetEntry struct {
+	Span  Span
+	Value Expr
+}
+
+func (n *SetEntry) NodeSpan() Span    { return n.Span }
+func (n *SetEntry) NodeKind() string  { return "SetEntry" }
+func (n *SetEntry) braceEntryMarker() {}
+
+// BraceLit — the unified `NamedType "{" ... "}"` literal covering
+// record / map / set / stack. Kind is committed by the parser on the
+// first entry; an empty body stays Unknown until sema resolves it
+// from TypeName. Per ast.md §BraceLit.
+type BraceLit struct {
+	Span     Span
+	TypeName *NamedType
+	Kind     BraceKind
+	Entries  []BraceEntry
+}
+
+func (n *BraceLit) NodeSpan() Span   { return n.Span }
+func (n *BraceLit) NodeKind() string { return "BraceLit" }
+func (n *BraceLit) exprMarker()      {}
 
 // TupleLit — `(e1, e2, ...)`. Per ast.md §Expr; arity ≥ 2.
 type TupleLit struct {
