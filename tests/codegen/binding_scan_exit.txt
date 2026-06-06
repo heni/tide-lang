@@ -1,0 +1,61 @@
+--- TITLE ---
+fmt.scan<T> + os.exit bindings — Result-returning stdin read, matched
+
+--- INPUT ---
+import fmt
+import os
+
+func main() {
+  match fmt.scan<int>() {
+    Err(_) => fmt.println("eof"),
+    Ok(n)  => {
+      fmt.println(n * 2)
+      os.exit(0)
+    },
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideScan[T any]() Result[T, error] {
+	var v T
+	if _, err := fmt.Scan(&v); err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+func main() {
+	__tide_match_1 := tideScan[int]()
+	switch __tide_match_1.Tag {
+	case 1:
+		fmt.Println("eof")
+	case 0:
+		n := __tide_match_1.V
+		fmt.Println(n * 2)
+		os.Exit(0)
+	}
+}
+
+--- STDOUT ---
+eof
+
+--- EXIT ---
+0

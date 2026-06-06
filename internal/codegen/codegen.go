@@ -248,6 +248,7 @@ type gen struct {
 	usesStack     bool
 	usesReflect   bool
 	usesMakeSlice bool
+	usesScan      bool
 	// descriptors collected during emit — for each user-declared
 	// type that has a Tide-side descriptor, we emit a
 	// `tideDesc_<Name>` package-level var plus an init()
@@ -361,6 +362,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredSums()
 	g.writePredeclaredContainers()
 	g.writePredeclaredMakeSlice()
+	g.writePredeclaredScan()
 	g.writePredeclaredReflect()
 }
 
@@ -411,6 +413,25 @@ func (g *gen) writePredeclaredMakeSlice() {
 		return
 	}
 	g.b.WriteString(`func tideMakeSlice[T any](n int) []T { return make([]T, n) }
+`)
+}
+
+// writePredeclaredScan emits the tideScan helper backing the
+// `fmt.scan<T>()` binding (binding-surface.md §fmt). It wraps Go's
+// pointer-mutation `fmt.Scan(&v)` into Result<T, error>: a read error
+// becomes Err, a successful parse becomes Ok(v). Requires the
+// predeclared Result sum (usesResult, forced alongside usesScan).
+func (g *gen) writePredeclaredScan() {
+	if !g.usesScan {
+		return
+	}
+	g.b.WriteString(`func tideScan[T any]() Result[T, error] {
+	var v T
+	if _, err := fmt.Scan(&v); err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
 `)
 }
 
@@ -1090,6 +1111,12 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				walk(arm.Body)
 			}
 		case *ast.Call:
+			// `fmt.scan<T>()` lowers to the tideScan helper, which
+			// returns Result<T, error> — pull both into the binary.
+			if isFmtScan(v.Callee) {
+				g.usesScan = true
+				g.usesResult = true
+			}
 			walk(v.Callee)
 			for _, ta := range v.TypeArgs {
 				walk(ta)
@@ -2597,6 +2624,26 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return g.emitReflectCall(f.Name, c.TypeArgs, c.Args)
 		}
 	}
+	// fmt.scan<T>() — stdin binding. Lowers to the tideScan helper,
+	// which wraps Go's pointer-mutation `fmt.Scan(&v)` into the
+	// Result<T, error> return form (binding-surface.md §fmt).
+	if isFmtScan(c.Callee) {
+		g.b.WriteString("tideScan")
+		if len(c.TypeArgs) > 0 {
+			g.b.WriteByte('[')
+			for i, ta := range c.TypeArgs {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitTypeExpr(ta); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte(']')
+		}
+		g.b.WriteString("()")
+		return nil
+	}
 	// makeSlice<T>(n, v) — predeclared generic builtin lowering
 	// to the inline tideMakeSlice helper.
 	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "makeSlice" {
@@ -2837,8 +2884,24 @@ func mapFieldName(receiver ast.Expr, name string) string {
 		case "sprintf":
 			return "Sprintf"
 		}
+	case "os":
+		switch name {
+		case "exit":
+			return "Exit"
+		}
 	}
 	return goIdent(name)
+}
+
+// isFmtScan reports whether e is the callee `fmt.scan` (the single-
+// value stdin binding). Multi-value scan2/scan3 land later.
+func isFmtScan(e ast.Expr) bool {
+	f, ok := e.(*ast.Field)
+	if !ok {
+		return false
+	}
+	recv, ok := f.Receiver.(*ast.Ident)
+	return ok && recv.Name == "fmt" && f.Name == "scan"
 }
 
 // goIdent maps a Tide identifier to its Go form. PR-C handles
