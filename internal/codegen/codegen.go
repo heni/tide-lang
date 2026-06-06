@@ -1763,10 +1763,6 @@ func (g *gen) emitIfExprAsValue(e *ast.IfExpr) error {
 	return nil
 }
 
-// emitIfExprReturning emits the `if cond { return then } else { return
-// else }` body of a value-position IfExpr. Each branch returns its
-// block's trailing value; a missing trailing value (statement-only
-// branch) is a value-context error.
 // emitIfExprReturning lowers a value-position IfExpr — each branch
 // `return`s its trailing value, and both arms are required (see
 // emitIf). Defined alongside emitIfStmt / emitIfExprAsStmt.
