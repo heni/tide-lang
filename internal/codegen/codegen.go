@@ -1693,19 +1693,16 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 	return nil
 }
 
-// emitMatchAsExpr lowers a MatchExpr in value position to a Go
-// IIFE: `func() T { switch subject.Tag { case N: return arm_N; … }; var z T; return z }()`.
-// The trailing zero-value return is unreachable when the match
-// is exhaustive but Go's type checker insists on it for any
-// non-terminating branch.
+// emitMatchAsExpr lowers a MatchExpr in value position to a Go IIFE:
+// `func() T { switch subject.Tag { case N: return arm_N; … }; var z T; return z }()`.
+// The trailing zero-value return is unreachable when the match is
+// exhaustive but Go's type checker insists on it for any
+// non-terminating branch. Payload-binding arms capture the subject in
+// a temp (like emitMatchAsStmt); diverging arms (os.exit / return /
+// …) emit as statements with no `return`. See lowering-go.md §MatchIR.
 //
-// T is inferred from the first arm body — sum-variant references
-// resolve to their owner sum type, primitive literals to their
-// natural Go type. Without sema this covers the common case
-// (state-machine transitions like `match s { Special => Usual, … }`).
-// Payload-binding patterns in expression-position match aren't
-// supported yet — the few use cases that need them can fall back
-// to the statement-position form with an explicit temporary.
+// T is matchResultType's peek of the first non-diverging arm (with a
+// fmt.scan<T> type-arg fallback for the stdin idiom).
 func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	if len(m.Arms) == 0 {
 		return fmt.Errorf("codegen: match expression has no arms")
