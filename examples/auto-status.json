@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 43,
     "sema_fail": 0,
-    "emit_fail": 1,
-    "build_ok": 8
+    "emit_fail": 0,
+    "build_ok": 9
   },
   "files": [
     {
@@ -255,8 +255,8 @@
     },
     {
       "path": "examples/timus/p1786.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/timus/p1820.td",

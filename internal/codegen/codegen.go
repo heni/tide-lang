@@ -1693,34 +1693,35 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 	return nil
 }
 
-// emitMatchAsExpr lowers a MatchExpr in value position to a Go
-// IIFE: `func() T { switch subject.Tag { case N: return arm_N; … }; var z T; return z }()`.
-// The trailing zero-value return is unreachable when the match
-// is exhaustive but Go's type checker insists on it for any
-// non-terminating branch.
+// emitMatchAsExpr lowers a MatchExpr in value position to a Go IIFE:
+// `func() T { switch subject.Tag { case N: return arm_N; … }; var z T; return z }()`.
+// The trailing zero-value return is unreachable when the match is
+// exhaustive but Go's type checker insists on it for any
+// non-terminating branch. Payload-binding arms capture the subject in
+// a temp (like emitMatchAsStmt); diverging arms (os.exit / return /
+// …) emit as statements with no `return`. See lowering-go.md §MatchIR.
 //
-// T is inferred from the first arm body — sum-variant references
-// resolve to their owner sum type, primitive literals to their
-// natural Go type. Without sema this covers the common case
-// (state-machine transitions like `match s { Special => Usual, … }`).
-// Payload-binding patterns in expression-position match aren't
-// supported yet — the few use cases that need them can fall back
-// to the statement-position form with an explicit temporary.
+// T is matchResultType's peek of the first non-diverging arm (with a
+// fmt.scan<T> type-arg fallback for the stdin idiom).
 func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	if len(m.Arms) == 0 {
 		return fmt.Errorf("codegen: match expression has no arms")
 	}
-	resultType, err := g.inferArmResultType(m.Arms[0].Body)
+	// Result type comes from the first arm that actually yields a
+	// value — diverging arms (`os.exit`, return/break/continue) have
+	// no Go type to peek at (e.g. `match … { Err => os.exit(1),
+	// Ok(x) => x }`).
+	resultType, err := g.matchResultType(m)
 	if err != nil {
 		return fmt.Errorf("codegen: match-as-expression: %w", err)
 	}
-	hasVariant, hasLiteral := false, false
+	hasVariant, hasLiteral, hasPayloadBinding := false, false, false
 	for _, arm := range m.Arms {
 		switch p := arm.Pattern.(type) {
 		case *ast.VariantPat:
 			hasVariant = true
 			if len(p.Sub) > 0 {
-				return fmt.Errorf("codegen: match-as-expression with payload-binding patterns not yet supported — use a statement-position match")
+				hasPayloadBinding = true
 			}
 		case *ast.IdentPat:
 			if _, ok := g.variant[p.Name]; ok {
@@ -1735,8 +1736,24 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	}
 	g.b.WriteString("func() ")
 	g.b.WriteString(resultType)
-	g.b.WriteString(" { switch ")
-	if err := g.emitExpr(m.Subject); err != nil {
+	g.b.WriteString(" { ")
+	// Payload-binding arms reference the subject's fields, so capture
+	// it in a temp (side-effect safety, mirroring emitMatchAsStmt).
+	subjectExpr := ""
+	if hasPayloadBinding {
+		tmp := g.nextMatchTemp()
+		g.b.WriteString(tmp)
+		g.b.WriteString(" := ")
+		if err := g.emitExpr(m.Subject); err != nil {
+			return err
+		}
+		g.b.WriteString("; ")
+		subjectExpr = tmp
+	}
+	g.b.WriteString("switch ")
+	if subjectExpr != "" {
+		g.b.WriteString(subjectExpr)
+	} else if err := g.emitExpr(m.Subject); err != nil {
 		return err
 	}
 	if hasVariant {
@@ -1748,9 +1765,24 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 		if err := g.emitMatchArmHeader(arm.Pattern); err != nil {
 			return err
 		}
-		g.b.WriteString(": return ")
-		if err := g.emitExpr(arm.Body); err != nil {
-			return err
+		g.b.WriteString(": ")
+		if vp, ok := arm.Pattern.(*ast.VariantPat); ok && len(vp.Sub) > 0 {
+			if err := g.emitPayloadBindings(vp, subjectExpr); err != nil {
+				return err
+			}
+		}
+		// A diverging arm (os.exit / return / …) yields no value —
+		// emit it as a statement; control never falls through to the
+		// trailing zero-value return.
+		if isDivergingExpr(arm.Body) {
+			if err := g.emitMatchArmBody(arm.Body, arm.Span); err != nil {
+				return err
+			}
+		} else {
+			g.b.WriteString("return ")
+			if err := g.emitExpr(arm.Body); err != nil {
+				return err
+			}
 		}
 		g.b.WriteByte(';')
 	}
@@ -1758,6 +1790,87 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	g.b.WriteString(resultType)
 	g.b.WriteString("; return __zero }()")
 	return nil
+}
+
+// matchResultType peeks the Go result type of a value-position match
+// from the first non-diverging arm. Falls back to the first arm when
+// every arm diverges (a never-valued match — the binding it feeds is
+// itself unreachable).
+func (g *gen) matchResultType(m *ast.MatchExpr) (string, error) {
+	var firstErr error
+	for _, arm := range m.Arms {
+		if isDivergingExpr(arm.Body) {
+			continue
+		}
+		rt, err := g.inferArmResultType(arm.Body)
+		if err == nil {
+			return rt, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	// Fallback for the dominant stdin idiom
+	// `match fmt.scan<T>() { Err(_) => os.exit(..), Ok(x) => x }`:
+	// the value arm yields the Ok payload of Result<T, error>, i.e.
+	// T. Codegen knows the scanned type from the call's type-arg even
+	// when the payload binding itself can't be peeked.
+	if ta := scanTypeArg(m.Subject); ta != nil {
+		if s, ok := goTypeArgString(ta); ok {
+			return s, nil
+		}
+	}
+	if firstErr != nil {
+		return "", firstErr
+	}
+	return g.inferArmResultType(m.Arms[0].Body)
+}
+
+// scanTypeArg returns the single type argument of a `fmt.scan<T>()`
+// subject, or nil when the subject is not a fmt.scan call.
+func scanTypeArg(subject ast.Expr) ast.TypeExpr {
+	c, ok := subject.(*ast.Call)
+	if !ok || !isFmtScan(c.Callee) || len(c.TypeArgs) != 1 {
+		return nil
+	}
+	return c.TypeArgs[0]
+}
+
+// goTypeArgString renders a type expression to its Go spelling for
+// the scalar / named / slice shapes a scan type-arg can take. Returns
+// false for shapes outside that set.
+func goTypeArgString(t ast.TypeExpr) (string, bool) {
+	switch v := t.(type) {
+	case *ast.PrimitiveType:
+		return v.Name, true
+	case *ast.NamedType:
+		if len(v.QName) == 1 && len(v.Args) == 0 {
+			return goIdent(v.QName[0]), true
+		}
+	case *ast.SliceType:
+		if e, ok := goTypeArgString(v.Elem); ok {
+			return "[]" + e, true
+		}
+	}
+	return "", false
+}
+
+// isDivergingExpr reports whether e never produces a value: the
+// diverging expressions (return/break/continue), an `os.exit(...)`
+// call (Never per binding-surface.md §os), or a block whose trailing
+// value diverges.
+func isDivergingExpr(e ast.Expr) bool {
+	switch v := e.(type) {
+	case *ast.ParenExpr:
+		return isDivergingExpr(v.Inner)
+	case *ast.ReturnExpr, *ast.BreakExpr, *ast.ContinueExpr:
+		return true
+	case *ast.Call:
+		return isFieldCall(v.Callee, "os", "exit")
+	case *ast.Block:
+		return v.Trailing != nil && isDivergingExpr(v.Trailing)
+	}
+	return false
 }
 
 // emitBlockAsExpr lowers a block in value position to an IIFE
@@ -2818,6 +2931,18 @@ func (g *gen) emitCall(c *ast.Call) error {
 				return fmt.Errorf("codegen: .bytes takes no arguments, got %d", len(c.Args))
 			}
 			g.b.WriteString("[]byte(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
+		case "runes":
+			// `s.runes()` views a string as []rune — Go's
+			// `[]rune(s)` conversion (binding-surface.md §strings).
+			if len(c.Args) != 0 {
+				return fmt.Errorf("codegen: .runes takes no arguments, got %d", len(c.Args))
+			}
+			g.b.WriteString("[]rune(")
 			if err := g.emitExpr(f.Receiver); err != nil {
 				return err
 			}
