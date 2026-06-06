@@ -1,0 +1,27 @@
+--- TITLE ---
+TuplePat in a for-loop header — `for (i, v) in xs`
+
+--- INPUT ---
+func main() {
+  for (i, v) in xs {
+    use(i, v)
+  }
+}
+
+--- AST ---
+(File @1:1-5:2
+  (FuncDecl "main" @1:1-5:2
+    (type-params)
+    (params)
+    (Block @1:13-5:2
+      (ForStmt @2:3-4:4
+        (TuplePat @2:7-2:13
+          (IdentPat "i" @2:8-2:9)
+          (IdentPat "v" @2:11-2:12))
+        (Ident "xs" @2:17-2:19)
+        (Block @2:20-4:4
+          (ExprStmt @3:5-3:14
+            (Call @3:5-3:14
+              (Ident "use" @3:5-3:8)
+              (Ident "i" @3:9-3:10)
+              (Ident "v" @3:12-3:13))))))))
