@@ -1,0 +1,126 @@
+--- TITLE ---
+Scope nested inside a spawn body — inner scope's return is NOT spawn-converted (inSpawnBody resets at the scope/closure boundary)
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let ch = makeChannel<int>(1)
+  let r = scope<int, error> {
+    spawn {
+      let inner = scope<int, error> {
+        spawn { return Ok(()) }
+        15
+      }
+      match inner {
+        Ok(v) => ch.send(v + 1),
+        Err(_) => ch.send(0),
+      }
+      return Ok(())
+    }
+    ch.recv()
+  }
+  match r {
+    Ok(n) => fmt.println("got:", n),
+    Err(e) => fmt.println("err:", e),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"context"
+	"fmt"
+	"sync"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+
+type tideGroup struct {
+	wg     sync.WaitGroup
+	once   sync.Once
+	err    error
+	cancel context.CancelFunc
+}
+
+func tideNewGroup(parent context.Context) (*tideGroup, context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	return &tideGroup{cancel: cancel}, ctx
+}
+
+func (g *tideGroup) Go(f func() error) {
+	g.wg.Add(1)
+	go func() {
+		defer g.wg.Done()
+		if err := f(); err != nil {
+			g.once.Do(func() {
+				g.err = err
+				g.cancel()
+			})
+		}
+	}()
+}
+
+func (g *tideGroup) Wait() error {
+	g.wg.Wait()
+	g.cancel()
+	return g.err
+}
+func main() {
+	var ch = make(chan int, 1)
+	var r = func() Result[int, error] {
+		_tideEg0, _ := tideNewGroup(context.Background())
+		_tideEg0.Go(func() error {
+			var inner = func() Result[int, error] {
+				_tideEg1, _ := tideNewGroup(context.Background())
+				_tideEg1.Go(func() error {
+					return nil
+				})
+				if _err := _tideEg1.Wait(); _err != nil {
+					return ResultErr[int, error](_err)
+				}
+				return ResultOk[int, error](15)
+			}()
+			__tide_match_1 := inner
+			switch __tide_match_1.Tag {
+			case 0:
+				v := __tide_match_1.V
+				ch <- v + 1
+			case 1:
+				ch <- 0
+			}
+			return nil
+		})
+		if _err := _tideEg0.Wait(); _err != nil {
+			return ResultErr[int, error](_err)
+		}
+		return ResultOk[int, error](<-ch)
+	}()
+	__tide_match_2 := r
+	switch __tide_match_2.Tag {
+	case 0:
+		n := __tide_match_2.V
+		fmt.Println("got:", n)
+	case 1:
+		e := __tide_match_2.E
+		fmt.Println("err:", e)
+	}
+}
+
+--- STDOUT ---
+got: 16
+
+--- EXIT ---
+0

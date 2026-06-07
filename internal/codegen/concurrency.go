@@ -27,6 +27,14 @@ func (g *gen) emitScopeExpr(s *ast.ScopeExpr) error {
 	g.groupVars = append(g.groupVars, gv)
 	defer func() { g.groupVars = g.groupVars[:depth] }()
 
+	// A scope is its own return frame: a `return` inside the scope's
+	// IIFE is not a spawn return, even when the scope is lexically
+	// nested inside a spawn body. Drop the spawn-return conversion
+	// for the duration of the scope body.
+	savedSpawn := g.inSpawnBody
+	g.inSpawnBody = false
+	defer func() { g.inSpawnBody = savedSpawn }()
+
 	g.b.WriteString("func() Result[")
 	if err := g.emitScopeTType(tArg); err != nil {
 		return err

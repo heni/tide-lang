@@ -439,6 +439,13 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 // types need call-site context, which v1 codegen lacks). The return
 // type comes from the annotation, else sema's inferred Func.Return.
 func (g *gen) emitClosure(cl *ast.ClosureLit) error {
+	// A closure boundary breaks the spawn-return frame: a `return`
+	// in the closure body is the closure's return, not the enclosing
+	// spawn's group-error conversion (mirrors the sema scopeDepth
+	// reset in inferClosure).
+	savedSpawn := g.inSpawnBody
+	g.inSpawnBody = false
+	defer func() { g.inSpawnBody = savedSpawn }()
 	g.b.WriteString("func(")
 	for i, prm := range cl.Params {
 		if i > 0 {
