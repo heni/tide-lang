@@ -677,6 +677,47 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 // `Map<string, int>` parse cleanly), even though the only
 // type-bearing positions in PR-F1's corpus use bare primitives.
 func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
+	// FuncType: `func(A, B) : R`.
+	if p.at(lexer.KindKeyword, "func") {
+		kw := p.advance() // consume 'func'
+		if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+			return nil, err
+		}
+		var params []ast.TypeExpr
+		p.skipNewlines()
+		for !p.at(lexer.KindPunct, ")") && !p.at(lexer.KindEOF) {
+			pt, err := p.parseTypeExpr()
+			if err != nil {
+				return nil, err
+			}
+			params = append(params, pt)
+			p.skipNewlines()
+			if !p.at(lexer.KindPunct, ",") {
+				break
+			}
+			p.advance()
+			p.skipNewlines()
+		}
+		closeTok, err := p.expect(lexer.KindPunct, ")")
+		if err != nil {
+			return nil, err
+		}
+		ft := &ast.FuncType{
+			Span: ast.Span{StartLine: kw.Line, StartCol: kw.Col,
+				EndLine: closeTok.Line, EndCol: closeTok.Col + 1},
+			Params: params,
+		}
+		if p.at(lexer.KindPunct, ":") {
+			p.advance()
+			rt, err := p.parseTypeExpr()
+			if err != nil {
+				return nil, err
+			}
+			ft.ReturnType = rt
+			ft.Span.EndLine, ft.Span.EndCol = rt.NodeSpan().EndLine, rt.NodeSpan().EndCol
+		}
+		return ft, nil
+	}
 	// TupleType: `(A, B, ...)` — arity ≥ 2.
 	if p.at(lexer.KindPunct, "(") {
 		open := p.advance() // consume '('
@@ -1676,6 +1717,129 @@ func (p *parser) couldBeGenericCallSite() bool {
 	return false
 }
 
+// couldBeShortClosure peeks from the cursor at `(` to its matching
+// `)` and reports whether `=>` immediately follows — i.e. this is a
+// short closure `(params) => expr`, not a parenthesised expr / tuple.
+func (p *parser) couldBeShortClosure() bool {
+	if !p.at(lexer.KindPunct, "(") {
+		return false
+	}
+	depth := 0
+	for i := p.pos; i < len(p.toks); i++ {
+		t := p.toks[i]
+		if t.Kind == lexer.KindPunct && t.Lexeme == "(" {
+			depth++
+		} else if t.Kind == lexer.KindPunct && t.Lexeme == ")" {
+			depth--
+			if depth == 0 {
+				for j := i + 1; j < len(p.toks); j++ {
+					n := p.toks[j]
+					if n.Kind == lexer.KindNewline {
+						continue
+					}
+					return n.Kind == lexer.KindOp && n.Lexeme == "=>"
+				}
+				return false
+			}
+		}
+	}
+	return false
+}
+
+// parseShortClosure parses `(p1, p2, ...) => expr` (grammar.ebnf
+// ShortParamList). Params may carry an optional `: TypeExpr`. The
+// `=> expr` body is wrapped in a Block whose trailing value is expr.
+func (p *parser) parseShortClosure() (*ast.ClosureLit, *Diag) {
+	open := p.advance() // consume '('
+	p.skipNewlines()
+	var params []*ast.Param
+	for !p.at(lexer.KindPunct, ")") && !p.at(lexer.KindEOF) {
+		if !p.at(lexer.KindIdent) {
+			t := p.peek()
+			return nil, p.diag("E0112", "expected closure parameter name", t.Line, t.Col)
+		}
+		nameTok := p.advance()
+		param := &ast.Param{
+			Span: ast.Span{StartLine: nameTok.Line, StartCol: nameTok.Col,
+				EndLine: nameTok.Line, EndCol: nameTok.Col + len(nameTok.Lexeme)},
+			Name: nameTok.Lexeme,
+		}
+		if p.at(lexer.KindPunct, ":") {
+			p.advance()
+			ty, err := p.parseTypeExpr()
+			if err != nil {
+				return nil, err
+			}
+			param.DeclType = ty
+			param.Span.EndLine, param.Span.EndCol = ty.NodeSpan().EndLine, ty.NodeSpan().EndCol
+		}
+		params = append(params, param)
+		p.skipNewlines()
+		if !p.at(lexer.KindPunct, ",") {
+			break
+		}
+		p.advance()
+		p.skipNewlines()
+	}
+	if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
+		return nil, err
+	}
+	body, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	bodyBlock := &ast.Block{Span: body.NodeSpan(), Trailing: body}
+	return &ast.ClosureLit{
+		Span: ast.Span{
+			StartLine: open.Line, StartCol: open.Col,
+			EndLine: body.NodeSpan().EndLine, EndCol: body.NodeSpan().EndCol,
+		},
+		Params: params,
+		Body:   bodyBlock,
+		Short:  true,
+	}, nil
+}
+
+// parseFuncClosure parses the full closure form `func(ParamList)
+// ReturnAnnot? Block` in expression position. Cursor at `func`.
+func (p *parser) parseFuncClosure() (*ast.ClosureLit, *Diag) {
+	kw := p.advance() // consume 'func'
+	if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+		return nil, err
+	}
+	params, err := p.parseParamList()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+		return nil, err
+	}
+	var ret ast.TypeExpr
+	if p.at(lexer.KindPunct, ":") {
+		p.advance()
+		ret, err = p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.ClosureLit{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Params:     params,
+		ReturnType: ret,
+		Body:       body,
+	}, nil
+}
+
 func (p *parser) parseCallTypeArgs() ([]ast.TypeExpr, *Diag) {
 	if _, err := p.expect(lexer.KindOp, "<"); err != nil {
 		return nil, err
@@ -1796,6 +1960,8 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			return p.parseMatchExpr()
 		case "if":
 			return p.parseIfExpr()
+		case "func":
+			return p.parseFuncClosure()
 		case "break":
 			bt := p.advance()
 			return &ast.BreakExpr{Span: spanFromToken(bt)}, nil
@@ -1825,6 +1991,11 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		return &ast.Ident{Span: spanFromToken(t), Name: t.Lexeme}, nil
 	case lexer.KindPunct:
 		if t.Lexeme == "(" {
+			// `(params) => expr` short closure — disambiguated from a
+			// parenthesised expr / tuple by a `=>` after the `)`.
+			if p.couldBeShortClosure() {
+				return p.parseShortClosure()
+			}
 			// Inside parens a `{` is unambiguous — lift header
 			// brace-suppression for the whole `( … )`.
 			savedNB := p.noBrace

@@ -1,0 +1,44 @@
+--- TITLE ---
+Closures → Go func literals (capture, short + full forms, func-type param)
+
+--- INPUT ---
+import fmt
+
+func apply(f: func(int): int, x: int): int {
+  return f(x)
+}
+
+func main() {
+  let factor = 3
+  let scale = (x: int) => x * factor
+  let triple = func(x: int): int { return x * 3 }
+  fmt.println(apply(scale, 5))
+  fmt.println(apply(triple, 5))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func apply(f func(int) int, x int) int {
+	return f(x)
+}
+func main() {
+	var factor = 3
+	var scale = func(x int) int {
+		return x * factor
+	}
+	var triple = func(x int) int {
+		return x * 3
+	}
+	fmt.Println(apply(scale, 5))
+	fmt.Println(apply(triple, 5))
+}
+
+--- STDOUT ---
+15
+15
+
+--- EXIT ---
+0

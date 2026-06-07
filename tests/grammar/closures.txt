@@ -1,0 +1,38 @@
+--- TITLE ---
+Closures — short `(p: T) => expr` and full `func(p: T): R { ... }` forms
+
+--- INPUT ---
+func main() {
+  let double = (x: int) => x * 2
+  let triple = func(x: int): int { return x * 3 }
+}
+
+--- AST ---
+(File @1:1-4:2
+  (FuncDecl "main" @1:1-4:2
+    (type-params)
+    (params)
+    (Block @1:13-4:2
+      (LetStmt @2:3-2:33
+        (IdentPat "double" @2:7-2:13)
+        (ClosureLit short @2:16-2:33
+          (Param "x" @2:17-2:23
+            (PrimitiveType "int" @2:20-2:23))
+          (Block @2:28-2:33
+            (trailing
+              (Binary "*" @2:28-2:33
+                (Ident "x" @2:28-2:29)
+                (IntLitExpr 2 @2:32-2:33))))))
+      (LetStmt @3:3-3:50
+        (IdentPat "triple" @3:7-3:13)
+        (ClosureLit @3:16-3:50
+          (Param "x" @3:21-3:27
+            (PrimitiveType "int" @3:24-3:27))
+          (return
+            (PrimitiveType "int" @3:30-3:33))
+          (Block @3:34-3:50
+            (ExprStmt @3:36-3:48
+              (ReturnExpr @3:36-3:48
+                (Binary "*" @3:43-3:48
+                  (Ident "x" @3:43-3:44)
+                  (IntLitExpr 3 @3:47-3:48))))))))))

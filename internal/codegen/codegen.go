@@ -829,6 +829,17 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			for _, ct := range v.Components {
 				walk(ct)
 			}
+		case *ast.FuncType:
+			for _, pt := range v.Params {
+				walk(pt)
+			}
+			walk(v.ReturnType)
+		case *ast.ClosureLit:
+			for _, prm := range v.Params {
+				walk(prm.DeclType)
+			}
+			walk(v.ReturnType)
+			walk(v.Body)
 		case *ast.RangeExpr:
 			walk(v.Low)
 			walk(v.High)
@@ -1139,6 +1150,25 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 			}
 		}
 		g.b.WriteString(" }")
+		return nil
+	case *ast.FuncType:
+		// `func(A, B): R` → Go `func(A, B) R`.
+		g.b.WriteString("func(")
+		for i, pt := range v.Params {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitTypeExpr(pt); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(')')
+		if v.ReturnType != nil {
+			g.b.WriteByte(' ')
+			if err := g.emitTypeExpr(v.ReturnType); err != nil {
+				return err
+			}
+		}
 		return nil
 	case *ast.NamedType:
 		// Per G16 / lowering-go.md §Implicit receiver, classes
@@ -2188,6 +2218,8 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return nil
 	case *ast.BraceLit:
 		return g.emitBraceLit(v)
+	case *ast.ClosureLit:
+		return g.emitClosure(v)
 	case *ast.TupleLit:
 		return g.emitTupleLit(v)
 	case *ast.TupleField:

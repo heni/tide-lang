@@ -112,6 +112,13 @@ func (c *checker) checkTypeArity(t ast.TypeExpr, scope *Scope) {
 		for _, ct := range v.Components {
 			c.checkTypeArity(ct, scope)
 		}
+	case *ast.FuncType:
+		for _, pt := range v.Params {
+			c.checkTypeArity(pt, scope)
+		}
+		if v.ReturnType != nil {
+			c.checkTypeArity(v.ReturnType, scope)
+		}
 	case *ast.PrimitiveType:
 		// no args
 	default:

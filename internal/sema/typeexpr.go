@@ -38,6 +38,16 @@ func (c *checker) typeFromExprSeen(t ast.TypeExpr, seen map[string]bool) Type {
 			comps[i] = c.typeFromExprSeen(ce, seen)
 		}
 		return &Tuple{Comps: comps}
+	case *ast.FuncType:
+		params := make([]Type, len(v.Params))
+		for i, pe := range v.Params {
+			params[i] = c.typeFromExprSeen(pe, seen)
+		}
+		var ret Type = &Unit{}
+		if v.ReturnType != nil {
+			ret = c.typeFromExprSeen(v.ReturnType, seen)
+		}
+		return &Func{Params: params, Return: ret}
 	case *ast.NamedType:
 		return c.namedTypeToType(v, seen)
 	default:

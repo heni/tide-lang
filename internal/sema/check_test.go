@@ -365,6 +365,37 @@ func TestFloatPatternFiresE0305(t *testing.T) {
 	}
 }
 
+func TestClosureTypingNoFalsePositive(t *testing.T) {
+	// Closure params are in scope in the body; captured outer
+	// bindings resolve; a func-typed parameter type-checks.
+	src := `import fmt
+func apply(f: func(int): int, x: int): int {
+  return f(x)
+}
+func main() {
+  let factor = 3
+  let scale = (x: int) => x * factor
+  fmt.println(apply(scale, 5))
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (closures), got %v", codes)
+	}
+}
+
+func TestClosureParamScopeIsLocal(t *testing.T) {
+	// A closure parameter must not leak past the closure body.
+	src := `import fmt
+func main() {
+  let f = (x: int) => x + 1
+  fmt.println(x)
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0103") {
+		t.Errorf("expected E0103 for closure-param leak, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

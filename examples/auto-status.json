@@ -2,8 +2,8 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 36,
-    "sema_fail": 1,
+    "parse_fail": 35,
+    "sema_fail": 2,
     "emit_fail": 5,
     "build_ok": 10
   },
@@ -21,7 +21,7 @@
     {
       "path": "examples/aoc/2025/d02.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
+      "blocker": "error[E0112]: tuple type needs at least two components"
     },
     {
       "path": "examples/aoc/2025/d03.td",
@@ -36,7 +36,7 @@
     {
       "path": "examples/aoc/2025/d05.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
+      "blocker": "error[E0112]: expected binding name"
     },
     {
       "path": "examples/aoc/2025/d07.td",
@@ -45,8 +45,8 @@
     },
     {
       "path": "examples/aoc/2025/d08.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name sort"
     },
     {
       "path": "examples/aoc/2025/d09.td",
@@ -151,7 +151,7 @@
     {
       "path": "examples/leetcode/merge_intervals.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Op \"=>\""
+      "blocker": "error[E0112]: expected expression, got Newline \"\""
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",

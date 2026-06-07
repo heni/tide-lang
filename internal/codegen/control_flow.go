@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/heni/tide-lang/internal/ast"
+	"github.com/heni/tide-lang/internal/sema"
 )
 
 // isDivergingExpr reports whether e never produces a value: the
@@ -399,5 +400,70 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 	g.indent--
 	g.writeIndent()
 	g.b.WriteString("}\n")
+	return nil
+}
+
+// emitClosure lowers a closure literal to a Go func literal
+// `func(p T, …) R { … }`. Go captures the surrounding scope
+// automatically. Parameters must be typed (the short form's omitted
+// types need call-site context, which v1 codegen lacks). The return
+// type comes from the annotation, else sema's inferred Func.Return.
+func (g *gen) emitClosure(cl *ast.ClosureLit) error {
+	g.b.WriteString("func(")
+	for i, prm := range cl.Params {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		if prm.DeclType == nil {
+			return fmt.Errorf("codegen: untyped closure parameter %q — annotate it (`(%s: T) => …`)", prm.Name, prm.Name)
+		}
+		g.b.WriteString(goIdent(prm.Name))
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(prm.DeclType); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte(')')
+	// Return type: explicit annotation (emitted inline), else read
+	// from sema's inferred Func.
+	hasReturn := false
+	if cl.ReturnType != nil {
+		g.b.WriteByte(' ')
+		if err := g.emitTypeExpr(cl.ReturnType); err != nil {
+			return err
+		}
+		hasReturn = true
+	} else if g.info != nil {
+		if fn, ok := g.info.Type[cl].(*sema.Func); ok && fn.Return != nil {
+			if _, isUnit := fn.Return.(*sema.Unit); !isUnit {
+				if s, ok := g.goTypeFromSema(fn.Return); ok {
+					g.b.WriteByte(' ')
+					g.b.WriteString(s)
+					hasReturn = true
+				}
+			}
+		}
+	}
+	if cl.Short && !hasReturn {
+		return fmt.Errorf("codegen: cannot infer closure result type — annotate the return (`(…): R => …`)")
+	}
+	g.b.WriteString(" {\n")
+	g.indent++
+	if cl.Short {
+		// Short form: the body block's trailing value is the result.
+		if cl.Body.Trailing != nil {
+			g.writeIndent()
+			g.b.WriteString("return ")
+			if err := g.emitExpr(cl.Body.Trailing); err != nil {
+				return err
+			}
+			g.b.WriteByte('\n')
+		}
+	} else if err := g.emitBlockBody(cl.Body); err != nil {
+		return err
+	}
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}")
 	return nil
 }

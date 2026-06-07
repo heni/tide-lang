@@ -91,6 +91,15 @@ func aliasRefs(t ast.TypeExpr) []string {
 			out = append(out, aliasRefs(ct)...)
 		}
 		return out
+	case *ast.FuncType:
+		var out []string
+		for _, pt := range v.Params {
+			out = append(out, aliasRefs(pt)...)
+		}
+		if v.ReturnType != nil {
+			out = append(out, aliasRefs(v.ReturnType)...)
+		}
+		return out
 	case *ast.PrimitiveType:
 		return nil
 	default:

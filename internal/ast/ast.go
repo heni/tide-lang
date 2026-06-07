@@ -263,6 +263,18 @@ func (n *TupleType) NodeSpan() Span   { return n.Span }
 func (n *TupleType) NodeKind() string { return "TupleType" }
 func (n *TupleType) typeMarker()      {}
 
+// FuncType — `func(A, B) : R`. Per ast.md §TypeExpr; the type of a
+// closure / function value.
+type FuncType struct {
+	Span       Span
+	Params     []TypeExpr
+	ReturnType TypeExpr // nil ⇒ unit
+}
+
+func (n *FuncType) NodeSpan() Span   { return n.Span }
+func (n *FuncType) NodeKind() string { return "FuncType" }
+func (n *FuncType) typeMarker()      {}
+
 // NamedType is a possibly-qualified identifier (`Result`,
 // `Map<K, V>`, `fmt.Foo`). QName has length ≥ 1. Args is empty
 // when the type carries no generic arguments.
@@ -843,6 +855,21 @@ type TupleField struct {
 func (n *TupleField) NodeSpan() Span   { return n.Span }
 func (n *TupleField) NodeKind() string { return "TupleField" }
 func (n *TupleField) exprMarker()      {}
+
+// ClosureLit — a function value. Full form `func(p: T): R { body }`
+// or short form `(p) => expr` (desugared to a Block whose trailing is
+// expr). Per ast.md §Expr; Params may have nil DeclType (short form).
+type ClosureLit struct {
+	Span       Span
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ inferred / unit
+	Body       *Block
+	Short      bool // true for the `(p) => expr` form
+}
+
+func (n *ClosureLit) NodeSpan() Span   { return n.Span }
+func (n *ClosureLit) NodeKind() string { return "ClosureLit" }
+func (n *ClosureLit) exprMarker()      {}
 
 // ParenExpr — `( inner )`. Per ast.md §Expr. Preserved as a node
 // (not flattened to `inner`) so codegen reproduces the author's

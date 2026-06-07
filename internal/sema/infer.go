@@ -59,6 +59,8 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		}
 	case *ast.BraceLit:
 		t = c.inferBraceLit(v)
+	case *ast.ClosureLit:
+		t = c.inferClosure(v)
 	case *ast.Block:
 		t = c.inferBlock(v)
 	case *ast.IfExpr:
@@ -102,6 +104,37 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 	}
 	c.info.Type[e] = t
 	return t
+}
+
+// inferClosure types a closure literal as a Func. Param types come
+// from annotations (Unknown when omitted in the short form); the body
+// is checked with the closure's return type in scope, then the return
+// type is the annotation, or the body's value type when omitted.
+func (c *checker) inferClosure(cl *ast.ClosureLit) Type {
+	params := make([]Type, len(cl.Params))
+	for i, prm := range cl.Params {
+		if prm.DeclType != nil {
+			params[i] = c.typeFromExpr(prm.DeclType)
+		} else {
+			params[i] = &Unknown{}
+		}
+	}
+	savedReturn, savedThis, savedForbidden := c.curReturn, c.curThis, c.curTryForbidden
+	var ret Type
+	if cl.ReturnType != nil {
+		ret = c.typeFromExpr(cl.ReturnType)
+		c.curReturn = ret
+		c.curTryForbidden = c.definitelyNotTryable(cl.ReturnType)
+	} else {
+		c.curReturn = &Unknown{}
+		c.curTryForbidden = false
+	}
+	bodyVal := c.inferBlock(cl.Body)
+	c.curReturn, c.curThis, c.curTryForbidden = savedReturn, savedThis, savedForbidden
+	if ret == nil {
+		ret = bodyVal
+	}
+	return &Func{Params: params, Return: ret}
 }
 
 // inferBraceLit types a brace literal. Record literals resolve to

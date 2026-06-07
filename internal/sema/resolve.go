@@ -256,5 +256,10 @@ func (c *checker) resolveTypeExpr(t ast.TypeExpr, scope *Scope) {
 		for _, ct := range v.Components {
 			c.resolveTypeExpr(ct, scope)
 		}
+	case *ast.FuncType:
+		for _, pt := range v.Params {
+			c.resolveTypeExpr(pt, scope)
+		}
+		c.resolveTypeExpr(v.ReturnType, scope)
 	}
 }

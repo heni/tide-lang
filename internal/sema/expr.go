@@ -49,6 +49,24 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		}
 	case *ast.TupleField:
 		c.resolveExpr(v.Receiver, scope)
+	case *ast.ClosureLit:
+		// A closure body sees its parameters in a fresh scope.
+		clScope := newScope(scope)
+		for _, prm := range v.Params {
+			c.resolveTypeExpr(prm.DeclType, scope)
+			if prm.Name != "" && prm.Name != "_" {
+				c.checkReservedName(prm.Name, prm.Span)
+				var pt Type = &Unknown{}
+				if prm.DeclType != nil {
+					pt = c.typeFromExpr(prm.DeclType)
+				}
+				sym := &Symbol{Name: prm.Name, Kind: SymLocal, Decl: prm, Type: pt}
+				clScope.declare(sym)
+				c.info.Def[prm] = sym
+			}
+		}
+		c.resolveTypeExpr(v.ReturnType, scope)
+		c.resolveBlock(v.Body, clScope)
 	case *ast.BraceLit:
 		c.resolveTypeExpr(v.TypeName, scope)
 		for _, e := range v.Entries {

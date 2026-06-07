@@ -242,6 +242,37 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteByte('\n')
 			write(b, c, depth+1)
 		}
+	case *FuncType:
+		writeSpan(b, v.Span)
+		for _, p := range v.Params {
+			b.WriteByte('\n')
+			write(b, p, depth+1)
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
+	case *ClosureLit:
+		if v.Short {
+			b.WriteString(" short")
+		}
+		writeSpan(b, v.Span)
+		for _, p := range v.Params {
+			b.WriteByte('\n')
+			write(b, p, depth+1)
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
 	case *TupleLit:
 		writeSpan(b, v.Span)
 		for _, c := range v.Components {
