@@ -616,9 +616,12 @@ Interface method declarations omit `func`, like methods in a class.
 There is no implicit or accidental satisfaction (D14). `implements`
 works for both Tide-defined interfaces and bound Go interfaces, so a
 Tide class can explicitly implement e.g. `io.Reader` or `http.Handler`.
-Codegen emits a static conformance assertion; a mismatch fails in
-Tide's checker, not in generated Go. Method-set semantics follow Go's
-(value- vs pointer-receiver).
+The checker enforces the conformance *relation* (a class declared to
+implement an interface is usable where that interface is expected);
+verifying that the class actually declares every interface method is a
+v1 gap — a non-satisfying class is currently caught by the Go build,
+not yet by a Tide-coordinate diagnostic. Method-set semantics follow
+Go's (value- vs pointer-receiver).
 
 **Interface composition** — an interface may aggregate other interfaces
 with `extends`. The composed interface requires the union of the method

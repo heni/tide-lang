@@ -156,7 +156,7 @@ func (c *checker) methodSigType(m *ast.Method) *Func {
 // satisfiesInterface reports whether `got` nominally conforms to the
 // interface type `want` (D14): `got` is a class whose `implements`
 // list names the interface, or an interface that is / `extends` it.
-// One level of `extends` is followed.
+// The `extends` chain is followed transitively.
 func (c *checker) satisfiesInterface(want, got Type) bool {
 	wn, ok := want.(*Named)
 	if !ok {
@@ -191,7 +191,7 @@ func (c *checker) satisfiesInterface(want, got Type) bool {
 }
 
 // namesInterface reports whether the type expression names interface
-// `name`, directly or through one level of `extends`.
+// `name`, directly or transitively through the `extends` chain.
 func (c *checker) namesInterface(t ast.TypeExpr, name string) bool {
 	nt, ok := t.(*ast.NamedType)
 	if !ok || len(nt.QName) != 1 {
