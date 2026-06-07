@@ -396,6 +396,35 @@ func main() {
 	}
 }
 
+func TestInterfaceConformanceNoFalsePositive(t *testing.T) {
+	// A class that `implements` an interface is accepted where the
+	// interface is expected; an interface-typed method call types.
+	src := `import fmt
+interface Shape { area(): int }
+class Square implements Shape {
+  let side: int
+  area(): int { return this.side * this.side }
+}
+func describe(s: Shape): int { return s.area() }
+func main() {
+  let sq = Square { side: 5 }
+  fmt.println(describe(sq))
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (interface conformance), got %v", codes)
+	}
+}
+
+func TestDuplicateInterfaceFiresE0113(t *testing.T) {
+	src := `interface Foo { a(): int }
+interface Foo { b(): int }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0113") {
+		t.Errorf("expected E0113 for duplicate interface, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

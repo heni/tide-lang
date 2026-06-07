@@ -62,6 +62,12 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 			if prev := file.declare(sym); prev != nil {
 				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
+		case *ast.InterfaceDecl:
+			c.checkReservedName(v.Name, v.Span)
+			sym := &Symbol{Name: v.Name, Kind: SymInterface, Decl: v, Type: &Named{N: v.Name, Decl: v}}
+			if prev := file.declare(sym); prev != nil {
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
+			}
 		case *ast.FuncDecl:
 			c.checkReservedName(v.Name, v.Span)
 			sym := &Symbol{Name: v.Name, Kind: SymFunc, Decl: v, Type: &Unknown{}}

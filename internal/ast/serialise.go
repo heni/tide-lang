@@ -107,6 +107,36 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.DeclType, depth+1)
+	case *InterfaceDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		for _, e := range v.Extends {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(extends\n")
+			write(b, e, depth+2)
+			b.WriteByte(')')
+		}
+		for _, m := range v.Methods {
+			b.WriteByte('\n')
+			write(b, m, depth+1)
+		}
+	case *InterfaceMethodSig:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		for _, prm := range v.Params {
+			b.WriteByte('\n')
+			write(b, prm, depth+1)
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
 	case *Method:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)

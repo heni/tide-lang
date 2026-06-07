@@ -193,6 +193,10 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 			if err := g.emitClassDecl(v); err != nil {
 				return "", err
 			}
+		case *ast.InterfaceDecl:
+			if err := g.emitInterfaceDecl(v); err != nil {
+				return "", err
+			}
 		default:
 			return "", fmt.Errorf("codegen: unhandled top-level decl %T", d)
 		}
@@ -692,6 +696,16 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			for _, m := range v.Methods {
 				walk(m)
 			}
+		case *ast.InterfaceDecl:
+			for _, e := range v.Extends {
+				walk(e)
+			}
+			for _, m := range v.Methods {
+				for _, prm := range m.Params {
+					walk(prm.DeclType)
+				}
+				walk(m.ReturnType)
+			}
 		case *ast.ClassField:
 			walk(v.DeclType)
 		case *ast.Method:
@@ -1002,6 +1016,48 @@ func (g *gen) emitClassDecl(cd *ast.ClassDecl) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// emitInterfaceDecl lowers `interface Name { sig … }` to a Go
+// interface. `extends` interfaces are embedded; method signatures
+// emit `name(paramTypes) R`. Conformance is structural in Go, so a
+// class that has the methods satisfies it (D14's explicit `implements`
+// is sema-checked, not encoded in the Go interface).
+func (g *gen) emitInterfaceDecl(id *ast.InterfaceDecl) error {
+	g.line(id.Span.StartLine)
+	g.b.WriteString("type ")
+	g.b.WriteString(goIdent(id.Name))
+	g.b.WriteString(" interface {\n")
+	for _, e := range id.Extends {
+		g.b.WriteByte('\t')
+		if err := g.emitTypeExpr(e); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+	}
+	for _, m := range id.Methods {
+		g.b.WriteByte('\t')
+		g.b.WriteString(goIdent(m.Name))
+		g.b.WriteByte('(')
+		for i, prm := range m.Params {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			if err := g.emitTypeExpr(prm.DeclType); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(')')
+		if m.ReturnType != nil {
+			g.b.WriteByte(' ')
+			if err := g.emitTypeExpr(m.ReturnType); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte('\n')
+	}
+	g.b.WriteString("}\n")
 	return nil
 }
 
@@ -1656,7 +1712,13 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 	if len(b.TypeName.QName) != 1 {
 		return fmt.Errorf("codegen: qualified record type name not supported")
 	}
-	g.b.WriteString(goIdent(b.TypeName.QName[0]))
+	name := b.TypeName.QName[0]
+	// A class is a reference type — `Bar{ x: 6 }` constructs `&Bar{…}`
+	// so its methods (declared on `*Bar`) are reachable.
+	if _, isClass := g.class[name]; isClass {
+		g.b.WriteByte('&')
+	}
+	g.b.WriteString(goIdent(name))
 	g.b.WriteByte('{')
 	for i, e := range b.Entries {
 		re, ok := e.(*ast.RecordEntry)

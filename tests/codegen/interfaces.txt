@@ -1,0 +1,52 @@
+--- TITLE ---
+Interface → Go interface; class implements + conformance + dispatch
+
+--- INPUT ---
+import fmt
+
+interface Shape {
+  area(): int
+}
+
+class Square implements Shape {
+  let side: int
+  area(): int { return this.side * this.side }
+}
+
+func describe(s: Shape): int {
+  return s.area()
+}
+
+func main() {
+  let sq = Square{ side: 5 }
+  fmt.println(describe(sq))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Shape interface {
+	area() int
+}
+type Square struct {
+	side int
+}
+
+func (t *Square) area() int {
+	return t.side * t.side
+}
+func describe(s Shape) int {
+	return s.area()
+}
+func main() {
+	var sq = &Square{side: 5}
+	fmt.Println(describe(sq))
+}
+
+--- STDOUT ---
+25
+
+--- EXIT ---
+0

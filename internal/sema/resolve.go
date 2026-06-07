@@ -13,9 +13,29 @@ func (c *checker) resolveFile(f *ast.File, fileScope *Scope) {
 			c.resolveTypeDecl(v, fileScope)
 		case *ast.ClassDecl:
 			c.resolveClassDecl(v, fileScope)
+		case *ast.InterfaceDecl:
+			c.resolveInterfaceDecl(v, fileScope)
 		case *ast.FuncDecl:
 			c.resolveFuncDecl(v, fileScope)
 		}
+	}
+}
+
+// resolveInterfaceDecl resolves an interface's `extends` list and the
+// param / return types of its method signatures.
+func (c *checker) resolveInterfaceDecl(id *ast.InterfaceDecl, parent *Scope) {
+	scope := newScope(parent)
+	for _, tp := range id.TypeParams {
+		scope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
+	}
+	for _, e := range id.Extends {
+		c.resolveTypeExpr(e, scope)
+	}
+	for _, m := range id.Methods {
+		for _, prm := range m.Params {
+			c.resolveTypeExpr(prm.DeclType, scope)
+		}
+		c.resolveTypeExpr(m.ReturnType, scope)
 	}
 }
 

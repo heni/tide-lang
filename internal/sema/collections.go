@@ -238,6 +238,11 @@ func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
 	if assignable(want, got) {
 		return true
 	}
+	// Interface conformance (D14, nominal): a class that `implements`
+	// the interface — or an interface that `extends` it — fits.
+	if c.satisfiesInterface(want, got) {
+		return true
+	}
 	if intLiteralAdaptsTo(want, e) {
 		c.info.Type[e] = want
 		c.checkIntLitRange(want, e)

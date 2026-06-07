@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 35,
-    "sema_fail": 2,
-    "emit_fail": 5,
+    "parse_fail": 32,
+    "sema_fail": 3,
+    "emit_fail": 7,
     "build_ok": 10
   },
   "files": [
@@ -71,12 +71,12 @@
     {
       "path": "examples/borgo/errors_as_types.td",
       "stage": "parse",
-      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+      "blocker": "error[E0112]: expected type expression, got Keyword \"unit\""
     },
     {
       "path": "examples/borgo/interfaces.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"interface\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/borgo/match_on_tuples.td",
@@ -175,8 +175,8 @@
     },
     {
       "path": "examples/raku/error_chain.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/raku/set_algebra.td",
@@ -186,12 +186,12 @@
     {
       "path": "examples/services/graceful_server.td",
       "stage": "parse",
-      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+      "blocker": "error[E0112]: expected expression, got Punct \":\""
     },
     {
       "path": "examples/services/healthcheck_server.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name http"
     },
     {
       "path": "examples/services/parallel_fetcher.td",
@@ -201,7 +201,7 @@
     {
       "path": "examples/services/todo_api.td",
       "stage": "parse",
-      "blocker": "error[E0112]: `implements` on class declarations is not yet supported"
+      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
     },
     {
       "path": "examples/services/wc.td",

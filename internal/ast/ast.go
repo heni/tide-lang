@@ -153,6 +153,32 @@ type ClassField struct {
 func (n *ClassField) NodeSpan() Span   { return n.Span }
 func (n *ClassField) NodeKind() string { return "ClassField" }
 
+// InterfaceDecl — `interface Name<T> extends ... { method sigs }`.
+// Per ast.md §InterfaceDecl. Nominal conformance (D14): a class
+// states `implements Name` explicitly.
+type InterfaceDecl struct {
+	Span       Span
+	Name       string
+	TypeParams []string
+	Extends    []TypeExpr // composed interfaces
+	Methods    []*InterfaceMethodSig
+}
+
+func (n *InterfaceDecl) NodeSpan() Span   { return n.Span }
+func (n *InterfaceDecl) NodeKind() string { return "InterfaceDecl" }
+func (n *InterfaceDecl) declMarker()      {}
+
+// InterfaceMethodSig — `name(params): R` inside an interface body.
+type InterfaceMethodSig struct {
+	Span       Span
+	Name       string
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ unit
+}
+
+func (n *InterfaceMethodSig) NodeSpan() Span   { return n.Span }
+func (n *InterfaceMethodSig) NodeKind() string { return "InterfaceMethodSig" }
+
 // Method is one method of a ClassDecl. IsStatic distinguishes
 // `static foo(): T { ... }` from `foo(): T { ... }`.
 type Method struct {

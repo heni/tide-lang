@@ -18,6 +18,15 @@ func (c *checker) constructShapes(f *ast.File, fileScope *Scope) {
 			c.constructTypeDecl(v, fileScope)
 		case *ast.ClassDecl:
 			c.constructClassDecl(v, fileScope)
+		case *ast.InterfaceDecl:
+			for _, m := range v.Methods {
+				for _, p := range m.Params {
+					c.checkTypeArity(p.DeclType, fileScope)
+				}
+				if m.ReturnType != nil {
+					c.checkTypeArity(m.ReturnType, fileScope)
+				}
+			}
 		case *ast.FuncDecl:
 			c.constructFuncDecl(v, fileScope)
 		}

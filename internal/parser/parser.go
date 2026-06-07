@@ -226,6 +226,9 @@ func (p *parser) parseDecl() (ast.Decl, *Diag) {
 	if p.at(lexer.KindKeyword, "class") {
 		return p.parseClassDecl()
 	}
+	if p.at(lexer.KindKeyword, "interface") {
+		return p.parseInterfaceDecl()
+	}
 	t := p.peek()
 	return nil, p.diag("E0112",
 		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
@@ -431,9 +434,14 @@ func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
 	if err != nil {
 		return nil, err
 	}
+	var implements []ast.TypeExpr
 	if p.at(lexer.KindKeyword, "implements") {
-		t := p.peek()
-		return nil, p.diag("E0112", "`implements` on class declarations is not yet supported", t.Line, t.Col)
+		p.advance()
+		impl, err := p.parseInterfaceList()
+		if err != nil {
+			return nil, err
+		}
+		implements = impl
 	}
 	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
 		return nil, err
@@ -465,7 +473,102 @@ func (p *parser) parseClassDecl() (*ast.ClassDecl, *Diag) {
 		},
 		Name:       nameTok.Lexeme,
 		TypeParams: typeParams,
+		Implements: implements,
 		Fields:     fields,
+		Methods:    methods,
+	}, nil
+}
+
+// parseInterfaceList parses `TypeExpr ( "," TypeExpr )*` — the
+// `implements` / `extends` conformance list.
+func (p *parser) parseInterfaceList() ([]ast.TypeExpr, *Diag) {
+	var out []ast.TypeExpr
+	for {
+		t, err := p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+		if !p.at(lexer.KindPunct, ",") {
+			break
+		}
+		p.advance()
+		p.skipNewlines()
+	}
+	return out, nil
+}
+
+// parseInterfaceDecl parses `interface Name<T> (extends List)? {
+// methodSig* }` (grammar.ebnf InterfaceDecl).
+func (p *parser) parseInterfaceDecl() (*ast.InterfaceDecl, *Diag) {
+	kw := p.advance() // consume 'interface'
+	nameTok, err := p.expect(lexer.KindIdent, "")
+	if err != nil {
+		return nil, err
+	}
+	typeParams, err := p.parseTypeParamList()
+	if err != nil {
+		return nil, err
+	}
+	var extends []ast.TypeExpr
+	if p.at(lexer.KindKeyword, "extends") {
+		p.advance()
+		extends, err = p.parseInterfaceList()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
+		return nil, err
+	}
+	p.skipNewlines()
+	var methods []*ast.InterfaceMethodSig
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		mnameTok, err := p.expect(lexer.KindIdent, "")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.KindPunct, "("); err != nil {
+			return nil, err
+		}
+		var params []*ast.Param
+		if !p.at(lexer.KindPunct, ")") {
+			params, err = p.parseParamList()
+			if err != nil {
+				return nil, err
+			}
+		}
+		if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+			return nil, err
+		}
+		sig := &ast.InterfaceMethodSig{
+			Span: ast.Span{StartLine: mnameTok.Line, StartCol: mnameTok.Col,
+				EndLine: mnameTok.Line, EndCol: mnameTok.Col + len(mnameTok.Lexeme)},
+			Name:   mnameTok.Lexeme,
+			Params: params,
+		}
+		if p.at(lexer.KindPunct, ":") {
+			p.advance()
+			rt, err := p.parseTypeExpr()
+			if err != nil {
+				return nil, err
+			}
+			sig.ReturnType = rt
+			sig.Span.EndLine, sig.Span.EndCol = rt.NodeSpan().EndLine, rt.NodeSpan().EndCol
+		}
+		methods = append(methods, sig)
+		p.skipNewlines()
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	return &ast.InterfaceDecl{
+		Span: ast.Span{StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1},
+		Name:       nameTok.Lexeme,
+		TypeParams: typeParams,
+		Extends:    extends,
 		Methods:    methods,
 	}, nil
 }

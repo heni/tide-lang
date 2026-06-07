@@ -343,6 +343,15 @@ func (c *checker) inferField(f *ast.Field) Type {
 	if ft := c.recordFieldType(named, f.Name); ft != nil {
 		return ft
 	}
+	// Interface method access — `f.method` gives the method's Func.
+	if id, ok := named.Decl.(*ast.InterfaceDecl); ok {
+		for _, m := range id.Methods {
+			if m.Name == f.Name {
+				return c.interfaceMethodType(m)
+			}
+		}
+		return &Unknown{}
+	}
 	cd, ok := named.Decl.(*ast.ClassDecl)
 	if !ok {
 		return &Unknown{}

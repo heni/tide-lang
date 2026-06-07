@@ -106,6 +106,8 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 		return &Generic{Name: head}
 	case SymClass:
 		return &Named{N: head, Decl: sym.Decl}
+	case SymInterface:
+		return &Named{N: head, Decl: sym.Decl}
 	case SymTypeDecl:
 		td, ok := sym.Decl.(*ast.TypeDecl)
 		if !ok {
@@ -144,6 +146,73 @@ func (c *checker) funcSigType(fn *ast.FuncDecl) *Func {
 
 // methodSigType builds the canonical Func type of a class method.
 func (c *checker) methodSigType(m *ast.Method) *Func {
+	params := make([]Type, len(m.Params))
+	for i, p := range m.Params {
+		params[i] = c.typeFromExpr(p.DeclType)
+	}
+	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType)}
+}
+
+// satisfiesInterface reports whether `got` nominally conforms to the
+// interface type `want` (D14): `got` is a class whose `implements`
+// list names the interface, or an interface that is / `extends` it.
+// One level of `extends` is followed.
+func (c *checker) satisfiesInterface(want, got Type) bool {
+	wn, ok := want.(*Named)
+	if !ok {
+		return false
+	}
+	wid, ok := wn.Decl.(*ast.InterfaceDecl)
+	if !ok {
+		return false // want is not an interface
+	}
+	gn, ok := got.(*Named)
+	if !ok {
+		return false
+	}
+	switch decl := gn.Decl.(type) {
+	case *ast.ClassDecl:
+		for _, impl := range decl.Implements {
+			if c.namesInterface(impl, wid.Name) {
+				return true
+			}
+		}
+	case *ast.InterfaceDecl:
+		if decl.Name == wid.Name {
+			return true
+		}
+		for _, ext := range decl.Extends {
+			if c.namesInterface(ext, wid.Name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// namesInterface reports whether the type expression names interface
+// `name`, directly or through one level of `extends`.
+func (c *checker) namesInterface(t ast.TypeExpr, name string) bool {
+	nt, ok := t.(*ast.NamedType)
+	if !ok || len(nt.QName) != 1 {
+		return false
+	}
+	if nt.QName[0] == name {
+		return true
+	}
+	if sym := c.info.Symbol[nt]; sym != nil {
+		if id, ok := sym.Decl.(*ast.InterfaceDecl); ok {
+			for _, ext := range id.Extends {
+				if c.namesInterface(ext, name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (c *checker) interfaceMethodType(m *ast.InterfaceMethodSig) *Func {
 	params := make([]Type, len(m.Params))
 	for i, p := range m.Params {
 		params[i] = c.typeFromExpr(p.DeclType)
