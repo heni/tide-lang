@@ -2118,10 +2118,10 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 	return nil
 }
 
-// emitTupleLit lowers `(e0, e1, …)` to an anonymous Go struct
-// literal `struct { _0 T0; … }{ _0: e0, … }`. The struct type comes
-// from sema's inferred Tuple type so the literal shares its Go type
-// with any matching annotation / field access.
+// emitTupleLit lowers a tuple literal to an anonymous-struct literal.
+// The struct type comes from sema's inferred Tuple so the literal
+// shares its Go type with any matching annotation / field access
+// (structural equivalence).
 func (g *gen) emitTupleLit(t *ast.TupleLit) error {
 	var structType string
 	if g.info != nil {

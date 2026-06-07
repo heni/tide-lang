@@ -52,11 +52,14 @@ type parser struct {
 	noBrace bool
 }
 
-// withBraces runs fn with brace-literal parsing re-enabled (used when
-// descending into a delimited context), restoring noBrace after.
-func (p *parser) withBraces(fn func() (ast.Expr, *Diag)) (ast.Expr, *Diag) {
+// withNoBrace runs fn (a header-expression parse) with brace-literal
+// suppression on, restoring noBrace after — so a trailing `{` reads as
+// the control-flow block, not a `cond { … }` brace literal. Delimited
+// contexts (parens, call args, brackets, brace bodies) instead use the
+// inline `defer` form to re-enable braces.
+func (p *parser) withNoBrace(fn func() (ast.Expr, *Diag)) (ast.Expr, *Diag) {
 	saved := p.noBrace
-	p.noBrace = false
+	p.noBrace = true
 	e, err := fn()
 	p.noBrace = saved
 	return e, err
@@ -854,10 +857,7 @@ func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
 // branch value.
 func (p *parser) parseIfExpr() (*ast.IfExpr, *Diag) {
 	kw := p.advance() // consume 'if'
-	saved := p.noBrace
-	p.noBrace = true
-	cond, err := p.parseExpr()
-	p.noBrace = saved
+	cond, err := p.withNoBrace(p.parseExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -1073,10 +1073,7 @@ func (p *parser) parseReturnExpr() (*ast.ReturnExpr, *Diag) {
 
 func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
 	kw := p.advance() // consume 'if'
-	saved := p.noBrace
-	p.noBrace = true
-	cond, err := p.parseExpr()
-	p.noBrace = saved
+	cond, err := p.withNoBrace(p.parseExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -1158,10 +1155,7 @@ func (p *parser) parseForStmt() (*ast.ForStmt, *Diag) {
 // continuation).
 func (p *parser) parseWhileStmt() (*ast.WhileStmt, *Diag) {
 	kw := p.advance() // consume 'while'
-	saved := p.noBrace
-	p.noBrace = true
-	cond, err := p.parseExpr()
-	p.noBrace = saved
+	cond, err := p.withNoBrace(p.parseExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -1559,8 +1553,7 @@ func (p *parser) parseIndexOrSlice(recv ast.Expr) (ast.Expr, *Diag) {
 	savedNB := p.noBrace
 	p.noBrace = false
 	defer func() { p.noBrace = savedNB }()
-	openTok := p.advance() // consume '['
-	_ = openTok
+	p.advance() // consume '['
 	// `[:hi]` — leading colon.
 	if p.at(lexer.KindPunct, ":") {
 		p.advance() // consume ':'
@@ -2009,10 +2002,7 @@ func decodeStringLit(s string) (string, error) {
 // Form: `match Subject { Pat => Body (,|nl) ... }`.
 func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 	kw := p.advance() // consume 'match'
-	saved := p.noBrace
-	p.noBrace = true
-	subject, err := p.parseExpr()
-	p.noBrace = saved
+	subject, err := p.withNoBrace(p.parseExpr)
 	if err != nil {
 		return nil, err
 	}
