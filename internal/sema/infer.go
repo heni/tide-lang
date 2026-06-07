@@ -17,6 +17,8 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 	switch v := e.(type) {
 	case *ast.IntLitExpr:
 		t = &Builtin{N: "int"}
+	case *ast.FloatLitExpr:
+		t = &Builtin{N: "float64"} // T-FloatLit
 	case *ast.StringLitExpr:
 		t = &Builtin{N: "string"}
 	case *ast.BoolLitExpr:
@@ -465,6 +467,7 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 	c.checkExhaustive(m, subjectType)
 	var result Type = &Unknown{}
 	for _, arm := range m.Arms {
+		c.checkNoFloatPat(arm.Pattern)
 		at := c.inferExpr(arm.Body)
 		if isUnknown(result) && concrete(at) {
 			if _, never := at.(*Never); !never {
@@ -473,6 +476,24 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 		}
 	}
 	return result
+}
+
+// checkNoFloatPat fires E0305 for a float-literal pattern anywhere in
+// p (including nested in variant / tuple sub-patterns). Float equality
+// on patterns is unsafe (type-system.md §patterns).
+func (c *checker) checkNoFloatPat(p ast.Pattern) {
+	switch v := p.(type) {
+	case *ast.FloatLitPat:
+		c.report("E0305", "Float-literal patterns are not allowed — use a wildcard with an `if` guard", v.Span)
+	case *ast.VariantPat:
+		for _, s := range v.Sub {
+			c.checkNoFloatPat(s)
+		}
+	case *ast.TuplePat:
+		for _, s := range v.Sub {
+			c.checkNoFloatPat(s)
+		}
+	}
 }
 
 // inferBlock checks a block's statements and yields its value: the

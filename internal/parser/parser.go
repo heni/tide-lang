@@ -1751,6 +1751,17 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			RawText: t.Lexeme,
 			Value:   v,
 		}, nil
+	case lexer.KindFloatLit:
+		p.advance()
+		fv, err := strconv.ParseFloat(t.Lexeme, 64)
+		if err != nil {
+			return nil, p.diag("E0109", "Malformed numeric literal", t.Line, t.Col)
+		}
+		return &ast.FloatLitExpr{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   fv,
+		}, nil
 	case lexer.KindStringLit:
 		p.advance()
 		val, err := decodeStringLit(t.Lexeme)
@@ -2188,6 +2199,18 @@ func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 			Span:    spanFromToken(t),
 			RawText: t.Lexeme,
 			Value:   v,
+		}, nil
+	case lexer.KindFloatLit:
+		p.advance()
+		fv, err := strconv.ParseFloat(t.Lexeme, 64)
+		if err != nil {
+			return nil, p.diag("E0109", "Malformed numeric literal", t.Line, t.Col)
+		}
+		// Grammar-legal but sema rejects with E0305.
+		return &ast.FloatLitPat{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   fv,
 		}, nil
 	case lexer.KindStringLit:
 		p.advance()
