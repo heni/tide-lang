@@ -149,6 +149,24 @@ Empty-state semantics (per `builtins.md`):
   `Result[T, error]` with the canonical empty-stack error
   (`tidert.NewError("empty stack")`).
 
+**Constructor type-argument stamping.** A constructor call
+(`Ok`/`Err`/`Some`/`None`) constrains only the type parameter its
+argument supplies — `Ok(v)` fixes `T` but leaves `E` open, `Err(e)`
+the reverse, `None()` leaves `T` wholly open. Go infers a generic
+function's type parameters from its *arguments only*, never from the
+assignment LHS or the `return` target, so the open parameter would
+make `go build` fail (`cannot infer E`). Codegen therefore stamps
+**explicit** Go type arguments on the constructor from the *expected
+type* in scope — the enclosing function's declared return type at a
+`return`, or the annotation at a typed `let`/`var` — e.g. a `return
+Ok(v)` in a `Result<int, error>`-returning function lowers to
+`ResultOk[int, error](v)`, and `let x: Option<int> = None()` to
+`OptionNone[int]()`. When no expected type is in scope (e.g. an
+un-annotated `let`, or a constructor nested as a call argument), no
+stamp is applied and Go's argument inference stands; this leaves a
+nested `Ok(Ok(n))` and `wrap(Ok(x))` unstampable in v1 (the
+expected type does not propagate through the inner positions).
+
 **Tag/field invariants.** Codegen and the runtime helpers
 guarantee:
 - `Option.V` is read only when `Tag == 1`.

@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 10,
-    "build_ok": 13
+    "emit_fail": 9,
+    "build_ok": 14
   },
   "files": [
     {
@@ -70,8 +70,8 @@
     },
     {
       "path": "examples/borgo/errors_as_types.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/borgo/interfaces.td",
