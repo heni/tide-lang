@@ -417,6 +417,60 @@ func (n *WhileStmt) NodeSpan() Span   { return n.Span }
 func (n *WhileStmt) NodeKind() string { return "WhileStmt" }
 func (n *WhileStmt) stmtMarker()      {}
 
+// SelectStmt — `select { case … => block, … }`. Waits on multiple
+// channel operations, running the first ready case's body (T-Select
+// : unit). Per ast.md §Stmt (`SelectStmt { cases }`).
+type SelectStmt struct {
+	Span  Span
+	Cases []SelectCase
+}
+
+func (n *SelectStmt) NodeSpan() Span   { return n.Span }
+func (n *SelectStmt) NodeKind() string { return "SelectStmt" }
+func (n *SelectStmt) stmtMarker()      {}
+
+// SelectCase is one arm of a `select` (ast.md §SelectCase):
+// SelectRecv | SelectSend | SelectDefault.
+type SelectCase interface {
+	Node
+	selectCaseMarker()
+}
+
+// SelectRecv — `case (x =)? <-ch => block`. Bind is "" when the
+// received value is dropped.
+type SelectRecv struct {
+	Span    Span
+	Bind    string
+	Channel Expr
+	Body    *Block
+}
+
+func (n *SelectRecv) NodeSpan() Span    { return n.Span }
+func (n *SelectRecv) NodeKind() string  { return "SelectRecv" }
+func (n *SelectRecv) selectCaseMarker() {}
+
+// SelectSend — `case ch.send(v) => block`.
+type SelectSend struct {
+	Span    Span
+	Channel Expr
+	Value   Expr
+	Body    *Block
+}
+
+func (n *SelectSend) NodeSpan() Span    { return n.Span }
+func (n *SelectSend) NodeKind() string  { return "SelectSend" }
+func (n *SelectSend) selectCaseMarker() {}
+
+// SelectDefault — `default => block` (non-blocking fall-through).
+type SelectDefault struct {
+	Span Span
+	Body *Block
+}
+
+func (n *SelectDefault) NodeSpan() Span    { return n.Span }
+func (n *SelectDefault) NodeKind() string  { return "SelectDefault" }
+func (n *SelectDefault) selectCaseMarker() {}
+
 // DeferStmt — `defer <call>`. Per ast.md §Stmt (`DeferStmt { call:
 // Expr }`) and grammar production `DeferStmt = "defer" Expr`.
 // `defer` is adopted from Go directly (G27): function-scoped, LIFO.

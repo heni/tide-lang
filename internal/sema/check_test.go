@@ -1325,6 +1325,42 @@ func TestScopeNonErrorParamFiresE0407(t *testing.T) {
 	}
 }
 
+func TestSelectClean(t *testing.T) {
+	// T-Select: all case forms clean; a recv binding takes the
+	// channel's element type and is usable in the body.
+	src := `import fmt
+func main() {
+  let a = makeChannel<int>(1)
+  let b = makeChannel<int>(1)
+  a.send(1)
+  select {
+    case v = <-a => { fmt.println(v + 1) },
+    case <-b => {},
+    case b.send(2) => {},
+    default => {},
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("clean select produced diags: %v", codes)
+	}
+}
+
+func TestSelectRecvBindUnknownNameStillResolves(t *testing.T) {
+	// A use of the recv binding resolves (no E0103); referencing an
+	// unbound name inside a case body still fires E0103.
+	src := `func main() {
+  let a = makeChannel<int>(1)
+  select {
+    case v = <-a => { let _ = missing },
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0103") {
+		t.Errorf("expected E0103 for unknown name in select body, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

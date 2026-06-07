@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 27,
+    "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 8,
+    "emit_fail": 10,
     "build_ok": 13
   },
   "files": [
@@ -100,13 +100,13 @@
     },
     {
       "path": "examples/concurrency/rate_limited.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"select\" in expression"
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/concurrency/select_showcase.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"unit\" in expression"
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/concurrency/worker_pool.td",

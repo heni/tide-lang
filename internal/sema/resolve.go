@@ -212,6 +212,28 @@ func (c *checker) resolveStmt(s ast.Stmt, scope *Scope) {
 		c.resolveBlock(v.Body, scope)
 	case *ast.DeferStmt:
 		c.resolveExpr(v.Call, scope)
+	case *ast.SelectStmt:
+		for _, sc := range v.Cases {
+			switch cse := sc.(type) {
+			case *ast.SelectRecv:
+				c.resolveExpr(cse.Channel, scope)
+				caseScope := scope
+				if cse.Bind != "" && cse.Bind != "_" {
+					c.checkReservedName(cse.Bind, cse.Span)
+					caseScope = newScope(scope)
+					sym := &Symbol{Name: cse.Bind, Kind: SymLocal, Decl: cse, Type: &Unknown{}}
+					caseScope.declare(sym)
+					c.info.Def[cse] = sym
+				}
+				c.resolveBlock(cse.Body, caseScope)
+			case *ast.SelectSend:
+				c.resolveExpr(cse.Channel, scope)
+				c.resolveExpr(cse.Value, scope)
+				c.resolveBlock(cse.Body, scope)
+			case *ast.SelectDefault:
+				c.resolveBlock(cse.Body, scope)
+			}
+		}
 	case *ast.ForStmt:
 		// RangeExpr is a Node but not an Expr — handle it
 		// explicitly. Other iterables (slices, maps, sets) are

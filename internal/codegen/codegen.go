@@ -865,6 +865,20 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.Body)
 		case *ast.SpawnExpr:
 			walk(v.Body)
+		case *ast.SelectStmt:
+			for _, sc := range v.Cases {
+				switch cse := sc.(type) {
+				case *ast.SelectRecv:
+					walk(cse.Channel)
+					walk(cse.Body)
+				case *ast.SelectSend:
+					walk(cse.Channel)
+					walk(cse.Value)
+					walk(cse.Body)
+				case *ast.SelectDefault:
+					walk(cse.Body)
+				}
+			}
 		case *ast.ReturnExpr:
 			walk(v.Value)
 		case *ast.MatchExpr:
@@ -1484,6 +1498,8 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		return g.emitIfStmt(v)
 	case *ast.WhileStmt:
 		return g.emitWhileStmt(v)
+	case *ast.SelectStmt:
+		return g.emitSelectStmt(v)
 	case *ast.DeferStmt:
 		// lowering-go.md §Defer: `defer call(args)` → Go `defer
 		// call(args)` directly (G27 — adopted from Go).

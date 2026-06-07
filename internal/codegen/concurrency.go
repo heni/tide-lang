@@ -101,6 +101,64 @@ func (g *gen) emitScopeExpr(s *ast.ScopeExpr) error {
 	return nil
 }
 
+// emitSelectStmt lowers `select { … }` to a Go `select` statement
+// (lowering-go.md §Channel lowering). Receive cases use `<-ch` (with
+// an optional `x :=` binding), send cases `ch <- v`, and `default`
+// the non-blocking fall-through.
+func (g *gen) emitSelectStmt(s *ast.SelectStmt) error {
+	g.line(s.Span.StartLine)
+	g.writeIndent()
+	g.b.WriteString("select {\n")
+	for _, sc := range s.Cases {
+		g.writeIndent()
+		switch cse := sc.(type) {
+		case *ast.SelectRecv:
+			g.b.WriteString("case ")
+			if cse.Bind != "" && cse.Bind != "_" {
+				g.b.WriteString(goIdent(cse.Bind))
+				g.b.WriteString(" := ")
+			}
+			g.b.WriteString("<-")
+			if err := g.emitExpr(cse.Channel); err != nil {
+				return err
+			}
+			g.b.WriteString(":\n")
+			if err := g.emitIndentedBlock(cse.Body); err != nil {
+				return err
+			}
+		case *ast.SelectSend:
+			g.b.WriteString("case ")
+			if err := g.emitExpr(cse.Channel); err != nil {
+				return err
+			}
+			g.b.WriteString(" <- ")
+			if err := g.emitExpr(cse.Value); err != nil {
+				return err
+			}
+			g.b.WriteString(":\n")
+			if err := g.emitIndentedBlock(cse.Body); err != nil {
+				return err
+			}
+		case *ast.SelectDefault:
+			g.b.WriteString("default:\n")
+			if err := g.emitIndentedBlock(cse.Body); err != nil {
+				return err
+			}
+		}
+	}
+	g.writeIndent()
+	g.b.WriteString("}\n")
+	return nil
+}
+
+// emitIndentedBlock emits a block's statements at one extra
+// indentation level (the body of a select case).
+func (g *gen) emitIndentedBlock(b *ast.Block) error {
+	g.indent++
+	defer func() { g.indent-- }()
+	return g.emitBlockBody(b)
+}
+
 // emitScopeTType renders the scope's success type T, defaulting to
 // Go's zero-byte `struct{}` when absent (T = unit).
 func (g *gen) emitScopeTType(t ast.TypeExpr) error {

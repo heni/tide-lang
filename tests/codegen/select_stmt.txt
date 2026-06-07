@@ -1,0 +1,47 @@
+--- TITLE ---
+SelectStmt — recv-into-binding + default lower to Go `select` (deterministic: a is ready)
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let a = makeChannel<int>(1)
+  let b = makeChannel<int>(1)
+  a.send(7)
+  select {
+    case v = <-a => {
+      fmt.println("got a:", v)
+    },
+    case v = <-b => {
+      fmt.println("got b:", v)
+    },
+    default => {
+      fmt.println("none ready")
+    },
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var a = make(chan int, 1)
+	var b = make(chan int, 1)
+	a <- 7
+	select {
+	case v := <-a:
+		fmt.Println("got a:", v)
+	case v := <-b:
+		fmt.Println("got b:", v)
+	default:
+		fmt.Println("none ready")
+	}
+}
+
+--- STDOUT ---
+got a: 7
+
+--- EXIT ---
+0

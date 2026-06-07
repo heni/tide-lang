@@ -529,6 +529,34 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Call, depth+1)
+	case *SelectStmt:
+		writeSpan(b, v.Span)
+		for _, sc := range v.Cases {
+			b.WriteByte('\n')
+			write(b, sc, depth+1)
+		}
+	case *SelectRecv:
+		if v.Bind != "" {
+			b.WriteByte(' ')
+			writeQuoted(b, v.Bind)
+		}
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Channel, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
+	case *SelectSend:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Channel, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
+	case *SelectDefault:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
 	case *BreakExpr:
 		writeSpan(b, v.Span)
 	case *ContinueExpr:

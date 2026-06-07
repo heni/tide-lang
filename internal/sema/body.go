@@ -103,7 +103,40 @@ func (c *checker) checkStmt(s ast.Stmt) {
 			c.report("E0406", "`defer` argument must be a call", v.Call.NodeSpan())
 		}
 		c.inferExpr(v.Call)
+	case *ast.SelectStmt:
+		// T-Select: every case body is unit; a recv binding gets the
+		// channel's element type.
+		for _, sc := range v.Cases {
+			switch cse := sc.(type) {
+			case *ast.SelectRecv:
+				ct := c.inferExpr(cse.Channel)
+				if cse.Bind != "" && cse.Bind != "_" {
+					if sym := c.info.Def[cse]; sym != nil {
+						sym.Type = channelElem(ct)
+					}
+				}
+				c.checkBlock(cse.Body)
+			case *ast.SelectSend:
+				c.inferExpr(cse.Channel)
+				c.inferExpr(cse.Value)
+				c.checkBlock(cse.Body)
+			case *ast.SelectDefault:
+				c.checkBlock(cse.Body)
+			}
+		}
 	}
+}
+
+// channelElem returns the element type of a channel kind (Channel /
+// RecvChan), or Unknown when t is not a receivable channel.
+func channelElem(t Type) Type {
+	switch c := t.(type) {
+	case *Channel:
+		return c.Elem
+	case *RecvChan:
+		return c.Elem
+	}
+	return &Unknown{}
 }
 
 // checkBinding handles let / var. bindNode is the AST node keyed

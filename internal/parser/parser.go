@@ -1072,6 +1072,8 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 		return p.parseWhileStmt()
 	case p.at(lexer.KindKeyword, "defer"):
 		return p.parseDeferStmt()
+	case p.at(lexer.KindKeyword, "select"):
+		return p.parseSelectStmt()
 	case p.at(lexer.KindKeyword, "let"):
 		return p.parseLetOrVar(true)
 	case p.at(lexer.KindKeyword, "const"):
@@ -1341,6 +1343,162 @@ func (p *parser) parseWhileStmt() (*ast.WhileStmt, *Diag) {
 		Cond: cond,
 		Body: body,
 	}, nil
+}
+
+// parseSelectStmt parses `select { case … => block, … }` (grammar
+// SelectStmt). `case` / `default` are not reserved words — they lex
+// as identifiers and are recognised by lexeme only inside the
+// `select` body. Cases are separated by `,` or newlines.
+func (p *parser) parseSelectStmt() (*ast.SelectStmt, *Diag) {
+	kw := p.advance() // consume 'select'
+	if _, err := p.expect(lexer.KindPunct, "{"); err != nil {
+		return nil, err
+	}
+	p.skipNewlines()
+	var cases []ast.SelectCase
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		sc, err := p.parseSelectCase()
+		if err != nil {
+			return nil, err
+		}
+		cases = append(cases, sc)
+		p.skipNewlines()
+		if p.at(lexer.KindPunct, ",") {
+			p.advance()
+			p.skipNewlines()
+		}
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	return &ast.SelectStmt{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		Cases: cases,
+	}, nil
+}
+
+// parseSelectCase parses one `select` arm: a receive (`case (x =)?
+// <-ch => block`), a send (`case ch.send(v) => block`), or
+// `default => block`. The `<-` receive operator is legal only here.
+func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
+	if p.at(lexer.KindIdent, "default") {
+		kw := p.advance()
+		if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
+			return nil, err
+		}
+		body, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SelectDefault{
+			Span: ast.Span{
+				StartLine: kw.Line, StartCol: kw.Col,
+				EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+			},
+			Body: body,
+		}, nil
+	}
+	if !p.at(lexer.KindIdent, "case") {
+		t := p.peek()
+		return nil, p.diag("E0112",
+			fmt.Sprintf("expected `case` or `default` in select, got %s %q", t.Kind, t.Lexeme),
+			t.Line, t.Col)
+	}
+	caseKw := p.advance() // consume 'case'
+
+	// Receive-and-drop: `case <-ch => block`.
+	if p.at(lexer.KindOp, "<-") {
+		p.advance()
+		ch, err := p.parsePostfix()
+		if err != nil {
+			return nil, err
+		}
+		body, err := p.parseSelectArrowBlock()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SelectRecv{
+			Span: ast.Span{
+				StartLine: caseKw.Line, StartCol: caseKw.Col,
+				EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+			},
+			Channel: ch,
+			Body:    body,
+		}, nil
+	}
+
+	// Either a receive-into-binding `case x = <-ch => …` or a send
+	// `case ch.send(v) => …`. Parse the head postfix expression and
+	// disambiguate on the following token.
+	head, err := p.parsePostfix()
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.KindOp, "=") {
+		id, ok := head.(*ast.Ident)
+		if !ok {
+			t := p.peek()
+			return nil, p.diag("E0112", "expected a channel-bind name before `=` in select case", t.Line, t.Col)
+		}
+		p.advance() // consume '='
+		if _, err := p.expect(lexer.KindOp, "<-"); err != nil {
+			return nil, err
+		}
+		ch, err := p.parsePostfix()
+		if err != nil {
+			return nil, err
+		}
+		body, err := p.parseSelectArrowBlock()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.SelectRecv{
+			Span: ast.Span{
+				StartLine: caseKw.Line, StartCol: caseKw.Col,
+				EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+			},
+			Bind:    id.Name,
+			Channel: ch,
+			Body:    body,
+		}, nil
+	}
+
+	// Send: the head must be a `ch.send(v)` call.
+	call, ok := head.(*ast.Call)
+	if ok {
+		if f, isField := call.Callee.(*ast.Field); isField && f.Name == "send" && len(call.Args) == 1 {
+			body, err := p.parseSelectArrowBlock()
+			if err != nil {
+				return nil, err
+			}
+			return &ast.SelectSend{
+				Span: ast.Span{
+					StartLine: caseKw.Line, StartCol: caseKw.Col,
+					EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+				},
+				Channel: f.Receiver,
+				Value:   call.Args[0],
+				Body:    body,
+			}, nil
+		}
+	}
+	t := p.peek()
+	return nil, p.diag("E0112",
+		"expected a select case: `x = <-ch`, `<-ch`, or `ch.send(v)`",
+		t.Line, t.Col)
+}
+
+// parseSelectArrowBlock consumes `=> Block`, the tail shared by every
+// select case.
+func (p *parser) parseSelectArrowBlock() (*ast.Block, *Diag) {
+	if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
+		return nil, err
+	}
+	return p.parseBlock()
 }
 
 // parseDeferStmt parses `defer <Expr>` (grammar production
@@ -1855,8 +2013,10 @@ func (p *parser) couldBeGenericCallSite() bool {
 				return false
 			}
 		case t.Kind == lexer.KindIdent,
+			t.Kind == lexer.KindKeyword && t.Lexeme == "unit",
 			t.Kind == lexer.KindPunct && (t.Lexeme == "," || t.Lexeme == "." || t.Lexeme == "[" || t.Lexeme == "]"):
-			// allowed inside a type-arg list
+			// allowed inside a type-arg list (`unit` is a keyword but
+			// also the one-inhabitant value-type, legal as a type arg)
 		default:
 			return false
 		}
