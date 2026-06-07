@@ -14,6 +14,11 @@ import (
 )
 
 func (g *gen) emitCall(c *ast.Call) error {
+	// Capture any expected-type context (set at return / typed-binding
+	// position) and clear it immediately so nested argument expressions
+	// don't inherit it — only this call's own callee may consume it.
+	expect := g.expectType
+	g.expectType = nil
 	// reflect.* dispatch — lower to inline tidert helpers per
 	// `lang-spec/builtins.md` §reflect. Codegen owns reflect's
 	// surface (it's runtime-supplied, not a Go-stdlib binding).
@@ -99,6 +104,39 @@ func (g *gen) emitCall(c *ast.Call) error {
 		}
 		g.b.WriteByte(')')
 		return nil
+	}
+	// Predeclared Result/Option constructor (`Ok`/`Err`/`Some`/`None`)
+	// in an expected-type position — emit explicit Go type args from
+	// the context so the type parameter the argument leaves open
+	// (`Ok(v)` → E, `Err(e)` → T) is supplied rather than left for
+	// Go's inference to fail on (lowering-go.md §Container types).
+	if id, ok := c.Callee.(*ast.Ident); ok {
+		if targs, ok := g.predeclaredCtorTypeArgs(id.Name, expect); ok {
+			info := g.variant[id.Name]
+			g.b.WriteString(goIdent(info.owner))
+			g.b.WriteString(goIdent(id.Name))
+			g.b.WriteByte('[')
+			for i, ta := range targs {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitTypeExpr(ta); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte(']')
+			g.b.WriteByte('(')
+			for i, a := range c.Args {
+				if i > 0 {
+					g.b.WriteString(", ")
+				}
+				if err := g.emitExpr(a); err != nil {
+					return err
+				}
+			}
+			g.b.WriteByte(')')
+			return nil
+		}
 	}
 	// Channel instance methods (lowering-go.md §Channel lowering):
 	//   ch.send(v)  → ch <- v
@@ -417,6 +455,32 @@ func mapFieldName(receiver ast.Expr, name string) string {
 		}
 	}
 	return goIdent(name)
+}
+
+// predeclaredCtorTypeArgs returns the type arguments to stamp onto a
+// predeclared Result/Option constructor call `name(...)` given the
+// expected type at the call site, plus whether the stamp applies.
+// It applies only when name is `Ok`/`Err`/`Some`/`None` and expect is
+// the matching `Result<T, E>` / `Option<T>` NamedType carrying the
+// right arity — user sum types are non-generic in v1, so Go infers
+// their type params and they need no stamp.
+func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.TypeExpr, bool) {
+	info, ok := g.variant[name]
+	if !ok || (info.owner != "Option" && info.owner != "Result") {
+		return nil, false
+	}
+	nt, ok := expect.(*ast.NamedType)
+	if !ok || len(nt.QName) != 1 || nt.QName[0] != info.owner {
+		return nil, false
+	}
+	want := 1
+	if info.owner == "Result" {
+		want = 2
+	}
+	if len(nt.Args) != want {
+		return nil, false
+	}
+	return nt.Args, true
 }
 
 // isFmtScan reports whether e is the callee `fmt.scan` (the single-

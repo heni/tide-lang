@@ -281,6 +281,13 @@ type gen struct {
 	// `Option<U>` or `Result<U, E>` and to extract U / E for
 	// the wrapped return value.
 	curFuncReturn ast.TypeExpr
+	// expectType — the Tide TypeExpr the next emitted expression is
+	// expected to produce, set at return / typed-binding positions and
+	// consumed (then cleared) by emitCall to supply explicit type args
+	// to predeclared Result/Option constructors whose un-constrained
+	// type parameter Go cannot infer from the argument alone (`Ok(v)`
+	// leaves E open, `Err(e)` leaves T open). nil when no context flows.
+	expectType ast.TypeExpr
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
@@ -1445,7 +1452,14 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 				return nil
 			}
 			g.b.WriteString("return ")
-			if err := g.emitExpr(r.Value); err != nil {
+			// The returned value is expected to be the function's
+			// declared return type; thread it so a predeclared
+			// Result/Option constructor gets explicit type args.
+			prevExpect := g.expectType
+			g.expectType = g.curFuncReturn
+			err := g.emitExpr(r.Value)
+			g.expectType = prevExpect
+			if err != nil {
 				return err
 			}
 			g.b.WriteByte('\n')
