@@ -2049,6 +2049,8 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 		}
 	case *ast.IntLitExpr:
 		return "int", nil
+	case *ast.FloatLitExpr:
+		return "float64", nil
 	case *ast.StringLitExpr:
 		return "string", nil
 	case *ast.BoolLitExpr:
@@ -2431,6 +2433,8 @@ func inferSliceElemType(items []ast.Expr) (string, error) {
 	switch items[0].(type) {
 	case *ast.IntLitExpr:
 		return "int", nil
+	case *ast.FloatLitExpr:
+		return "float64", nil
 	case *ast.StringLitExpr:
 		return "string", nil
 	case *ast.BoolLitExpr:
@@ -2821,6 +2825,11 @@ func (g *gen) emitExpr(e ast.Expr) error {
 	switch v := e.(type) {
 	case *ast.IntLitExpr:
 		g.b.WriteString(strconv.FormatInt(v.Value, 10))
+		return nil
+	case *ast.FloatLitExpr:
+		// Re-emit source text; Go accepts the same `3.14` / `1e3`
+		// float syntax for its float64.
+		g.b.WriteString(v.RawText)
 		return nil
 	case *ast.StringLitExpr:
 		g.b.WriteString(strconv.Quote(v.Value))

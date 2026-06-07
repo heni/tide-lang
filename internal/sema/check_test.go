@@ -337,6 +337,34 @@ func TestDuplicateRecordFieldFiresE0105(t *testing.T) {
 	}
 }
 
+func TestFloatTypingNoFalsePositive(t *testing.T) {
+	src := `import fmt
+func main() {
+  let pi = 3.14
+  let area = pi * 2.0
+  if area > 1.0 {
+    fmt.println(area)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (floats), got %v", codes)
+	}
+}
+
+func TestFloatPatternFiresE0305(t *testing.T) {
+	src := `func main() {
+  match 3.14 {
+    3.14 => 1,
+    _ => 0,
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0305") {
+		t.Errorf("expected E0305 for float-literal pattern, got %v", codes)
+	}
+}
+
 func TestThisInsideMethod(t *testing.T) {
 	src := `import fmt
 class Counter {

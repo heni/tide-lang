@@ -383,6 +383,10 @@ func write(b *strings.Builder, n Node, depth int) {
 		b.WriteByte(' ')
 		b.WriteString(strconv.FormatInt(v.Value, 10))
 		writeSpan(b, v.Span)
+	case *FloatLitPat:
+		b.WriteByte(' ')
+		b.WriteString(v.RawText)
+		writeSpan(b, v.Span)
 	case *StringLitPat:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Value)
@@ -475,6 +479,10 @@ func write(b *strings.Builder, n Node, depth int) {
 	case *IntLitExpr:
 		b.WriteByte(' ')
 		b.WriteString(strconv.FormatInt(v.Value, 10))
+		writeSpan(b, v.Span)
+	case *FloatLitExpr:
+		b.WriteByte(' ')
+		b.WriteString(v.RawText)
 		writeSpan(b, v.Span)
 	case *StringLitExpr:
 		b.WriteByte(' ')

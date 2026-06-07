@@ -1,0 +1,37 @@
+--- TITLE ---
+Float literals — emitted verbatim; arithmetic and comparison
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let pi = 3.14
+  let r = 2.0
+  let area = pi * r * r
+  fmt.println(area)
+  if area > 10.0 {
+    fmt.println("big")
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var pi = 3.14
+	var r = 2.0
+	var area = pi * r * r
+	fmt.Println(area)
+	if area > 10.0 {
+		fmt.Println("big")
+	}
+}
+
+--- STDOUT ---
+12.56
+big
+
+--- EXIT ---
+0

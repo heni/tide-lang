@@ -460,6 +460,18 @@ func (n *IntLitPat) NodeSpan() Span   { return n.Span }
 func (n *IntLitPat) NodeKind() string { return "IntLitPat" }
 func (n *IntLitPat) patternMarker()   {}
 
+// FloatLitPat — `3.14` in pattern position. Grammar-legal but sema
+// rejects it (E0305): float equality on patterns is unsafe.
+type FloatLitPat struct {
+	Span    Span
+	RawText string
+	Value   float64
+}
+
+func (n *FloatLitPat) NodeSpan() Span   { return n.Span }
+func (n *FloatLitPat) NodeKind() string { return "FloatLitPat" }
+func (n *FloatLitPat) patternMarker()   {}
+
 // StringLitPat — match against a literal string.
 type StringLitPat struct {
 	Span  Span
@@ -516,6 +528,18 @@ type IntLitExpr struct {
 func (n *IntLitExpr) NodeSpan() Span   { return n.Span }
 func (n *IntLitExpr) NodeKind() string { return "IntLitExpr" }
 func (n *IntLitExpr) exprMarker()      {}
+
+// FloatLitExpr — `3.14`, `1e3`. Per ast.md §Expr; types to float64
+// (T-FloatLit).
+type FloatLitExpr struct {
+	Span    Span
+	RawText string
+	Value   float64
+}
+
+func (n *FloatLitExpr) NodeSpan() Span   { return n.Span }
+func (n *FloatLitExpr) NodeKind() string { return "FloatLitExpr" }
+func (n *FloatLitExpr) exprMarker()      {}
 
 // StringLitExpr is a string literal. Value is the decoded string
 // (escapes resolved); RawText is the source text with quotes.
