@@ -194,6 +194,22 @@ func tryRecv[T any](ch <-chan T) tidert.Option[T] {
 Go's own conversion rules — `chan T` is assignable to `chan<-
 T` and `<-chan T` implicitly. No runtime cost.
 
+## SelectStmt
+
+A `select { … }` lowers to a Go `select` statement, one case per
+arm (T-Select : unit):
+
+```
+case x = <-ch => B     ⟿   case x := <-ch: <lowering of B>
+case <-ch => B         ⟿   case <-ch:      <lowering of B>   // drop
+case ch.send(v) => B   ⟿   case ch <- v:   <lowering of B>
+default => B           ⟿   default:        <lowering of B>
+```
+
+The `x :=` binding is emitted only for a named receive (dropped for
+`<-ch` and for `_`). The recv channel operand reuses the `<-ch`
+operator lowering above; the send case reuses `ch <- v`.
+
 ## TopContextExpr
 
 ```

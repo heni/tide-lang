@@ -567,9 +567,11 @@ AltAtom      = LiteralPat | VariantPat ;
 SelectCase   = SelectRecv | SelectSend | SelectDefault ;
 SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" Block ;
 // `send` is recognised as a method-call shape (PostfixExpr ending in
-// CallSuffix). The parser admits `case <PostfixExpr> "=>" Block` and
-// sema enforces that the PostfixExpr is exactly `Expr "." "send"
-// "(" Expr ")"` — a method call on a channel.
+// CallSuffix). The parser parses the case head as a PostfixExpr and
+// enforces that it is exactly `Expr "." "send" "(" Expr ")"` — a
+// single-argument method call on a channel — rejecting any other
+// shape with E0112 at parse time (the head is also where `Ident "="
+// "<-"` recv-binds are disambiguated, so one site owns the check).
 SelectSend   = "case" PostfixExpr "=>" Block ;
 SelectDefault = "default" "=>" Block ;
 
