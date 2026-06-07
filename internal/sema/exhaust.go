@@ -14,8 +14,8 @@ import (
 // the checker never rejects a genuinely-exhaustive match.
 //
 // Reachable diagnostics: E0303 (non-exhaustive), E0304 (unreachable
-// arm). E0305 (float-literal patterns) has no trigger — the parser
-// produces no FloatLitPat node.
+// arm). E0305 (float-literal patterns) fires from checkNoFloatPat in
+// inferMatch, not here.
 
 // checkExhaustive validates one match against its subject type.
 func (c *checker) checkExhaustive(m *ast.MatchExpr, subject Type) {
