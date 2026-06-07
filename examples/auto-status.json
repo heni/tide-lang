@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 4,
-    "build_ok": 19
+    "emit_fail": 3,
+    "build_ok": 20
   },
   "files": [
     {
@@ -75,8 +75,8 @@
     },
     {
       "path": "examples/borgo/interfaces.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/borgo/match_on_tuples.td",

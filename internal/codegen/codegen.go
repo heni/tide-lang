@@ -2447,6 +2447,17 @@ func (g *gen) emitExpr(e ast.Expr) error {
 			g.b.WriteString(goIdent(v.Name))
 			return nil
 		}
+		// A bare ident that sema resolved to a class field (not a
+		// shadowing local/param) is an implicit-receiver reference
+		// (name-resolution §Implicit receiver) — emit `t.<field>`,
+		// since the Go field lives on the method receiver `t`.
+		if g.info != nil {
+			if sym := g.info.Symbol[v]; sym != nil && sym.Kind == sema.SymField {
+				g.b.WriteString("t.")
+				g.b.WriteString(goIdent(v.Name))
+				return nil
+			}
+		}
 		g.b.WriteString(goIdent(v.Name))
 		return nil
 	case *ast.SliceLit:

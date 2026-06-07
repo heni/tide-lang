@@ -1,0 +1,51 @@
+--- TITLE ---
+Bare field ident in a method body emits t.<field>; a shadowing local does not
+
+--- INPUT ---
+import fmt
+
+class Point {
+  let x: int
+  let y: int
+  sum(): int { return x + y }
+  shifted(d: int): int {
+    let x = 100
+    return x + y
+  }
+}
+
+func main() {
+  let p = Point{ x: 3, y: 4 }
+  fmt.println("sum", p.sum())
+  fmt.println("shadowed", p.shifted(0))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Point struct {
+	x int
+	y int
+}
+
+func (t *Point) sum() int {
+	return t.x + t.y
+}
+func (t *Point) shifted(d int) int {
+	var x = 100
+	return x + t.y
+}
+func main() {
+	var p = &Point{x: 3, y: 4}
+	fmt.Println("sum", p.sum())
+	fmt.Println("shadowed", p.shifted(0))
+}
+
+--- STDOUT ---
+sum 7
+shadowed 104
+
+--- EXIT ---
+0
