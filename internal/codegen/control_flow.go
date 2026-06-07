@@ -424,9 +424,12 @@ func (g *gen) emitClosure(cl *ast.ClosureLit) error {
 		}
 	}
 	g.b.WriteByte(')')
-	// Return type: explicit annotation (emitted inline), else read
-	// from sema's inferred Func.
-	hasReturn := false
+	// Return type: explicit annotation (emitted inline); else read it
+	// from sema's inferred Func. Three outcomes: a rendered Go type
+	// (emit `return val`), a unit return (no type, body value is a
+	// discarded statement), or unknown (only an error for the short
+	// form, which always yields a value).
+	hasReturn, isUnit := false, false
 	if cl.ReturnType != nil {
 		g.b.WriteByte(' ')
 		if err := g.emitTypeExpr(cl.ReturnType); err != nil {
@@ -435,25 +438,28 @@ func (g *gen) emitClosure(cl *ast.ClosureLit) error {
 		hasReturn = true
 	} else if g.info != nil {
 		if fn, ok := g.info.Type[cl].(*sema.Func); ok && fn.Return != nil {
-			if _, isUnit := fn.Return.(*sema.Unit); !isUnit {
-				if s, ok := g.goTypeFromSema(fn.Return); ok {
-					g.b.WriteByte(' ')
-					g.b.WriteString(s)
-					hasReturn = true
-				}
+			if _, u := fn.Return.(*sema.Unit); u {
+				isUnit = true
+			} else if s, ok := g.goTypeFromSema(fn.Return); ok {
+				g.b.WriteByte(' ')
+				g.b.WriteString(s)
+				hasReturn = true
 			}
 		}
 	}
-	if cl.Short && !hasReturn {
+	if cl.Short && !hasReturn && !isUnit {
 		return fmt.Errorf("codegen: cannot infer closure result type — annotate the return (`(…): R => …`)")
 	}
 	g.b.WriteString(" {\n")
 	g.indent++
 	if cl.Short {
-		// Short form: the body block's trailing value is the result.
+		// Short form: the trailing value is the result — `return` it
+		// unless the closure is unit-typed (then it's a bare stmt).
 		if cl.Body.Trailing != nil {
 			g.writeIndent()
-			g.b.WriteString("return ")
+			if !isUnit {
+				g.b.WriteString("return ")
+			}
 			if err := g.emitExpr(cl.Body.Trailing); err != nil {
 				return err
 			}

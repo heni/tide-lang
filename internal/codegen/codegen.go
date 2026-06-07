@@ -1646,11 +1646,6 @@ func (g *gen) inferArmResultType(e ast.Expr) (string, error) {
 	return "", fmt.Errorf("cannot infer Go type for %T arm/branch result — annotate the surrounding binding", e)
 }
 
-// goTypeFromSema renders a sema type to its Go spelling for the
-// shapes a value-position block / if / match result can take. Tide
-// primitives map 1:1 (lowering-go.md §Primitive type lowering);
-// classes are reference types (`*T`). Shapes outside this set return
-// false — the caller then reports an un-inferrable arm result.
 // emitBraceLit lowers a brace literal. A record literal becomes a Go
 // struct literal `TypeName{ field: value, … }` (same-package field
 // names map directly). Map / Set / Stack literals are not yet lowered.
@@ -1714,6 +1709,11 @@ func (g *gen) emitTupleLit(t *ast.TupleLit) error {
 	return nil
 }
 
+// goTypeFromSema renders a sema type to its Go spelling for the
+// shapes a value-position block / if / match / closure result can
+// take. Tide primitives map 1:1 (lowering-go.md §Primitive type
+// lowering); classes are reference types (`*T`); `unit` has no Go
+// spelling. Shapes outside this set return false.
 func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 	switch v := t.(type) {
 	case *sema.Builtin:
@@ -1749,6 +1749,30 @@ func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 			sb.WriteString(ct)
 		}
 		sb.WriteString(" }")
+		return sb.String(), true
+	case *sema.Func:
+		// `func(A) R` — used for a closure that returns a closure.
+		var sb strings.Builder
+		sb.WriteString("func(")
+		for i, p := range v.Params {
+			pt, ok := g.goTypeFromSema(p)
+			if !ok {
+				return "", false
+			}
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(pt)
+		}
+		sb.WriteByte(')')
+		if _, isUnit := v.Return.(*sema.Unit); v.Return != nil && !isUnit {
+			rt, ok := g.goTypeFromSema(v.Return)
+			if !ok {
+				return "", false
+			}
+			sb.WriteByte(' ')
+			sb.WriteString(rt)
+		}
 		return sb.String(), true
 	}
 	return "", false
