@@ -2,10 +2,10 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 30,
-    "sema_fail": 3,
+    "parse_fail": 27,
+    "sema_fail": 4,
     "emit_fail": 8,
-    "build_ok": 11
+    "build_ok": 13
   },
   "files": [
     {
@@ -60,8 +60,8 @@
     },
     {
       "path": "examples/borgo/concurrency.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/borgo/defer_demo.td",
@@ -90,8 +90,8 @@
     },
     {
       "path": "examples/concurrency/pipeline.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/concurrency/pubsub.td",
@@ -101,7 +101,7 @@
     {
       "path": "examples/concurrency/rate_limited.td",
       "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+      "blocker": "error[E0112]: unexpected keyword \"select\" in expression"
     },
     {
       "path": "examples/concurrency/select_showcase.td",
@@ -110,8 +110,8 @@
     },
     {
       "path": "examples/concurrency/worker_pool.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"scope\" in expression"
+      "stage": "sema",
+      "blocker": "error[E0207]: Wrong type arity on generic instantiation: Result expects 2 type arguments, got 0"
     },
     {
       "path": "examples/hello.td",

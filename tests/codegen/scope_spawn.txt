@@ -1,0 +1,110 @@
+--- TITLE ---
+Scope/spawn — value-position IIFE → Result[T, error], spawn → group.Go, join + Ok-wrap
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let ch = makeChannel<int>(2)
+
+  let total = scope<int, error> {
+    spawn { ch.send(3); return Ok(()) }
+    spawn { ch.send(4); return Ok(()) }
+    let a = ch.recv()
+    let b = ch.recv()
+    a + b
+  }
+
+  match total {
+    Ok(n)  => fmt.println("total:", n),
+    Err(e) => fmt.println("err:", e),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"context"
+	"fmt"
+	"sync"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+
+type tideGroup struct {
+	wg     sync.WaitGroup
+	once   sync.Once
+	err    error
+	cancel context.CancelFunc
+}
+
+func tideNewGroup(parent context.Context) (*tideGroup, context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	return &tideGroup{cancel: cancel}, ctx
+}
+
+func (g *tideGroup) Go(f func() error) {
+	g.wg.Add(1)
+	go func() {
+		defer g.wg.Done()
+		if err := f(); err != nil {
+			g.once.Do(func() {
+				g.err = err
+				g.cancel()
+			})
+		}
+	}()
+}
+
+func (g *tideGroup) Wait() error {
+	g.wg.Wait()
+	g.cancel()
+	return g.err
+}
+func main() {
+	var ch = make(chan int, 2)
+	var total = func() Result[int, error] {
+		_tideEg0, _ := tideNewGroup(context.Background())
+		_tideEg0.Go(func() error {
+			ch <- 3
+			return nil
+		})
+		_tideEg0.Go(func() error {
+			ch <- 4
+			return nil
+		})
+		var a = <-ch
+		var b = <-ch
+		if _err := _tideEg0.Wait(); _err != nil {
+			return ResultErr[int, error](_err)
+		}
+		return ResultOk[int, error](a + b)
+	}()
+	__tide_match_1 := total
+	switch __tide_match_1.Tag {
+	case 0:
+		n := __tide_match_1.V
+		fmt.Println("total:", n)
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err:", e)
+	}
+}
+
+--- STDOUT ---
+total: 7
+
+--- EXIT ---
+0

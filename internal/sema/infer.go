@@ -88,6 +88,10 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 			c.report("E0402", "`try` outside a Result/Option-returning function", v.Span)
 		}
 		t = &Unknown{} // try-unwrap result typing lands with the Result/Option PR
+	case *ast.ScopeExpr:
+		t = c.inferScope(v)
+	case *ast.SpawnExpr:
+		t = c.inferSpawn(v)
 	case *ast.SliceLit:
 		t = c.inferSliceLit(v)
 	case *ast.Index:
@@ -122,6 +126,11 @@ func (c *checker) inferClosure(cl *ast.ClosureLit) Type {
 		}
 	}
 	savedReturn, savedThis, savedForbidden := c.curReturn, c.curThis, c.curTryForbidden
+	// A closure boundary breaks the lexical `scope` enclosure: the
+	// closure may be invoked outside the scope, so a `spawn` in its
+	// body is not registered on the scope's group (E0405 applies).
+	savedScopeDepth := c.scopeDepth
+	c.scopeDepth = 0
 	var ret Type
 	if cl.ReturnType != nil {
 		ret = c.typeFromExpr(cl.ReturnType)
@@ -133,10 +142,52 @@ func (c *checker) inferClosure(cl *ast.ClosureLit) Type {
 	}
 	bodyVal := c.inferBlock(cl.Body)
 	c.curReturn, c.curThis, c.curTryForbidden = savedReturn, savedThis, savedForbidden
+	c.scopeDepth = savedScopeDepth
 	if ret == nil {
 		ret = bodyVal
 	}
 	return &Func{Params: params, Return: ret}
+}
+
+// inferScope types a `scope<T, E>(parent?) { body }` expression as
+// Result<T, E> (T-ScopeExpr). v1 restricts E = error (E0407). The
+// body is checked with scopeDepth raised so a `spawn` inside is
+// legal; the scope itself is the join point.
+func (c *checker) inferScope(s *ast.ScopeExpr) Type {
+	if len(s.TypeArgs) == 2 {
+		et := c.typeFromExpr(s.TypeArgs[1])
+		if concrete(et) && !isErrorBuiltin(et) {
+			c.report("E0407", "`scope` error parameter must be `error` in v1", s.TypeArgs[1].NodeSpan())
+		}
+	}
+	if s.Parent != nil {
+		c.inferExpr(s.Parent)
+	}
+	c.scopeDepth++
+	c.checkBlock(s.Body)
+	c.scopeDepth--
+	// The scope evaluates to Result<T, E>; Result is opaque-nominal
+	// in sema (like Option), so match/try on the value resolve
+	// through the variant registry.
+	return &Named{N: "Result"}
+}
+
+// inferSpawn types `spawn { body }` as unit (T-Spawn). E0405 when it
+// is not lexically inside a `scope` body. The body is checked
+// normally; its `return Ok(())` / `return Err(e)` are converted to
+// the group's error channel at lowering.
+func (c *checker) inferSpawn(s *ast.SpawnExpr) Type {
+	if c.scopeDepth == 0 {
+		c.report("E0405", "`spawn` outside a `scope` block", s.Span)
+	}
+	c.checkBlock(s.Body)
+	return &Unit{}
+}
+
+// isErrorBuiltin reports whether t is the predeclared `error` type.
+func isErrorBuiltin(t Type) bool {
+	b, ok := t.(*Builtin)
+	return ok && b.N == "error"
 }
 
 // inferBraceLit types a brace literal. Record literals resolve to

@@ -115,5 +115,15 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		c.resolveExpr(v.Value, scope)
 	case *ast.TryExpr:
 		c.resolveExpr(v.Inner, scope)
+	case *ast.ScopeExpr:
+		for _, ta := range v.TypeArgs {
+			c.resolveTypeExpr(ta, scope)
+		}
+		if v.Parent != nil {
+			c.resolveExpr(v.Parent, scope)
+		}
+		c.resolveBlock(v.Body, scope)
+	case *ast.SpawnExpr:
+		c.resolveBlock(v.Body, scope)
 	}
 }

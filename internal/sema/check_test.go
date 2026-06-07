@@ -1273,6 +1273,58 @@ func TestUnitDoesNotFitInt(t *testing.T) {
 	}
 }
 
+func TestScopeSpawnClean(t *testing.T) {
+	// T-ScopeExpr + T-Spawn: a well-formed scope with spawns and a
+	// trailing value is clean.
+	src := `func main() {
+  let ch = makeChannel<int>(2)
+  let total = scope<int, error> {
+    spawn { ch.send(1); return Ok(()) }
+    let a = ch.recv()
+    a
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("clean scope/spawn produced diags: %v", codes)
+	}
+}
+
+func TestSpawnOutsideScopeFiresE0405(t *testing.T) {
+	src := `func main() {
+  spawn { return Ok(()) }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0405") {
+		t.Errorf("expected E0405 for spawn outside scope, got %v", codes)
+	}
+}
+
+func TestSpawnInClosureInsideScopeFiresE0405(t *testing.T) {
+	// A closure boundary breaks the lexical scope enclosure: a spawn
+	// inside a closure (which may run outside the scope) is illegal.
+	src := `func main() {
+  let r = scope<unit, error> {
+    let f = () => spawn { return Ok(()) }
+    f()
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0405") {
+		t.Errorf("expected E0405 for spawn inside a closure-in-scope, got %v", codes)
+	}
+}
+
+func TestScopeNonErrorParamFiresE0407(t *testing.T) {
+	src := `func main() {
+  let r = scope<int, string> { 5 }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0407") {
+		t.Errorf("expected E0407 for scope<_, string>, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

@@ -952,6 +952,36 @@ func (n *TryExpr) NodeSpan() Span   { return n.Span }
 func (n *TryExpr) NodeKind() string { return "TryExpr" }
 func (n *TryExpr) exprMarker()      {}
 
+// ScopeExpr — `scope<T, E>(parent?) { body }`. A structured-
+// concurrency scope (D7/D11): an expression evaluating to
+// `Result<T, E>`. The body's trailing expression is the success
+// value T (absent ⇒ T = unit); `spawn` blocks inside register on
+// the scope's group and the scope joins them before returning. Per
+// ast.md §Expr (`ScopeExpr { type_args, parent, body }`).
+type ScopeExpr struct {
+	Span     Span
+	TypeArgs []TypeExpr
+	Parent   Expr // optional parent context; nil ⇒ background
+	Body     *Block
+}
+
+func (n *ScopeExpr) NodeSpan() Span   { return n.Span }
+func (n *ScopeExpr) NodeKind() string { return "ScopeExpr" }
+func (n *ScopeExpr) exprMarker()      {}
+
+// SpawnExpr — `spawn { body }`. Registers a goroutine on the
+// enclosing scope's group (E0405 if there is none). The body is
+// typed `Result<unit, E>`; the expression itself is unit. Per
+// ast.md §Expr (`SpawnExpr { body }`).
+type SpawnExpr struct {
+	Span Span
+	Body *Block
+}
+
+func (n *SpawnExpr) NodeSpan() Span   { return n.Span }
+func (n *SpawnExpr) NodeKind() string { return "SpawnExpr" }
+func (n *SpawnExpr) exprMarker()      {}
+
 // RangeExpr is `low..high` (exclusive) or `low..=high` (inclusive).
 // Per ast.md, RangeExpr is iterable-position-only; it is NOT an
 // Expr (it does not appear in the Expr sum). It satisfies the

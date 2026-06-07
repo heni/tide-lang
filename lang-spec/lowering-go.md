@@ -214,11 +214,8 @@ ScopeIR { group_name: g, ctx_name: ctx, parent: P, body: B,
   (in Go, as an expression — wrapped in an immediate function:)
 
   func() tidert.Result[T, E] {
-    parentCtx := <lowering of P; defaults to context.Background()>
-    eg, ctx := errgroup.WithContext(parentCtx)
-    _ = ctx                                     // bound to scope.context
-    var _scope = _scopeBinding{g: eg, ctx: ctx} // for ScopeRef in B
-    _ = _scope
+    eg, _ := tideNewGroup(<lowering of P; defaults to
+                           context.Background()>)
     <lowering of B>                             // ends with a trailing
                                                 //  tidert.Result[T, E]
                                                 //  value or unit-Ok
@@ -229,23 +226,41 @@ ScopeIR { group_name: g, ctx_name: ctx, parent: P, body: B,
   }()
 ```
 
-`ScopeRef` (the `scope` identifier) lowers to `_scope`. Field
-access `scope.context` lowers to `_scope.ctx`.
+**Inline group helper (no external dependency).** Generated modules
+are stdlib-only — they carry no `errgroup` import — so the group is
+the inline `tideGroup` helper, emitted into the prelude (conditional
+on a `scope` appearing). It is built from `sync` + `context` and
+replicates `errgroup.WithContext` semantics: the first spawned func
+to return a non-nil error stores it (once) and cancels the derived
+context; `Wait` blocks for every spawn and returns that error.
+`tideNewGroup(parent)` returns `(*tideGroup, context.Context)`. Like
+`tidert.Result` / the containers, the canonical home is
+`tidert/runtime.go`; v1 emits it inline (the transitional state
+Block R relocates).
+
+`ScopeRef` (the `scope` identifier — value access to the scope's
+context) is a v1 follow-up: the derived context is currently
+discarded (`_`) and no `_scope` binding is emitted. When `ScopeRef`
+lands, `scope.context` lowers to that bound context.
 
 ```
 SpawnIR { parent_group: g, parent_ctx: ctx, body: B }
                                        ⟿
   g.Go(func() error {
-    <lowering of B>                             // ends with a trailing
-                                                //  tidert.Result[unit, E]
-    res := <the trailing wrap>
-    if res.Tag == 1 {                           // Err
-      return res.E.(error)                      // E was constrained to error
-                                                //  by T-Spawn / G11
-    }
-    return nil
-  })
+    <lowering of B, with the body's Result<unit, E> returns
+     converted to the func's `error` return:
+       return Ok(_)   ⟿  return nil
+       return Err(e)  ⟿  return e          // E = error, no assertion
+       return <other Result expr r>
+                      ⟿  if r.Tag == 1 { return r.E }; return nil>
+    return nil                              // fall-through (body has no
+  })                                        //  trailing return)
 ```
+
+A spawn body in the corpus ends in an explicit `return Ok(())` /
+`return Err(e)`, so the conversion is applied per-return; the
+trailing `return nil` is emitted only when the body falls through
+without a return.
 
 The asserted-`E` (`res.E.(error)`) is safe because **v1
 restricts `scope<T, E>` to `E = error`**. Any other `E` is

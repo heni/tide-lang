@@ -994,14 +994,25 @@ func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
 		return nil, err
 	}
 	if n := len(blk.Stmts); n > 0 {
-		if es, ok := blk.Stmts[n-1].(*ast.ExprStmt); ok {
-			if _, diverges := es.Expr.(*ast.ReturnExpr); !diverges {
-				blk.Trailing = es.Expr
-				blk.Stmts = blk.Stmts[:n-1]
-			}
+		if es, ok := blk.Stmts[n-1].(*ast.ExprStmt); ok && !isStmtOnlyExpr(es.Expr) {
+			blk.Trailing = es.Expr
+			blk.Stmts = blk.Stmts[:n-1]
 		}
 	}
 	return blk, nil
+}
+
+// isStmtOnlyExpr reports whether e is an expression that yields no
+// useful value and therefore must not be promoted to a block's
+// trailing position: `return` (diverges) and `spawn` (unit-valued,
+// registers a goroutine on the enclosing scope — a trailing spawn
+// leaves the scope's value at unit, it is not the value itself).
+func isStmtOnlyExpr(e ast.Expr) bool {
+	switch e.(type) {
+	case *ast.ReturnExpr, *ast.SpawnExpr:
+		return true
+	}
+	return false
 }
 
 // parseIfExpr parses `if Cond Block ( "else" ( IfExpr | Block ) )?`
@@ -2120,6 +2131,10 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 				},
 				Inner: inner,
 			}, nil
+		case "scope":
+			return p.parseScopeExpr()
+		case "spawn":
+			return p.parseSpawnExpr()
 		}
 		return nil, p.diag("E0112", fmt.Sprintf("unexpected keyword %q in expression", t.Lexeme), t.Line, t.Col)
 	case lexer.KindIdent:
@@ -2329,6 +2344,68 @@ func decodeStringLit(s string) (string, error) {
 // ---- match expression + patterns ----
 
 // parseMatchExpr expects the cursor at the `match` keyword.
+// parseScopeExpr parses `scope<T, E>(parent?) { body }` (grammar
+// ScopeExpr). The cursor is at the `scope` keyword. Type arguments
+// and the optional parent-context paren are both optional at parse
+// time; sema enforces the `<T, E>` arity and the v1 `E = error`
+// restriction (E0407).
+func (p *parser) parseScopeExpr() (*ast.ScopeExpr, *Diag) {
+	kw := p.advance() // consume 'scope'
+	var typeArgs []ast.TypeExpr
+	if p.at(lexer.KindOp, "<") {
+		ta, err := p.parseCallTypeArgs()
+		if err != nil {
+			return nil, err
+		}
+		typeArgs = ta
+	}
+	var parent ast.Expr
+	if p.at(lexer.KindPunct, "(") {
+		p.advance() // consume '('
+		e, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.KindPunct, ")"); err != nil {
+			return nil, err
+		}
+		parent = e
+	}
+	// The scope's trailing expression is its success value T
+	// (T-ScopeExpr), so promote it via parseValueBlock.
+	body, err := p.parseValueBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.ScopeExpr{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		TypeArgs: typeArgs,
+		Parent:   parent,
+		Body:     body,
+	}, nil
+}
+
+// parseSpawnExpr parses `spawn { body }` (grammar SpawnExpr). The
+// cursor is at the `spawn` keyword. Sema enforces that it appears
+// inside a `scope` body (E0405).
+func (p *parser) parseSpawnExpr() (*ast.SpawnExpr, *Diag) {
+	kw := p.advance() // consume 'spawn'
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.SpawnExpr{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: body.Span.EndLine, EndCol: body.Span.EndCol,
+		},
+		Body: body,
+	}, nil
+}
+
 // Form: `match Subject { Pat => Body (,|nl) ... }`.
 func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 	kw := p.advance() // consume 'match'

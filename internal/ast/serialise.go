@@ -611,6 +611,25 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.Inner, depth+1)
+	case *ScopeExpr:
+		writeSpan(b, v.Span)
+		for _, ta := range v.TypeArgs {
+			b.WriteByte('\n')
+			write(b, ta, depth+1)
+		}
+		if v.Parent != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(parent\n")
+			write(b, v.Parent, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
+	case *SpawnExpr:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Body, depth+1)
 	case *RangeExpr:
 		if v.Inclusive {
 			b.WriteString(" inclusive")

@@ -255,6 +255,14 @@ type gen struct {
 	usesMakeSlice bool
 	usesScan      bool
 	usesTryRecv   bool
+	usesScope     bool
+	// groupVars is the stack of structured-concurrency group binding
+	// names, one per enclosing `scope` IIFE. A `spawn` registers on
+	// the innermost (top-of-stack). inSpawnBody flags that `return
+	// Ok(())` / `return Err(e)` must lower to the group's error
+	// channel (`return nil` / `return <e>`) rather than a Result.
+	groupVars   []string
+	inSpawnBody bool
 	// usedGoPkgs — Go stdlib packages actually referenced in the
 	// emitted output (a `pkg.Sym`). Populated by the pre-walk; the
 	// import block is this set ∩ the .td imports, so a binding that
@@ -276,6 +284,10 @@ type gen struct {
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
+	// loopTempCounter generates unique throwaway counter names for
+	// `for _ in low..high` (a wildcard loop var over a numeric range,
+	// where Go's `i++` form needs a named — not `_` — counter).
+	loopTempCounter int
 }
 
 type variantInfo struct {
@@ -359,6 +371,13 @@ func (g *gen) writeHeader(f *ast.File) {
 		add("reflect")
 		add("strconv")
 	}
+	if g.usesScope {
+		// Structured-concurrency scopes lower onto an inline group
+		// helper built from the standard library (no errgroup dep —
+		// generated modules are stdlib-only).
+		add("context")
+		add("sync")
+	}
 	// Sort for determinism.
 	for i := 1; i < len(paths); i++ {
 		for j := i; j > 0 && paths[j-1] > paths[j]; j-- {
@@ -383,6 +402,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredMakeSlice()
 	g.writePredeclaredScan()
 	g.writePredeclaredTryRecv()
+	g.writePredeclaredGroup()
 	g.writePredeclaredReflect()
 }
 
@@ -470,6 +490,50 @@ func (g *gen) writePredeclaredTryRecv() {
 	default:
 		return OptionNone[T]()
 	}
+}
+`)
+}
+
+// writePredeclaredGroup emits the inline structured-concurrency
+// group helper backing `scope` / `spawn` (lowering-go.md §ScopeIR /
+// §SpawnIR). It replicates errgroup.WithContext semantics with only
+// `sync` + `context` (generated modules carry no external deps): the
+// first spawned func to return a non-nil error stores it and cancels
+// the derived context; Wait blocks for all spawns and returns that
+// error. Conditional on usage.
+func (g *gen) writePredeclaredGroup() {
+	if !g.usesScope {
+		return
+	}
+	g.b.WriteString(`type tideGroup struct {
+	wg     sync.WaitGroup
+	once   sync.Once
+	err    error
+	cancel context.CancelFunc
+}
+
+func tideNewGroup(parent context.Context) (*tideGroup, context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	return &tideGroup{cancel: cancel}, ctx
+}
+
+func (g *tideGroup) Go(f func() error) {
+	g.wg.Add(1)
+	go func() {
+		defer g.wg.Done()
+		if err := f(); err != nil {
+			g.once.Do(func() {
+				g.err = err
+				g.cancel()
+			})
+		}
+	}()
+}
+
+func (g *tideGroup) Wait() error {
+	g.wg.Wait()
+	g.cancel()
+	return g.err
 }
 `)
 }
@@ -789,6 +853,18 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.Body)
 		case *ast.DeferStmt:
 			walk(v.Call)
+		case *ast.ScopeExpr:
+			// A scope evaluates to Result<T, error> and lowers onto
+			// the inline group helper — pull both into the binary.
+			g.usesScope = true
+			g.usesResult = true
+			for _, ta := range v.TypeArgs {
+				walk(ta)
+			}
+			walk(v.Parent)
+			walk(v.Body)
+		case *ast.SpawnExpr:
+			walk(v.Body)
 		case *ast.ReturnExpr:
 			walk(v.Value)
 		case *ast.MatchExpr:
@@ -1327,6 +1403,13 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.ExprStmt:
 		// ReturnExpr (DivergingExpr): lower to Go `return` stmt.
 		if r, ok := v.Expr.(*ast.ReturnExpr); ok {
+			// Inside a `spawn` body the func returns `error`, so a
+			// `return Ok(())` / `return Err(e)` (Result<unit, E>) is
+			// converted to the group's error channel (lowering-go.md
+			// §SpawnIR).
+			if g.inSpawnBody {
+				return g.emitSpawnReturn(r)
+			}
 			// `return try e` — emit the try preamble, then
 			// `return tmp.V`.
 			if try, ok := r.Value.(*ast.TryExpr); ok {
@@ -1384,6 +1467,11 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		// IfExpr in statement position: same shape as an if-statement.
 		if ie, ok := v.Expr.(*ast.IfExpr); ok {
 			return g.emitIfExprAsStmt(ie)
+		}
+		// `spawn { … }` registers a goroutine on the enclosing
+		// scope's group (lowering-go.md §SpawnIR).
+		if sp, ok := v.Expr.(*ast.SpawnExpr); ok {
+			return g.emitSpawnStmt(sp)
 		}
 		g.line(v.Span.StartLine)
 		g.writeIndent()
@@ -2267,6 +2355,10 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// (lowering-go.md §Primitive type lowering).
 		g.b.WriteString("struct{}{}")
 		return nil
+	case *ast.ScopeExpr:
+		// Value-position structured-concurrency scope → IIFE
+		// returning Result[T, error] (lowering-go.md §ScopeIR).
+		return g.emitScopeExpr(v)
 	case *ast.ThisExpr:
 		// lowering-go.md §Implicit receiver — the receiver is
 		// named `t` consistently in generated method bodies.
