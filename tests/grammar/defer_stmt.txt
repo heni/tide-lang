@@ -1,0 +1,33 @@
+--- TITLE ---
+DeferStmt — `defer <call>`, including the closure-wrapped form
+
+--- INPUT ---
+import fmt
+
+func main() {
+  defer fmt.println("bye")
+  defer (func() { fmt.println("late") })()
+}
+
+--- AST ---
+(File @1:1-6:2
+  (Import "fmt" @1:1-1:11)
+  (FuncDecl "main" @3:1-6:2
+    (type-params)
+    (params)
+    (Block @3:13-6:2
+      (DeferStmt @4:3-4:27
+        (Call @4:9-4:27
+          (Field "println" @4:9-4:20
+            (Ident "fmt" @4:9-4:12))
+          (StringLitExpr "bye" @4:21-4:26)))
+      (DeferStmt @5:3-5:43
+        (Call @5:9-5:43
+          (ParenExpr @5:9-5:41
+            (ClosureLit @5:10-5:40
+              (Block @5:17-5:40
+                (ExprStmt @5:19-5:38
+                  (Call @5:19-5:38
+                    (Field "println" @5:19-5:30
+                      (Ident "fmt" @5:19-5:22))
+                    (StringLitExpr "late" @5:31-5:37)))))))))))

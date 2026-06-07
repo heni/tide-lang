@@ -2,10 +2,10 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 32,
+    "parse_fail": 31,
     "sema_fail": 3,
     "emit_fail": 7,
-    "build_ok": 10
+    "build_ok": 11
   },
   "files": [
     {
@@ -65,8 +65,8 @@
     },
     {
       "path": "examples/borgo/defer_demo.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"defer\" in expression"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/borgo/errors_as_types.td",

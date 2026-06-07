@@ -1343,6 +1343,17 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		return g.emitIfStmt(v)
 	case *ast.WhileStmt:
 		return g.emitWhileStmt(v)
+	case *ast.DeferStmt:
+		// lowering-go.md §Defer: `defer call(args)` → Go `defer
+		// call(args)` directly (G27 — adopted from Go).
+		g.line(v.Span.StartLine)
+		g.writeIndent()
+		g.b.WriteString("defer ")
+		if err := g.emitExpr(v.Call); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		return nil
 	case *ast.ForStmt:
 		return g.emitForStmt(v)
 	case *ast.LetStmt:

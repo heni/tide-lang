@@ -417,6 +417,20 @@ func (n *WhileStmt) NodeSpan() Span   { return n.Span }
 func (n *WhileStmt) NodeKind() string { return "WhileStmt" }
 func (n *WhileStmt) stmtMarker()      {}
 
+// DeferStmt — `defer <call>`. Per ast.md §Stmt (`DeferStmt { call:
+// Expr }`) and grammar production `DeferStmt = "defer" Expr`.
+// `defer` is adopted from Go directly (G27): function-scoped, LIFO.
+// Sema requires Call shape (T-Defer / E0406); codegen lowers it to
+// a Go `defer` statement (lowering-go.md §Defer).
+type DeferStmt struct {
+	Span Span
+	Call Expr
+}
+
+func (n *DeferStmt) NodeSpan() Span   { return n.Span }
+func (n *DeferStmt) NodeKind() string { return "DeferStmt" }
+func (n *DeferStmt) stmtMarker()      {}
+
 // Iterable marks the type of values legal at the right-hand side
 // of `for x in ...`. Per ast.md §Iterable, the cases are
 // `RangeExpr | Expr`; both *RangeExpr and any concrete Expr type

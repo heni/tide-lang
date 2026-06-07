@@ -1046,6 +1046,8 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 		return p.parseForStmt()
 	case p.at(lexer.KindKeyword, "while"):
 		return p.parseWhileStmt()
+	case p.at(lexer.KindKeyword, "defer"):
+		return p.parseDeferStmt()
 	case p.at(lexer.KindKeyword, "let"):
 		return p.parseLetOrVar(true)
 	case p.at(lexer.KindKeyword, "const"):
@@ -1314,6 +1316,24 @@ func (p *parser) parseWhileStmt() (*ast.WhileStmt, *Diag) {
 		},
 		Cond: cond,
 		Body: body,
+	}, nil
+}
+
+// parseDeferStmt parses `defer <Expr>` (grammar production
+// DeferStmt). The argument is a general expression at parse time;
+// sema enforces the Call shape (T-Defer / E0406).
+func (p *parser) parseDeferStmt() (*ast.DeferStmt, *Diag) {
+	kw := p.advance() // consume 'defer'
+	call, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.DeferStmt{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: call.NodeSpan().EndLine, EndCol: call.NodeSpan().EndCol,
+		},
+		Call: call,
 	}, nil
 }
 

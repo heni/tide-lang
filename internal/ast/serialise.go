@@ -525,6 +525,10 @@ func write(b *strings.Builder, n Node, depth int) {
 		write(b, v.Cond, depth+1)
 		b.WriteByte('\n')
 		write(b, v.Body, depth+1)
+	case *DeferStmt:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Call, depth+1)
 	case *BreakExpr:
 		writeSpan(b, v.Span)
 	case *ContinueExpr:

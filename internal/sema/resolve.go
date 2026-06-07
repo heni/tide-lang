@@ -210,6 +210,8 @@ func (c *checker) resolveStmt(s ast.Stmt, scope *Scope) {
 	case *ast.WhileStmt:
 		c.resolveExpr(v.Cond, scope)
 		c.resolveBlock(v.Body, scope)
+	case *ast.DeferStmt:
+		c.resolveExpr(v.Call, scope)
 	case *ast.ForStmt:
 		// RangeExpr is a Node but not an Expr — handle it
 		// explicitly. Other iterables (slices, maps, sets) are

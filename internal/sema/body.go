@@ -95,6 +95,14 @@ func (c *checker) checkStmt(s ast.Stmt) {
 			c.checkBlock(v.Body)
 			c.loopDepth--
 		}
+	case *ast.DeferStmt:
+		// T-Defer: the deferred expression's AST shape must be a
+		// Call (a closure-wrapped block is spelled `(() => …)()`,
+		// still a Call). E0406 otherwise.
+		if _, ok := v.Call.(*ast.Call); !ok {
+			c.report("E0406", "`defer` argument must be a call", v.Call.NodeSpan())
+		}
+		c.inferExpr(v.Call)
 	}
 }
 

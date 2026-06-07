@@ -1181,6 +1181,29 @@ func wrap<T>(x: T): []T { return [x] }
 	}
 }
 
+func TestDeferCallShapePasses(t *testing.T) {
+	src := `import fmt
+func main() {
+  defer fmt.println("bye")
+  defer (func() { fmt.println("late") })()
+}
+`
+	if codes := runCheck(t, src); contains(codes, "E0406") {
+		t.Errorf("defer of a call should not fire E0406, got %v", codes)
+	}
+}
+
+func TestDeferNonCallFiresE0406(t *testing.T) {
+	src := `func main() {
+  let x = 1
+  defer x
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0406") {
+		t.Errorf("expected E0406 for `defer` of a non-call, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {
