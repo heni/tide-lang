@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 6,
-    "build_ok": 17
+    "emit_fail": 4,
+    "build_ok": 19
   },
   "files": [
     {
@@ -100,13 +100,13 @@
     },
     {
       "path": "examples/concurrency/rate_limited.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/concurrency/select_showcase.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/concurrency/worker_pool.td",

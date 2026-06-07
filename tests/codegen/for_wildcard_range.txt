@@ -1,0 +1,50 @@
+--- TITLE ---
+Wildcard for-loop var over channel / slice emits bare `for range` (not `for _ := range`)
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let ch = makeChannel<int>(3)
+  ch.send(10)
+  ch.send(20)
+  ch.send(30)
+  ch.close()
+  var drained = 0
+  for _ in ch {
+    drained = drained + 1
+  }
+  var sliceCount = 0
+  for _ in [1, 2, 3, 4] {
+    sliceCount = sliceCount + 1
+  }
+  fmt.println("drained", drained, "slice", sliceCount)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var ch = make(chan int, 3)
+	ch <- 10
+	ch <- 20
+	ch <- 30
+	close(ch)
+	var drained = 0
+	for range ch {
+		drained = drained + 1
+	}
+	var sliceCount = 0
+	for range []int{1, 2, 3, 4} {
+		sliceCount = sliceCount + 1
+	}
+	fmt.Println("drained", drained, "slice", sliceCount)
+}
+
+--- STDOUT ---
+drained 3 slice 4
+
+--- EXIT ---
+0

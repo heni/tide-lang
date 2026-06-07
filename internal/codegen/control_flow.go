@@ -321,6 +321,28 @@ func (g *gen) emitForTuple(s *ast.ForStmt, tp *ast.TuplePat) error {
 	return nil
 }
 
+// writeRangeHead writes the Go `for`-range header prefix up to and
+// including `range `. When the loop variable is discarded (`_`) it
+// emits the bare `for range ` form — Go rejects `for _ := range` and
+// `for _, _ := range` ("no new variables on left side of :="). The
+// channelStyle flag selects the single-value range header (`for v :=
+// range ch`) over the index/value header (`for _, v := range coll`).
+func (g *gen) writeRangeHead(name string, channelStyle bool) {
+	if name == "_" {
+		g.b.WriteString("for range ")
+		return
+	}
+	if channelStyle {
+		g.b.WriteString("for ")
+		g.b.WriteString(name)
+		g.b.WriteString(" := range ")
+		return
+	}
+	g.b.WriteString("for _, ")
+	g.b.WriteString(name)
+	g.b.WriteString(" := range ")
+}
+
 func (g *gen) emitForStmt(s *ast.ForStmt) error {
 	if tp, ok := s.Pattern.(*ast.TuplePat); ok {
 		return g.emitForTuple(s, tp)
@@ -374,40 +396,25 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 		if !ok {
 			return fmt.Errorf("codegen: unsupported iterable %T", iter)
 		}
-		// Map iteration — `for k in m` walks the wrapper's
+		// Map / Set iteration — `for k in m` walks the wrapper's
 		// insertion-order slice so iteration is deterministic
 		// (Go's bare `range m.m` is randomised). For now we
 		// expose keys only via this short form; tuple-form
 		// `for (k, v) in m` and `m.entries()` come later.
-		if id, ok := iterExpr.(*ast.Ident); ok && g.varKindOf(id) == "Map" {
-			g.b.WriteString("for _, ")
-			g.b.WriteString(goIdent(idPat.Name))
-			g.b.WriteString(" := range ")
-			if err := g.emitExpr(id); err != nil {
-				return err
-			}
-			g.b.WriteString(".order {\n")
-			break
-		}
-		// Set iteration — same idea against `s.order`.
-		if id, ok := iterExpr.(*ast.Ident); ok && g.varKindOf(id) == "Set" {
-			g.b.WriteString("for _, ")
-			g.b.WriteString(goIdent(idPat.Name))
-			g.b.WriteString(" := range ")
-			if err := g.emitExpr(id); err != nil {
-				return err
-			}
-			g.b.WriteString(".order {\n")
-			break
-		}
-		// Channel iteration — `for v in ch` drains the channel until
-		// it closes (lowering-go.md §For-loops, ForChanIR). Go's
-		// `range ch` yields the element directly, with no index.
 		if id, ok := iterExpr.(*ast.Ident); ok {
+			if k := g.varKindOf(id); k == "Map" || k == "Set" {
+				g.writeRangeHead(goIdent(idPat.Name), false)
+				if err := g.emitExpr(id); err != nil {
+					return err
+				}
+				g.b.WriteString(".order {\n")
+				break
+			}
+			// Channel iteration — `for v in ch` drains the channel
+			// until it closes (lowering-go.md §For-loops, ForChanIR).
+			// Go's `range ch` yields the element directly, no index.
 			if k := g.varKindOf(id); k == "Channel" || k == "RecvChan" {
-				g.b.WriteString("for ")
-				g.b.WriteString(goIdent(idPat.Name))
-				g.b.WriteString(" := range ")
+				g.writeRangeHead(goIdent(idPat.Name), true)
 				if err := g.emitExpr(id); err != nil {
 					return err
 				}
@@ -415,9 +422,7 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 				break
 			}
 		}
-		g.b.WriteString("for _, ")
-		g.b.WriteString(goIdent(idPat.Name))
-		g.b.WriteString(" := range ")
+		g.writeRangeHead(goIdent(idPat.Name), false)
 		if err := g.emitExpr(iterExpr); err != nil {
 			return err
 		}

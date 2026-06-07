@@ -72,6 +72,13 @@ var stdlibRename = map[[2]string]string{
 	{"math", "log"}:   "Log",
 	{"math", "log2"}:  "Log2",
 	{"math", "ceil"}:  "Ceil",
+
+	// time — the channel/effect bindings are direct renames; the
+	// Duration constructors (`milliseconds`/`seconds`) are not, and
+	// lower via timeDurationUnit in emitCall.
+	{"time", "after"}: "After", // → <-chan time.Time
+	{"time", "tick"}:  "Tick",  // → <-chan time.Time
+	{"time", "sleep"}: "Sleep",
 }
 
 // stdlibResultWrap maps a stdlib binding whose Go referent returns
@@ -85,6 +92,21 @@ var stdlibResultWrap = map[[2]string]string{
 	{"strconv", "parseFloat"}: "ParseFloat",
 	{"strconv", "parseInt"}:   "ParseInt",
 	{"os", "readFile"}:        "ReadFile",
+}
+
+// timeDurationUnit maps a `time.<ctor>(n)` Duration constructor to
+// its Go `time.<Unit>` constant. The call lowers to
+// `time.Duration(n) * time.<Unit>` (binding-surface.md §time —
+// Tide hides Go's `time.Second * N` idiom behind factory funcs).
+// ("", false) when name is not a Duration constructor.
+func timeDurationUnit(name string) (string, bool) {
+	switch name {
+	case "seconds":
+		return "Second", true
+	case "milliseconds":
+		return "Millisecond", true
+	}
+	return "", false
 }
 
 // stdlibRenameOf returns the Go identifier for a value-returning

@@ -18,6 +18,8 @@ func TestStdlibRenameOf(t *testing.T) {
 		{"strconv", "itoa", "Itoa", true},
 		{"os", "args", "Args", true},
 		{"fmt", "println", "Println", true},
+		{"time", "after", "After", true},
+		{"time", "sleep", "Sleep", true},
 		// Not renames: result-wrapping bindings go through emitCall.
 		{"strconv", "atoi", "", false},
 		{"os", "readFile", "", false},
@@ -51,5 +53,24 @@ func TestStdlibResultWrapOf(t *testing.T) {
 	// A rename binding is not a result-wrap binding.
 	if _, ok := stdlibResultWrapOf("strconv", "itoa"); ok {
 		t.Errorf(`stdlibResultWrapOf("strconv","itoa") should be false`)
+	}
+}
+
+// TestTimeDurationUnit locks the Duration-constructor mapping. These
+// are NOT renames (they lower to `time.Duration(n) * time.<Unit>`), so
+// they must be absent from stdlibRename and present here.
+func TestTimeDurationUnit(t *testing.T) {
+	if got, ok := timeDurationUnit("milliseconds"); !ok || got != "Millisecond" {
+		t.Errorf(`timeDurationUnit("milliseconds") = (%q,%v); want ("Millisecond",true)`, got, ok)
+	}
+	if got, ok := timeDurationUnit("seconds"); !ok || got != "Second" {
+		t.Errorf(`timeDurationUnit("seconds") = (%q,%v); want ("Second",true)`, got, ok)
+	}
+	if _, ok := timeDurationUnit("after"); ok {
+		t.Errorf(`timeDurationUnit("after") should be false (it is a rename)`)
+	}
+	// The Duration constructors must not also be in the rename table.
+	if _, ok := stdlibRenameOf("time", "milliseconds"); ok {
+		t.Errorf(`time.milliseconds must not be a rename binding`)
 	}
 }

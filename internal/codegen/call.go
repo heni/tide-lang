@@ -75,6 +75,24 @@ func (g *gen) emitCall(c *ast.Call) error {
 			}
 		}
 	}
+	// time.milliseconds(n) / time.seconds(n) — Duration constructors
+	// (bindings.go). Lower to `time.Duration(n) * time.<Unit>`.
+	if f, ok := c.Callee.(*ast.Field); ok {
+		if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "time" {
+			if unit, ok := timeDurationUnit(f.Name); ok {
+				if len(c.Args) != 1 {
+					return fmt.Errorf("codegen: time.%s expects exactly one argument, got %d", f.Name, len(c.Args))
+				}
+				g.b.WriteString("time.Duration(")
+				if err := g.emitExpr(c.Args[0]); err != nil {
+					return err
+				}
+				g.b.WriteString(") * time.")
+				g.b.WriteString(unit)
+				return nil
+			}
+		}
+	}
 	// strings.fromBytes(b) — the []byte → string round-trip binding
 	// (binding-surface.md §strings). Lowers to Go's `string(b)`
 	// conversion.
