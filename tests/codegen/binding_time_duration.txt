@@ -1,0 +1,36 @@
+--- TITLE ---
+time.* bindings: sleep/after renames + milliseconds/seconds Duration constructors
+
+--- INPUT ---
+import fmt
+import time
+
+func main() {
+  let short = time.milliseconds(2)
+  time.sleep(short)
+  time.sleep(time.milliseconds(1 + 1))
+  time.sleep(time.seconds(0))
+  fmt.println("slept")
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	var short = time.Duration(2) * time.Millisecond
+	time.Sleep(short)
+	time.Sleep(time.Duration(1+1) * time.Millisecond)
+	time.Sleep(time.Duration(0) * time.Second)
+	fmt.Println("slept")
+}
+
+--- STDOUT ---
+slept
+
+--- EXIT ---
+0

@@ -232,9 +232,6 @@ time.after(d: time.Duration): RecvChan<time.Time>
 
 // Sleep blocks the current goroutine.
 time.sleep(d: time.Duration)
-
-// Sleep blocks the current goroutine.
-time.sleep(d: time.Duration)
 ```
 
 ## context
