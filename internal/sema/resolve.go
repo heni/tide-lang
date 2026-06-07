@@ -62,6 +62,12 @@ func (c *checker) resolveClassDecl(cd *ast.ClassDecl, parent *Scope) {
 		c.checkReservedName(tp, cd.Span)
 		classScope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
 	}
+	// Resolve the `implements` list so an unknown interface name fires
+	// E0103 and a known one is symbol-bound — the latter lets
+	// satisfiesInterface follow a class → interface → `extends` chain.
+	for _, impl := range cd.Implements {
+		c.resolveTypeExpr(impl, parent)
+	}
 	// Resolve every field / method annotation against classScope
 	// before building member symbols, so the signatures are fully
 	// typed (Barrier B) regardless of declaration order.

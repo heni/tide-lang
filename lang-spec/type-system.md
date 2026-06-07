@@ -876,6 +876,15 @@ Method-set match is **exact** for v1 — no implicit conversion of
 generator handles any Go-side `(T, error)` ↔ `Result<T, error>`
 mapping; user-side conformance is by-the-letter.
 
+> **Implementation gap (v1).** The checker currently enforces the
+> *direction* of (C-Implements) — a class that `implements I` (or an
+> interface that `extends I`) is accepted where `I` is expected — but
+> does **not** yet verify the method-set premise (that `C` declares
+> every method of each `I_j`). A non-satisfying class is caught only
+> by the Go build, surfacing a `go/types` error rather than a
+> `.td`-coordinate diagnostic. Closing this needs the method-set check
+> in `satisfy.go` and a dedicated catalog code.
+
 ### Generic class / interface
 
 ```

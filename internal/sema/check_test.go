@@ -416,6 +416,33 @@ func main() {
 	}
 }
 
+func TestTransitiveInterfaceConformance(t *testing.T) {
+	// A class implementing `Solid`, which `extends Shape`, is accepted
+	// where `Shape` is expected (conformance follows the extends chain).
+	src := `interface Shape { area(): int }
+interface Solid extends Shape { volume(): int }
+class Cube implements Solid {
+  let s: int
+  area(): int { return this.s * this.s }
+  volume(): int { return this.s * this.s * this.s }
+}
+func describe(sh: Shape): int { return sh.area() }
+func main() { let c = Cube { s: 3 }; describe(c) }
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (transitive conformance), got %v", codes)
+	}
+}
+
+func TestUnknownImplementsNameFiresE0103(t *testing.T) {
+	src := `class C implements Nope { let n: int }
+func main() {}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0103") {
+		t.Errorf("expected E0103 for unknown implements name, got %v", codes)
+	}
+}
+
 func TestDuplicateInterfaceFiresE0113(t *testing.T) {
 	src := `interface Foo { a(): int }
 interface Foo { b(): int }
