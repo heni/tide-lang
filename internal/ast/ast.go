@@ -615,6 +615,18 @@ func (n *BoolLitExpr) NodeSpan() Span   { return n.Span }
 func (n *BoolLitExpr) NodeKind() string { return "BoolLitExpr" }
 func (n *BoolLitExpr) exprMarker()      {}
 
+// UnitLit is the unit value `()` — the single inhabitant of the
+// `unit` type. Per ast.md §Expr (a leaf node carrying only its
+// span) and grammar production `UnitLit = "(" ")"`. Lowers to Go's
+// zero-byte value (lowering-go.md §Primitive type lowering).
+type UnitLit struct {
+	Span Span
+}
+
+func (n *UnitLit) NodeSpan() Span   { return n.Span }
+func (n *UnitLit) NodeKind() string { return "UnitLit" }
+func (n *UnitLit) exprMarker()      {}
+
 // RuneLitExpr is a single-quoted code-point literal (`'a'`,
 // `'\n'`). Lowers to Go's identical syntax — Tide's `rune` is
 // Go's `rune` (alias for `int32`).

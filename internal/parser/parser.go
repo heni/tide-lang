@@ -872,6 +872,19 @@ func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
 			Elem: elem,
 		}, nil
 	}
+	// `unit` lexes as a keyword (it is also the value-type with the
+	// one inhabitant `()`), so accept it as a PrimitiveType here —
+	// the closed-set check below only sees KindIdent tokens.
+	if p.at(lexer.KindKeyword, "unit") {
+		t := p.advance()
+		return &ast.PrimitiveType{
+			Span: ast.Span{
+				StartLine: t.Line, StartCol: t.Col,
+				EndLine: t.Line, EndCol: t.Col + utf8.RuneCountInString(t.Lexeme),
+			},
+			Name: "unit",
+		}, nil
+	}
 	if !p.at(lexer.KindIdent) {
 		t := p.peek()
 		return nil, p.diag("E0112",
@@ -2126,6 +2139,18 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 			defer func() { p.noBrace = savedNB }()
 			open := p.advance()
 			p.skipNewlines()
+			// `()` — the unit literal (grammar `UnitLit = "(" ")"`).
+			// A `() => …` zero-param closure is already taken by the
+			// couldBeShortClosure() check above, so a `)` here is unit.
+			if p.at(lexer.KindPunct, ")") {
+				closeTok := p.advance()
+				return &ast.UnitLit{
+					Span: ast.Span{
+						StartLine: open.Line, StartCol: open.Col,
+						EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+					},
+				}, nil
+			}
 			e, err := p.parseExpr()
 			if err != nil {
 				return nil, err

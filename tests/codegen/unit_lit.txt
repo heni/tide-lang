@@ -1,0 +1,36 @@
+--- TITLE ---
+Unit — `unit` type → `struct{}`, `()` literal → `struct{}{}`
+
+--- INPUT ---
+import fmt
+
+func consume(u: unit) {
+  fmt.println("got unit")
+}
+
+func main() {
+  let u = ()
+  consume(u)
+  consume(())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func consume(u struct{}) {
+	fmt.Println("got unit")
+}
+func main() {
+	var u = struct{}{}
+	consume(u)
+	consume(struct{}{})
+}
+
+--- STDOUT ---
+got unit
+got unit
+
+--- EXIT ---
+0

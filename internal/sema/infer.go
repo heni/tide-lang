@@ -25,6 +25,8 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = &Builtin{N: "bool"}
 	case *ast.RuneLitExpr:
 		t = &Builtin{N: "rune"}
+	case *ast.UnitLit:
+		t = &Unit{}
 	case *ast.ThisExpr:
 		if c.curThis != nil {
 			t = c.curThis

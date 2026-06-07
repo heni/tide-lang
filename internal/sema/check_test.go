@@ -1248,6 +1248,31 @@ func relay(out: SendChan<int>) { use(out) }
 	}
 }
 
+func TestUnitLiteralFitsUnitAnnotation(t *testing.T) {
+	// `()` types as unit and is accepted where `unit` is expected.
+	src := `func consume(u: unit) {}
+func main() {
+  let u: unit = ()
+  consume(())
+  consume(u)
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("unit literal/annotation should be clean, got %v", codes)
+	}
+}
+
+func TestUnitDoesNotFitInt(t *testing.T) {
+	// The unit value is not an int — a mismatch fires E0201.
+	src := `func main() {
+  let n: int = ()
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("expected E0201 for unit-where-int, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

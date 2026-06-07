@@ -1212,9 +1212,11 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 	case *ast.PrimitiveType:
 		// Tide primitive names map 1:1 onto Go's by spec
 		// (lowering-go.md §Primitive type lowering); the only
-		// transform is `unit` → an internal struct, which PR-F1
-		// doesn't yet emit because no function returns unit at
-		// the source level.
+		// transform is `unit` → Go's zero-byte `struct{}`.
+		if v.Name == "unit" {
+			g.b.WriteString("struct{}")
+			return nil
+		}
 		g.b.WriteString(v.Name)
 		return nil
 	case *ast.SliceType:
@@ -2259,6 +2261,11 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		} else {
 			g.b.WriteString("false")
 		}
+		return nil
+	case *ast.UnitLit:
+		// The unit value `()` is Go's zero-byte composite literal
+		// (lowering-go.md §Primitive type lowering).
+		g.b.WriteString("struct{}{}")
 		return nil
 	case *ast.ThisExpr:
 		// lowering-go.md §Implicit receiver — the receiver is

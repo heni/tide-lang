@@ -533,6 +533,8 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 	case *ContinueExpr:
 		writeSpan(b, v.Span)
+	case *UnitLit:
+		writeSpan(b, v.Span)
 	case *ParenExpr:
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')

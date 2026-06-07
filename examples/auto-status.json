@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 31,
+    "parse_fail": 30,
     "sema_fail": 3,
-    "emit_fail": 7,
+    "emit_fail": 8,
     "build_ok": 11
   },
   "files": [
@@ -70,8 +70,8 @@
     },
     {
       "path": "examples/borgo/errors_as_types.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Keyword \"unit\""
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/borgo/interfaces.td",
@@ -81,7 +81,7 @@
     {
       "path": "examples/borgo/match_on_tuples.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \")\""
+      "blocker": "error[E0112]: tuple pattern needs at least two components"
     },
     {
       "path": "examples/concurrency/nested_scopes.td",
