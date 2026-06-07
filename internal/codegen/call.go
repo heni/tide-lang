@@ -111,8 +111,7 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// (`Ok(v)` → E, `Err(e)` → T) is supplied rather than left for
 	// Go's inference to fail on (lowering-go.md §Container types).
 	if id, ok := c.Callee.(*ast.Ident); ok {
-		if targs, ok := g.predeclaredCtorTypeArgs(id.Name, expect); ok {
-			info := g.variant[id.Name]
+		if targs, info, ok := g.predeclaredCtorTypeArgs(id.Name, expect); ok {
 			g.b.WriteString(goIdent(info.owner))
 			g.b.WriteString(goIdent(id.Name))
 			g.b.WriteByte('[')
@@ -464,23 +463,23 @@ func mapFieldName(receiver ast.Expr, name string) string {
 // the matching `Result<T, E>` / `Option<T>` NamedType carrying the
 // right arity — user sum types are non-generic in v1, so Go infers
 // their type params and they need no stamp.
-func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.TypeExpr, bool) {
+func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.TypeExpr, variantInfo, bool) {
 	info, ok := g.variant[name]
 	if !ok || (info.owner != "Option" && info.owner != "Result") {
-		return nil, false
+		return nil, variantInfo{}, false
 	}
 	nt, ok := expect.(*ast.NamedType)
 	if !ok || len(nt.QName) != 1 || nt.QName[0] != info.owner {
-		return nil, false
+		return nil, variantInfo{}, false
 	}
 	want := 1
 	if info.owner == "Result" {
 		want = 2
 	}
 	if len(nt.Args) != want {
-		return nil, false
+		return nil, variantInfo{}, false
 	}
-	return nt.Args, true
+	return nt.Args, info, true
 }
 
 // isFmtScan reports whether e is the callee `fmt.scan` (the single-

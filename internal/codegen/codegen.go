@@ -2346,7 +2346,15 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 		}
 	}
 	g.b.WriteString(" = ")
-	if err := g.emitExpr(value); err != nil {
+	// A type annotation gives the value an expected type — thread it
+	// so a predeclared Result/Option constructor gets explicit type
+	// args (Go does not infer a generic call's type params from the
+	// assignment LHS). nil annotation leaves inference unchanged.
+	prevExpect := g.expectType
+	g.expectType = declType
+	err := g.emitExpr(value)
+	g.expectType = prevExpect
+	if err != nil {
 		return err
 	}
 	g.b.WriteByte('\n')

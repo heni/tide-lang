@@ -1,5 +1,5 @@
 --- TITLE ---
-Result/Option constructors stamp explicit type args from the return type
+Result/Option constructors stamp explicit type args from the expected type (return + typed let)
 
 --- INPUT ---
 import fmt
@@ -19,6 +19,7 @@ func describe(n: int): Option<int> {
 }
 
 func main() {
+  let bonus: Result<int, string> = Ok(99)
   match classify(7) {
     Ok(v)  => fmt.println("ok", v),
     Err(e) => fmt.println("err", e),
@@ -26,6 +27,10 @@ func main() {
   match describe(0) {
     Some(v) => fmt.println("some", v),
     None    => fmt.println("none"),
+  }
+  match bonus {
+    Ok(v)  => fmt.println("bonus", v),
+    Err(e) => fmt.println("err", e),
   }
 }
 
@@ -71,6 +76,7 @@ func describe(n int) Option[int] {
 	return OptionSome[int](n)
 }
 func main() {
+	var bonus Result[int, string] = ResultOk[int, string](99)
 	__tide_match_1 := classify(7)
 	switch __tide_match_1.Tag {
 	case 0:
@@ -88,11 +94,21 @@ func main() {
 	case 0:
 		fmt.Println("none")
 	}
+	__tide_match_3 := bonus
+	switch __tide_match_3.Tag {
+	case 0:
+		v := __tide_match_3.V
+		fmt.Println("bonus", v)
+	case 1:
+		e := __tide_match_3.E
+		fmt.Println("err", e)
+	}
 }
 
 --- STDOUT ---
 ok 14
 none
+bonus 99
 
 --- EXIT ---
 0
