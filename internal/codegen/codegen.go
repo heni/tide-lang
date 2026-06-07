@@ -254,6 +254,7 @@ type gen struct {
 	usesReflect   bool
 	usesMakeSlice bool
 	usesScan      bool
+	usesTryRecv   bool
 	// usedGoPkgs — Go stdlib packages actually referenced in the
 	// emitted output (a `pkg.Sym`). Populated by the pre-walk; the
 	// import block is this set ∩ the .td imports, so a binding that
@@ -381,6 +382,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredContainers()
 	g.writePredeclaredMakeSlice()
 	g.writePredeclaredScan()
+	g.writePredeclaredTryRecv()
 	g.writePredeclaredReflect()
 }
 
@@ -449,6 +451,25 @@ func (g *gen) writePredeclaredScan() {
 		return ResultErr[T, error](err)
 	}
 	return ResultOk[T, error](v)
+}
+`)
+}
+
+// writePredeclaredTryRecv emits the inline helper backing
+// `ch.tryRecv()` (lowering-go.md §Channel lowering): a non-blocking
+// receive that returns Some(v) when a value is ready, None when the
+// channel buffer is empty. Conditional on usage; pulls in Option.
+func (g *gen) writePredeclaredTryRecv() {
+	if !g.usesTryRecv {
+		return
+	}
+	g.b.WriteString(`func tideTryRecv[T any](ch <-chan T) Option[T] {
+	select {
+	case v := <-ch:
+		return OptionSome[T](v)
+	default:
+		return OptionNone[T]()
+	}
 }
 `)
 }
@@ -766,6 +787,8 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 		case *ast.WhileStmt:
 			walk(v.Cond)
 			walk(v.Body)
+		case *ast.DeferStmt:
+			walk(v.Call)
 		case *ast.ReturnExpr:
 			walk(v.Value)
 		case *ast.MatchExpr:
@@ -780,6 +803,15 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			if isFmtScan(v.Callee) {
 				g.usesScan = true
 				g.usesResult = true
+			}
+			// `ch.tryRecv()` lowers to the tideTryRecv helper, which
+			// returns Option<T> — pull both into the binary. Keyed on
+			// the method name (the receiver's channel kind is a sema
+			// fact); a same-named user method would over-pull the
+			// helper, harmless dead code.
+			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "tryRecv" {
+				g.usesTryRecv = true
+				g.usesOption = true
 			}
 			walk(v.Callee)
 			for _, ta := range v.TypeArgs {
@@ -1227,6 +1259,25 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 		}
 		return nil
 	case *ast.NamedType:
+		// Channel types lower to Go's native channel types
+		// (lowering-go.md §Channel lowering): Channel<T> → `chan T`,
+		// SendChan<T> → `chan<- T`, RecvChan<T> → `<-chan T`. Not a
+		// wrapper struct — channels are a first-class Go primitive.
+		if len(v.QName) == 1 && len(v.Args) == 1 {
+			var prefix string
+			switch v.QName[0] {
+			case "Channel":
+				prefix = "chan "
+			case "SendChan":
+				prefix = "chan<- "
+			case "RecvChan":
+				prefix = "<-chan "
+			}
+			if prefix != "" {
+				g.b.WriteString(prefix)
+				return g.emitTypeExpr(v.Args[0])
+			}
+		}
 		// Per G16 / lowering-go.md §Implicit receiver, classes
 		// are reference types — a NamedType naming a class in
 		// scope lowers to `*ClassName` in Go so that field
@@ -2445,6 +2496,62 @@ func (g *gen) emitCall(c *ast.Call) error {
 		g.b.WriteByte(')')
 		return nil
 	}
+	// makeChannel<T>(cap?) — predeclared channel constructor
+	// (lowering-go.md §Channel lowering): `make(chan T)` unbuffered,
+	// `make(chan T, cap)` when a capacity is given.
+	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "makeChannel" {
+		g.b.WriteString("make(chan ")
+		if len(c.TypeArgs) == 1 {
+			if err := g.emitTypeExpr(c.TypeArgs[0]); err != nil {
+				return err
+			}
+		}
+		if len(c.Args) == 1 {
+			g.b.WriteString(", ")
+			if err := g.emitExpr(c.Args[0]); err != nil {
+				return err
+			}
+		}
+		g.b.WriteByte(')')
+		return nil
+	}
+	// Channel instance methods (lowering-go.md §Channel lowering):
+	//   ch.send(v)  → ch <- v
+	//   ch.recv()   → <-ch
+	//   ch.tryRecv()→ tideTryRecv(ch)   (non-blocking select helper)
+	//   ch.close()  → close(ch)
+	if f, ok := c.Callee.(*ast.Field); ok && g.isChannelReceiver(f.Receiver) {
+		switch f.Name {
+		case "send":
+			if len(c.Args) != 1 {
+				return fmt.Errorf("codegen: .send expects exactly one argument, got %d", len(c.Args))
+			}
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteString(" <- ")
+			return g.emitExpr(c.Args[0])
+		case "recv":
+			g.b.WriteString("<-")
+			return g.emitExpr(f.Receiver)
+		case "tryRecv":
+			g.usesTryRecv = true
+			g.usesOption = true
+			g.b.WriteString("tideTryRecv(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
+		case "close":
+			g.b.WriteString("close(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteByte(')')
+			return nil
+		}
+	}
 	// Class constructor shim — `ClassName(args)` in source lowers
 	// to `&ClassName{args...}` (positional fields). Per
 	// lowering-go.md §Implicit receiver, class instances are
@@ -2617,6 +2724,22 @@ func (g *gen) isContainerReceiver(e ast.Expr) bool {
 	return g.varKindOf(id) != ""
 }
 
+// isChannelReceiver reports whether e is a channel-typed binding
+// (Channel / SendChan / RecvChan), so emitCall can lower its method
+// calls (`.send` / `.recv` / `.tryRecv` / `.close`) to Go channel
+// operators rather than method dispatch.
+func (g *gen) isChannelReceiver(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	switch g.varKindOf(id) {
+	case "Channel", "SendChan", "RecvChan":
+		return true
+	}
+	return false
+}
+
 // varKindOf returns the predeclared-container kind ("Map" / "Set" /
 // "Stack") of the binding referenced by id, read from the sema
 // side-table (its inferred type), or "" when id is not a container
@@ -2639,6 +2762,12 @@ func (g *gen) varKindOf(id *ast.Ident) string {
 		return "Set"
 	case *sema.Stack:
 		return "Stack"
+	case *sema.Channel:
+		return "Channel"
+	case *sema.SendChan:
+		return "SendChan"
+	case *sema.RecvChan:
+		return "RecvChan"
 	}
 	return ""
 }

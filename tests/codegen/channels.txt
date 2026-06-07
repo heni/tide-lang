@@ -1,0 +1,97 @@
+--- TITLE ---
+Channels — makeChannel<T>(cap), .send/.close, SendChan param, `for v in ch`, .tryRecv → Option
+
+--- INPUT ---
+import fmt
+
+func fill(out: SendChan<int>) {
+  out.send(10)
+  out.send(20)
+  out.send(30)
+  out.close()
+}
+
+func main() {
+  let ch = makeChannel<int>(3)
+  fill(ch)
+  for v in ch {
+    fmt.println(v)
+  }
+
+  let empty = makeChannel<int>(1)
+  match empty.tryRecv() {
+    Some(v) => fmt.println("some", v),
+    None => fmt.println("none"),
+  }
+  empty.send(7)
+  match empty.tryRecv() {
+    Some(v) => fmt.println("some", v),
+    None => fmt.println("none"),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Option[T any] struct {
+	Tag uint8
+	V   T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, V: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+func tideTryRecv[T any](ch <-chan T) Option[T] {
+	select {
+	case v := <-ch:
+		return OptionSome[T](v)
+	default:
+		return OptionNone[T]()
+	}
+}
+func fill(out chan<- int) {
+	out <- 10
+	out <- 20
+	out <- 30
+	close(out)
+}
+func main() {
+	var ch = make(chan int, 3)
+	fill(ch)
+	for v := range ch {
+		fmt.Println(v)
+	}
+	var empty = make(chan int, 1)
+	__tide_match_1 := tideTryRecv(empty)
+	switch __tide_match_1.Tag {
+	case 1:
+		v := __tide_match_1.V
+		fmt.Println("some", v)
+	case 0:
+		fmt.Println("none")
+	}
+	empty <- 7
+	__tide_match_2 := tideTryRecv(empty)
+	switch __tide_match_2.Tag {
+	case 1:
+		v := __tide_match_2.V
+		fmt.Println("some", v)
+	case 0:
+		fmt.Println("none")
+	}
+}
+
+--- STDOUT ---
+10
+20
+30
+none
+some 7
+
+--- EXIT ---
+0

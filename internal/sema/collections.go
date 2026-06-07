@@ -131,8 +131,78 @@ func (c *checker) inferBuiltinFuncCall(name string, call *ast.Call, args []Type)
 			return &Slice{Elem: c.typeFromExpr(call.TypeArgs[0])}
 		}
 		return &Unknown{}
+	case "makeChannel":
+		// T-MakeChannel: `makeChannel<T>(cap?)` : Channel<T>. The
+		// optional capacity argument is checked to be int.
+		if len(call.TypeArgs) == 1 {
+			if len(args) == 1 {
+				c.expectInt(call.Args[0])
+			}
+			return &Channel{Elem: c.typeFromExpr(call.TypeArgs[0])}
+		}
+		return &Unknown{}
 	}
 	return &Unknown{}
+}
+
+// channelWidens reports whether `got` widens into `want` under
+// T-Chan-Widen: a bidirectional Channel<T> is accepted where a
+// SendChan<T> or RecvChan<T> is expected (same element type). The
+// reverse — a one-way channel where a bidirectional is expected —
+// is not a widening and stays false.
+func channelWidens(want, got Type) bool {
+	gc, ok := got.(*Channel)
+	if !ok {
+		return false
+	}
+	switch w := want.(type) {
+	case *SendChan:
+		return equal(w.Elem, gc.Elem)
+	case *RecvChan:
+		return equal(w.Elem, gc.Elem)
+	}
+	return false
+}
+
+// channelMethodType returns the Func type of a channel method
+// (T-Chan-Send / T-Chan-Recv / T-Chan-Close) for a receiver of
+// channel kind, or nil when recv is not a channel or has no such
+// method. SendChan exposes send/close; RecvChan exposes recv/
+// tryRecv; the bidirectional Channel exposes all four.
+func channelMethodType(recv Type, name string) *Func {
+	var elem Type
+	var canSend, canRecv bool
+	switch r := recv.(type) {
+	case *Channel:
+		elem, canSend, canRecv = r.Elem, true, true
+	case *SendChan:
+		elem, canSend = r.Elem, true
+	case *RecvChan:
+		elem, canRecv = r.Elem, true
+	default:
+		return nil
+	}
+	switch name {
+	case "send":
+		if canSend {
+			return &Func{Params: []Type{elem}, Return: &Unit{}}
+		}
+	case "close":
+		if canSend {
+			return &Func{Return: &Unit{}}
+		}
+	case "recv":
+		if canRecv {
+			return &Func{Return: elem}
+		}
+	case "tryRecv":
+		if canRecv {
+			// Option<T> is opaque in sema (Named); the element type
+			// is recovered at the use site / by codegen.
+			return &Func{Return: &Named{N: "Option"}}
+		}
+	}
+	return nil
 }
 
 // sameClass reports whether a and b are the same class type
@@ -236,6 +306,12 @@ func (c *checker) fits(want Type, e ast.Expr, got Type) bool {
 		return c.checkDynamicBoundary(want, got, e)
 	}
 	if assignable(want, got) {
+		return true
+	}
+	// T-Chan-Widen: Channel<T> widens implicitly into SendChan<T> /
+	// RecvChan<T> at argument sites (one-way; Go's own chan
+	// assignability backs the lowering). The reverse is rejected.
+	if channelWidens(want, got) {
 		return true
 	}
 	// Interface conformance (D14, nominal): a class that `implements`

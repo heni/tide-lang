@@ -78,8 +78,8 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 	switch sym.Kind {
 	case SymBuiltinType:
 		// `Any` / `Dynamic` are opaque builtins; Map / Set / Stack
-		// are the modelled containers; Option / Result / Channel
-		// stay Unknown until their own PRs.
+		// and Channel / SendChan / RecvChan are the modelled
+		// containers; Option / Result stay Unknown (opaque Named).
 		switch head {
 		case "Any":
 			return &Any{}
@@ -98,6 +98,21 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 		case "Stack":
 			if len(v.Args) == 1 {
 				return &Stack{Elem: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
+		case "Channel":
+			if len(v.Args) == 1 {
+				return &Channel{Elem: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
+		case "SendChan":
+			if len(v.Args) == 1 {
+				return &SendChan{Elem: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
+		case "RecvChan":
+			if len(v.Args) == 1 {
+				return &RecvChan{Elem: c.typeFromExprSeen(v.Args[0], seen)}
 			}
 			return &Unknown{}
 		}

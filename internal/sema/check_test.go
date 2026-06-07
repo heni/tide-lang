@@ -1204,6 +1204,50 @@ func TestDeferNonCallFiresE0406(t *testing.T) {
 	}
 }
 
+func TestChannelMethodsAndForClean(t *testing.T) {
+	// T-MakeChannel + T-Chan-Send/Recv/Close + channel iteration:
+	// a well-typed channel program produces no diagnostics.
+	src := `import fmt
+func main() {
+  let ch = makeChannel<int>(2)
+  ch.send(1)
+  let x = ch.recv()
+  ch.close()
+  for v in ch {
+    fmt.println(v)
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("clean channel program produced diags: %v", codes)
+	}
+}
+
+func TestChannelWidensToSendChan(t *testing.T) {
+	// T-Chan-Widen: a bidirectional Channel<int> is accepted where a
+	// SendChan<int> parameter is expected.
+	src := `func sink(out: SendChan<int>) { out.send(1) }
+func main() {
+  let ch = makeChannel<int>(1)
+  sink(ch)
+}
+`
+	if codes := runCheck(t, src); contains(codes, "E0201") {
+		t.Errorf("Channel<int> should widen to SendChan<int>, got %v", codes)
+	}
+}
+
+func TestSendChanDoesNotNarrowToChannel(t *testing.T) {
+	// The reverse of T-Chan-Widen is rejected: a one-way SendChan<int>
+	// does not fit a bidirectional Channel<int> parameter.
+	src := `func use(c: Channel<int>) { c.send(1) }
+func relay(out: SendChan<int>) { use(out) }
+`
+	if codes := runCheck(t, src); !contains(codes, "E0201") {
+		t.Errorf("SendChan<int> should NOT narrow to Channel<int>, got %v", codes)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

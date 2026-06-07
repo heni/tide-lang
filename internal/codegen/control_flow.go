@@ -385,6 +385,21 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 			g.b.WriteString(".order {\n")
 			break
 		}
+		// Channel iteration — `for v in ch` drains the channel until
+		// it closes (lowering-go.md §For-loops, ForChanIR). Go's
+		// `range ch` yields the element directly, with no index.
+		if id, ok := iterExpr.(*ast.Ident); ok {
+			if k := g.varKindOf(id); k == "Channel" || k == "RecvChan" {
+				g.b.WriteString("for ")
+				g.b.WriteString(goIdent(idPat.Name))
+				g.b.WriteString(" := range ")
+				if err := g.emitExpr(id); err != nil {
+					return err
+				}
+				g.b.WriteString(" {\n")
+				break
+			}
+		}
 		g.b.WriteString("for _, ")
 		g.b.WriteString(goIdent(idPat.Name))
 		g.b.WriteString(" := range ")

@@ -79,6 +79,27 @@ type Stack struct{ Elem Type }
 func (*Stack) typeMarker()      {}
 func (s *Stack) String() string { return "Stack<" + s.Elem.String() + ">" }
 
+// Channel — `Channel<T>` (bidirectional). SendChan / RecvChan are
+// the one-way widenings (builtins.md §Channel); Channel<T> widens
+// implicitly into either at argument sites (T-Chan-Widen, enforced
+// in fits()).
+type Channel struct{ Elem Type }
+
+func (*Channel) typeMarker()      {}
+func (c *Channel) String() string { return "Channel<" + c.Elem.String() + ">" }
+
+// SendChan — `SendChan<T>`, send-only widening of Channel<T>.
+type SendChan struct{ Elem Type }
+
+func (*SendChan) typeMarker()      {}
+func (c *SendChan) String() string { return "SendChan<" + c.Elem.String() + ">" }
+
+// RecvChan — `RecvChan<T>`, recv-only widening of Channel<T>.
+type RecvChan struct{ Elem Type }
+
+func (*RecvChan) typeMarker()      {}
+func (c *RecvChan) String() string { return "RecvChan<" + c.Elem.String() + ">" }
+
 // Tuple — `(A, B, ...)`, arity ≥ 2. Structural identity: two tuples
 // are equal iff their components are pairwise equal.
 type Tuple struct{ Comps []Type }
@@ -206,6 +227,15 @@ func equal(a, b Type) bool {
 	case *Stack:
 		y, ok := b.(*Stack)
 		return ok && equal(x.Elem, y.Elem)
+	case *Channel:
+		y, ok := b.(*Channel)
+		return ok && equal(x.Elem, y.Elem)
+	case *SendChan:
+		y, ok := b.(*SendChan)
+		return ok && equal(x.Elem, y.Elem)
+	case *RecvChan:
+		y, ok := b.(*RecvChan)
+		return ok && equal(x.Elem, y.Elem)
 	case *Tuple:
 		y, ok := b.(*Tuple)
 		if !ok || len(x.Comps) != len(y.Comps) {
@@ -250,7 +280,7 @@ func comparable(t Type) bool {
 			}
 		}
 		return true
-	case *Slice, *Map, *Set, *Stack, *Func, *Never:
+	case *Slice, *Map, *Set, *Stack, *Channel, *SendChan, *RecvChan, *Func, *Never:
 		return false
 	default:
 		return false

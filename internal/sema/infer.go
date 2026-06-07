@@ -335,6 +335,11 @@ func (c *checker) checkArgTypes(params, args []Type, nodes []ast.Expr, callee st
 // access and everything else stays Unknown for PR-C1.
 func (c *checker) inferField(f *ast.Field) Type {
 	recv := c.inferExpr(f.Receiver)
+	// Channel methods (`.send` / `.recv` / `.tryRecv` / `.close`)
+	// dispatch on the channel kind, not on a Named declaration.
+	if ct := channelMethodType(recv, f.Name); ct != nil {
+		return ct
+	}
 	named, ok := recv.(*Named)
 	if !ok {
 		return &Unknown{}
