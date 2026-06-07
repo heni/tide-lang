@@ -47,6 +47,34 @@ func (g *gen) emitCall(c *ast.Call) error {
 		g.b.WriteString("()")
 		return nil
 	}
+	// Result-wrapping stdlib binding — `pkg.method(args)` whose Go
+	// referent returns `(T, error)`, lowered to
+	// `tideResultOf(pkg.GoName(args))` (bindings.go). Go spreads the
+	// referent's two-value return across the helper's two params and
+	// infers T, folding it into the predeclared Result<T, error>.
+	if f, ok := c.Callee.(*ast.Field); ok {
+		if recv, ok := f.Receiver.(*ast.Ident); ok {
+			if goName, ok := stdlibResultWrapOf(recv.Name, f.Name); ok {
+				g.usesResultOf = true
+				g.usesResult = true
+				g.b.WriteString("tideResultOf(")
+				g.b.WriteString(recv.Name)
+				g.b.WriteByte('.')
+				g.b.WriteString(goName)
+				g.b.WriteByte('(')
+				for i, a := range c.Args {
+					if i > 0 {
+						g.b.WriteString(", ")
+					}
+					if err := g.emitExpr(a); err != nil {
+						return err
+					}
+				}
+				g.b.WriteString("))")
+				return nil
+			}
+		}
+	}
 	// strings.fromBytes(b) — the []byte → string round-trip binding
 	// (binding-surface.md §strings). Lowers to Go's `string(b)`
 	// conversion.
@@ -419,39 +447,18 @@ func isConversionBinding(pkg, method string) bool {
 	return pkg == "strings" && method == "fromBytes"
 }
 
-// mapFieldName is the PR-C shortcut for binding calls. Tide
-// `fmt.println` maps to Go `fmt.Println` etc. This bypasses the
-// full bindgen pipeline; only the names hello/fizzbuzz use are
-// hardcoded.
+// mapFieldName lowers a `pkg.method` / `pkg.value` reference to its
+// Go identifier. For a value-returning stdlib binding it consults the
+// rename registry (bindings.go); otherwise (a struct/class field, or
+// an unmodelled name) it falls back to goIdent. Result-wrapping
+// bindings never reach here — emitCall intercepts them.
 func mapFieldName(receiver ast.Expr, name string) string {
 	id, ok := receiver.(*ast.Ident)
 	if !ok {
 		return goIdent(name)
 	}
-	switch id.Name {
-	case "fmt":
-		switch name {
-		case "println":
-			return "Println"
-		case "print":
-			return "Print"
-		case "printf":
-			return "Printf"
-		case "sprintf":
-			return "Sprintf"
-		}
-	case "os":
-		switch name {
-		case "exit":
-			return "Exit"
-		}
-	case "math":
-		switch name {
-		case "floor":
-			return "Floor"
-		case "log10":
-			return "Log10"
-		}
+	if g, ok := stdlibRenameOf(id.Name, name); ok {
+		return g
 	}
 	return goIdent(name)
 }

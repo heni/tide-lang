@@ -254,6 +254,7 @@ type gen struct {
 	usesReflect   bool
 	usesMakeSlice bool
 	usesScan      bool
+	usesResultOf  bool
 	usesTryRecv   bool
 	usesScope     bool
 	// groupVars is the stack of structured-concurrency group binding
@@ -408,6 +409,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredContainers()
 	g.writePredeclaredMakeSlice()
 	g.writePredeclaredScan()
+	g.writePredeclaredResultOf()
 	g.writePredeclaredTryRecv()
 	g.writePredeclaredGroup()
 	g.writePredeclaredReflect()
@@ -475,6 +477,24 @@ func (g *gen) writePredeclaredScan() {
 	g.b.WriteString(`func tideScan[T any]() Result[T, error] {
 	var v T
 	if _, err := fmt.Scan(&v); err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+`)
+}
+
+// writePredeclaredResultOf emits the tideResultOf helper backing the
+// `(T, error)` → Result<T, error> stdlib bindings (bindings.go —
+// `strconv.atoi`, `os.readFile`, …). A non-nil error becomes Err, a
+// successful value becomes Ok. Requires the predeclared Result sum
+// (usesResult, forced alongside usesResultOf). Conditional on usage.
+func (g *gen) writePredeclaredResultOf() {
+	if !g.usesResultOf {
+		return
+	}
+	g.b.WriteString(`func tideResultOf[T any](v T, err error) Result[T, error] {
+	if err != nil {
 		return ResultErr[T, error](err)
 	}
 	return ResultOk[T, error](v)
@@ -888,6 +908,11 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			}
 		case *ast.ReturnExpr:
 			walk(v.Value)
+		case *ast.TryExpr:
+			// `try e` — recurse into the wrapped expression so a
+			// binding nested under it (e.g. `try strconv.atoi(s)`)
+			// still registers its package import + helper usage.
+			walk(v.Inner)
 		case *ast.MatchExpr:
 			walk(v.Subject)
 			for _, arm := range v.Arms {
@@ -900,6 +925,17 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			if isFmtScan(v.Callee) {
 				g.usesScan = true
 				g.usesResult = true
+			}
+			// A `(T, error)` stdlib binding (`strconv.atoi`,
+			// `os.readFile`, …) lowers via the tideResultOf helper,
+			// which returns Result<T, error> — pull both in.
+			if f, ok := v.Callee.(*ast.Field); ok {
+				if recv, ok := f.Receiver.(*ast.Ident); ok {
+					if _, isWrap := stdlibResultWrapOf(recv.Name, f.Name); isWrap {
+						g.usesResultOf = true
+						g.usesResult = true
+					}
+				}
 			}
 			// `ch.tryRecv()` lowers to the tideTryRecv helper, which
 			// returns Option<T> — pull both into the binary. Keyed on

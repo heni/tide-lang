@@ -1,0 +1,85 @@
+--- TITLE ---
+Value-returning strings/strconv bindings: renames + (T,error)→Result wrapping
+
+--- INPUT ---
+import fmt
+import strings
+import strconv
+
+func sum(csv: string): Result<int, error> {
+  var total = 0
+  for p in strings.split(csv, ",") {
+    let n = try strconv.atoi(strings.trimSpace(p))
+    total = total + n
+  }
+  return Ok(total)
+}
+
+func main() {
+  match sum("1, 22, 333") {
+    Ok(t)  => fmt.println("total", t, "as-string", strconv.itoa(t)),
+    Err(_) => fmt.println("bad input"),
+  }
+  fmt.println("count", strings.count("abcabc", "a"))
+  fmt.println("upper", strings.toUpper("hi"), "join", strings.join(strings.fields(" a b "), "-"))
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideResultOf[T any](v T, err error) Result[T, error] {
+	if err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+func sum(csv string) Result[int, error] {
+	var total = 0
+	for _, p := range strings.Split(csv, ",") {
+		__tide_try_1 := tideResultOf(strconv.Atoi(strings.TrimSpace(p)))
+		if __tide_try_1.Tag == 1 {
+			return Result[int, error]{Tag: 1, E: __tide_try_1.E}
+		}
+		var n = __tide_try_1.V
+		total = total + n
+	}
+	return ResultOk[int, error](total)
+}
+func main() {
+	__tide_match_1 := sum("1, 22, 333")
+	switch __tide_match_1.Tag {
+	case 0:
+		t := __tide_match_1.V
+		fmt.Println("total", t, "as-string", strconv.Itoa(t))
+	case 1:
+		fmt.Println("bad input")
+	}
+	fmt.Println("count", strings.Count("abcabc", "a"))
+	fmt.Println("upper", strings.ToUpper("hi"), "join", strings.Join(strings.Fields(" a b "), "-"))
+}
+
+--- STDOUT ---
+total 356 as-string 356
+count 2
+upper HI join a-b
+
+--- EXIT ---
+0

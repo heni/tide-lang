@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 9,
-    "build_ok": 14
+    "emit_fail": 6,
+    "build_ok": 17
   },
   "files": [
     {
@@ -15,8 +15,8 @@
     },
     {
       "path": "examples/aoc/2025/d01.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/aoc/2025/d02.td",
@@ -30,8 +30,8 @@
     },
     {
       "path": "examples/aoc/2025/d04.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/aoc/2025/d05.td",
@@ -205,8 +205,8 @@
     },
     {
       "path": "examples/services/wc.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/timus/p1033.td",
