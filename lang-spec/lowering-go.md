@@ -353,9 +353,11 @@ let r = match subject { p_1 => e_1, ..., p_n => e_n }
 trailing zero-value return is unreachable when the match is
 exhaustive but required by Go's reachability checker for any
 switch without a `default:`. Payload-binding patterns in
-value-position match aren't supported in v1 — a value-position
-match with payload bindings must be rewritten to a
-statement-position match that assigns to a `var` from each arm.
+value-position match aren't supported in this IIFE form — but a
+match in **tail position** (the trailing expression of a
+value-returning body) does support them, lowering as a
+statement `switch` whose arms `return` (see §Implicit tail
+return below).
 
 **Variant-tag numbering.** For built-in sum types the tag ints
 are fixed by `builtins.md`: `None = 0`, `Some = 1`, `Ok = 0`,
@@ -364,6 +366,49 @@ are fixed by `builtins.md`: `None = 0`, `Some = 1`, `Ok = 0`,
 variant = 0, second = 1, …). The runtime never persists
 tags across runs, so re-ordering variants is a source-level
 change with no runtime stability concerns.
+
+## Implicit tail return
+
+A function / method / closure body is a block, and a block's
+value is its trailing expression (the block-as-expression value
+rule; `type-system.md` §T-Block). When the body's declared
+result is a value (return type ≠ `unit`), the trailing
+expression is an **implicit return** — codegen emits it in
+*tail position* rather than discarding it:
+
+```
+func f(...): R {                func f(...) R {
+  <stmts>                          <stmts>
+  <trailing-expr>      ⟿           <trailing-expr in tail position>
+}                               }
+```
+
+Tail position **distributes** the `return` into the leaves of a
+trailing `match` / `if` / block rather than wrapping the whole
+body in a value-position IIFE (§match in value position):
+
+- **plain value `e`** ⟿ `return e`;
+- **`match`** ⟿ the statement `switch` (so payload-binding arms
+  lower cleanly, unlike the IIFE form), each arm body emitted in
+  tail position. A trailing `panic("unreachable: non-exhaustive
+  match")` is emitted after a `switch` with no `default:`, since
+  such a `switch` is not a terminating statement in Go even when
+  the match is exhaustive (Go would otherwise report "missing
+  return");
+- **`if`** ⟿ the statement `if`, each branch's trailing in tail
+  position; both branches are required (an else-less value `if`
+  has no value on the else path);
+- **block** ⟿ its statements, then its trailing in tail position;
+- a **diverging** trailing (`return` / `break` / `continue` /
+  `os.exit`) already terminates control and is emitted as-is,
+  with no `return` wrapper.
+
+The declared return type is in scope at every leaf, so a leaf
+`Result` / `Option` constructor gets explicit Go type arguments
+stamped (§"Constructor type-argument stamping"). A `unit`-result
+body keeps the statement-position discard (the trailing
+expression is evaluated for side effects only); a body ending in
+explicit `return`s has no trailing and emits nothing extra.
 
 ## Implicit receiver / Field
 

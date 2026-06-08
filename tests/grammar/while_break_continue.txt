@@ -30,7 +30,7 @@ func main() {
               (Ident "i" @4:8-4:9)
               (IntLitExpr 1 @4:13-4:14))
             (Block @4:15-6:6
-              (ExprStmt @5:7-5:15
+              (trailing
                 (ContinueExpr @5:7-5:15))))
           (ExprStmt @7:5-7:10
             (BreakExpr @7:5-7:10)))))))

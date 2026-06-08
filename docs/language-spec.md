@@ -305,7 +305,11 @@ all type to `unit`.
 
 - **Blocks** are expressions: `{ stmt; stmt; ... trailingExpr }`. The
   block's value is the trailing expression's value, or `unit` if there
-  is no trailing expression. `return` and `try` short-circuit.
+  is no trailing expression. `return` and `try` short-circuit. A
+  function/method body is a block, so its trailing expression is an
+  **implicit return**: a value-returning function may end in a bare
+  `match`/`if`/expression instead of writing `return` (the `return`
+  keyword stays available and is required for early exits).
 - **`if` / `else`** is an expression: arms must unify. An `if` without
   `else` has type `unit` and may only appear at statement position.
 - **`match`** is an expression (see above).

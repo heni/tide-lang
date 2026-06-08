@@ -42,8 +42,13 @@ func main() {
 	if fn.Name != "main" {
 		t.Errorf("func name = %q; want \"main\"", fn.Name)
 	}
-	if len(fn.Body.Stmts) != 1 {
-		t.Errorf("body stmts = %d; want 1", len(fn.Body.Stmts))
+	// The lone `fmt.println(...)` is the function body's trailing
+	// expression (block-as-expression value rule), not a statement.
+	if len(fn.Body.Stmts) != 0 {
+		t.Errorf("body stmts = %d; want 0 (call is the trailing expr)", len(fn.Body.Stmts))
+	}
+	if fn.Body.Trailing == nil {
+		t.Errorf("body trailing = nil; want the println call")
 	}
 }
 
@@ -268,13 +273,10 @@ func TestMatchExpression(t *testing.T) {
 }`
 	f := parseString(t, src)
 	fn := f.Decls[0].(*ast.FuncDecl)
-	es, ok := fn.Body.Stmts[0].(*ast.ExprStmt)
+	// The `match` is the function body's trailing (value) expression.
+	m, ok := fn.Body.Trailing.(*ast.MatchExpr)
 	if !ok {
-		t.Fatalf("stmt[0] = %T; want ExprStmt", fn.Body.Stmts[0])
-	}
-	m, ok := es.Expr.(*ast.MatchExpr)
-	if !ok {
-		t.Fatalf("expr = %T; want MatchExpr", es.Expr)
+		t.Fatalf("body trailing = %T; want MatchExpr", fn.Body.Trailing)
 	}
 	if len(m.Arms) != 2 {
 		t.Fatalf("arms = %d; want 2", len(m.Arms))
@@ -296,7 +298,7 @@ func TestVariantPatWithPayload(t *testing.T) {
 }`
 	f := parseString(t, src)
 	fn := f.Decls[0].(*ast.FuncDecl)
-	m := fn.Body.Stmts[0].(*ast.ExprStmt).Expr.(*ast.MatchExpr)
+	m := fn.Body.Trailing.(*ast.MatchExpr)
 	vp, ok := m.Arms[0].Pattern.(*ast.VariantPat)
 	if !ok {
 		t.Fatalf("arm[0] not VariantPat: %T", m.Arms[0].Pattern)

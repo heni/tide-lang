@@ -19,7 +19,7 @@ func main() {
       (LetStmt @2:14-2:23
         (IdentPat "b" @2:18-2:19)
         (IntLitExpr 2 @2:22-2:23))
-      (ExprStmt @3:3-3:12
+      (trailing
         (Call @3:3-3:12
           (Ident "foo" @3:3-3:6)
           (Ident "a" @3:7-3:8)

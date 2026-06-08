@@ -15,7 +15,7 @@ func main() {
     (type-params)
     (params)
     (Block @3:13-5:2
-      (ExprStmt @4:3-4:33
+      (trailing
         (Call @4:3-4:33
           (Field "println" @4:3-4:14
             (Ident "fmt" @4:3-4:6))

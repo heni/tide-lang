@@ -1261,7 +1261,7 @@ func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Meth
 	g.indent++
 	prevRet := g.curFuncReturn
 	g.curFuncReturn = m.ReturnType
-	if err := g.emitBlockBody(m.Body); err != nil {
+	if err := g.emitFuncBody(m.Body, m.ReturnType, isUnitReturn(m.ReturnType)); err != nil {
 		return err
 	}
 	g.curFuncReturn = prevRet
@@ -1328,7 +1328,7 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 	g.indent++
 	prevRet := g.curFuncReturn
 	g.curFuncReturn = fn.ReturnType
-	if err := g.emitBlockBody(fn.Body); err != nil {
+	if err := g.emitFuncBody(fn.Body, fn.ReturnType, isUnitReturn(fn.ReturnType)); err != nil {
 		return err
 	}
 	g.curFuncReturn = prevRet
@@ -1444,6 +1444,47 @@ func (g *gen) emitBlockBody(b *ast.Block) error {
 		return g.emitStmt(&ast.ExprStmt{Span: b.Trailing.NodeSpan(), Expr: b.Trailing})
 	}
 	return nil
+}
+
+// emitFuncBody lowers a function / method / closure body. Unlike a
+// statement-position block, the trailing expression of a body whose
+// result is a value is an *implicit return* (block-as-expression value
+// rule; lowering-go.md §"Implicit tail return"): it is emitted in tail
+// position (emitTailReturn) so a trailing match/if distributes the
+// `return` into its leaves and the declared return type flows down for
+// constructor type-arg stamping. A unit-returning body keeps the
+// statement-position discard; a body with no trailing (ends in explicit
+// `return`s) emits nothing extra. isUnit is passed explicitly because a
+// closure's unit-ness can come from sema inference, not just a nil
+// annotation.
+func (g *gen) emitFuncBody(b *ast.Block, ret ast.TypeExpr, isUnit bool) error {
+	for _, s := range b.Stmts {
+		if err := g.emitStmt(s); err != nil {
+			return err
+		}
+	}
+	if b.Trailing == nil {
+		return nil
+	}
+	if isUnit {
+		return g.emitStmt(&ast.ExprStmt{Span: b.Trailing.NodeSpan(), Expr: b.Trailing})
+	}
+	prev := g.expectType
+	g.expectType = ret
+	err := g.emitTailReturn(b.Trailing)
+	g.expectType = prev
+	return err
+}
+
+// isUnitReturn reports whether a declared return type carries no Go
+// value: a nil annotation (the implicit unit return) or an explicit
+// `unit`.
+func isUnitReturn(t ast.TypeExpr) bool {
+	if t == nil {
+		return true
+	}
+	p, ok := t.(*ast.PrimitiveType)
+	return ok && p.Name == "unit"
 }
 
 func (g *gen) emitStmt(s ast.Stmt) error {
