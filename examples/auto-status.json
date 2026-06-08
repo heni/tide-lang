@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 3,
-    "build_ok": 20
+    "emit_fail": 2,
+    "build_ok": 21
   },
   "files": [
     {
@@ -25,8 +25,8 @@
     },
     {
       "path": "examples/aoc/2025/d03.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/aoc/2025/d04.td",

@@ -622,6 +622,7 @@ their per-step element type, defined in `builtins.md` under
 | `Set<T>` | `T` (insertion order) |
 | `Iterable<int>` (a `RangeExpr`) | `int` |
 | `RecvChan<T>` | `T` (loop ends on channel close) |
+| `Channel<T>` | `T` (a bidirectional channel iterates as its receive side) |
 
 `Stack<T>` is **not** iterable in v1 — drain via `pop()` in a
 loop. See `builtins.md` §Stack.

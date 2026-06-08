@@ -1,0 +1,49 @@
+--- TITLE ---
+Tuple-for binds index/elem types so a value-position if over them infers its Go type
+
+--- INPUT ---
+import fmt
+
+func score(line: []int, length: int): int {
+  var total = 0
+  for (idx, d) in line {
+    let remaining = line.len() - idx
+    let cap = if remaining < length { remaining } else { length }
+    total = total + cap * d
+  }
+  return total
+}
+
+func main() {
+  fmt.println(score([5, 6, 7], 2))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func score(line []int, length int) int {
+	var total = 0
+	for idx, d := range line {
+		var remaining = len(line) - idx
+		var cap = func() int {
+			if remaining < length {
+				return remaining
+			} else {
+				return length
+			}
+		}()
+		total = total + cap*d
+	}
+	return total
+}
+func main() {
+	fmt.Println(score([]int{5, 6, 7}, 2))
+}
+
+--- STDOUT ---
+29
+
+--- EXIT ---
+0

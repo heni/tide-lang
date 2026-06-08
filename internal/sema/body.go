@@ -75,14 +75,17 @@ func (c *checker) checkStmt(s ast.Stmt) {
 			c.checkBlock(e)
 		}
 	case *ast.ForStmt:
-		c.checkForBinding(v)
+		// Infer the iterable first so checkForBinding can read its
+		// element type(s) to type the loop variable(s).
+		var iterT Type
 		switch it := v.Iterable.(type) {
 		case *ast.RangeExpr:
 			c.inferExpr(it.Low)
 			c.inferExpr(it.High)
 		case ast.Expr:
-			c.inferExpr(it)
+			iterT = c.inferExpr(it)
 		}
+		c.checkForBinding(v, iterT)
 		if v.Body != nil {
 			c.loopDepth++
 			c.checkBlock(v.Body)
@@ -186,19 +189,80 @@ func (c *checker) setBindingType(bindNode ast.Node, pat ast.Pattern, t Type) {
 	}
 }
 
-// checkForBinding gives a simple loop variable its element type.
-// A numeric range binds the variable to int; any other iterable's
-// element type is not modelled until the collection PR (Unknown).
-func (c *checker) checkForBinding(f *ast.ForStmt) {
-	ip, ok := f.Pattern.(*ast.IdentPat)
-	if !ok {
-		return
-	}
-	sym := c.info.Def[ip]
-	if sym == nil {
-		return
-	}
+// checkForBinding types a for-loop's variable(s) from the iterable's
+// element type(s) (builtins.md §IterElem). A numeric range binds the
+// single variable to int. A single variable over a collection takes
+// its element (a Map yields its key). A two-variable tuple pattern
+// takes the index/value pair: a slice/set yields `(int, Elem)`, a
+// Map yields `(Key, Val)`. iterT is the iterable's inferred type
+// (nil for a range — handled by the AST check). Unmodelled shapes
+// (e.g. Stack — not iterable in v1) leave the variable Unknown.
+func (c *checker) checkForBinding(f *ast.ForStmt, iterT Type) {
 	if _, isRange := f.Iterable.(*ast.RangeExpr); isRange {
-		sym.Type = &Builtin{N: "int"}
+		if ip, ok := f.Pattern.(*ast.IdentPat); ok {
+			c.setForVar(ip, &Builtin{N: "int"})
+		}
+		return
 	}
+	switch p := f.Pattern.(type) {
+	case *ast.IdentPat:
+		c.setForVar(p, iterSingleElem(iterT))
+	case *ast.TuplePat:
+		if len(p.Sub) != 2 {
+			return
+		}
+		k, v := iterPairElems(iterT)
+		if ip, ok := p.Sub[0].(*ast.IdentPat); ok {
+			c.setForVar(ip, k)
+		}
+		if ip, ok := p.Sub[1].(*ast.IdentPat); ok {
+			c.setForVar(ip, v)
+		}
+	}
+}
+
+// setForVar assigns t to the symbol an IdentPat introduced, when both
+// the symbol and a non-nil type are available.
+func (c *checker) setForVar(ip *ast.IdentPat, t Type) {
+	if t == nil {
+		return
+	}
+	if sym := c.info.Def[ip]; sym != nil {
+		sym.Type = t
+	}
+}
+
+// iterSingleElem returns the element a single loop variable binds to
+// when iterating the given collection type — a Map yields its key
+// (the short `for k in m` form). nil for an unmodelled iterable.
+func iterSingleElem(t Type) Type {
+	switch v := t.(type) {
+	case *Slice:
+		return v.Elem
+	case *Set:
+		return v.Elem
+	case *Channel:
+		return v.Elem
+	case *RecvChan:
+		return v.Elem
+	case *Map:
+		return v.Key
+	}
+	return nil
+}
+
+// iterPairElems returns the (index/key, value) pair a two-variable
+// tuple pattern binds when iterating the given collection: a slice /
+// set / stack indexes with int; a Map yields its (Key, Val). Returns
+// (nil, nil) for an unmodelled iterable.
+func iterPairElems(t Type) (Type, Type) {
+	switch v := t.(type) {
+	case *Slice:
+		return &Builtin{N: "int"}, v.Elem
+	case *Set:
+		return &Builtin{N: "int"}, v.Elem
+	case *Map:
+		return v.Key, v.Val
+	}
+	return nil, nil
 }
