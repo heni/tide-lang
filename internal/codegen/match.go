@@ -15,10 +15,11 @@ import (
 // codegen.go (health-pass F3(1)) ahead of the implicit-tail-return /
 // value-position-typing work, per lang-spec/lowering-go.md §MatchIR.
 
-// emitMatchAsStmt lowers a MatchExpr at statement position to a
-// Go `switch` whose `case` arms run the arm body as a statement.
-// Per lowering-go.md §MatchIR, the case head varies by pattern
-// shape:
+// emitMatchSwitch lowers a MatchExpr to a Go `switch` statement,
+// emitting each arm body through the supplied `emitArm` callback —
+// the one axis that differs between statement position (discard the
+// arm value) and tail position (`return` it). Per lowering-go.md
+// §MatchIR, the case head varies by pattern shape:
 //   - VariantPat / IdentPat-bound-to-variant → `case <tag-int>:`
 //     of `switch subject.Tag`.
 //   - Literal patterns → `case <literal>:` of `switch subject`.
@@ -27,7 +28,7 @@ import (
 // PR-F2 uses one of the two switch forms based on whether the
 // arm set is variant-based or literal-based; mixing is not
 // reached by the corpus and rejected.
-func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
+func (g *gen) emitMatchSwitch(m *ast.MatchExpr, emitArm func(arm *ast.MatchArm) error) error {
 	hasVariant, hasLiteral, hasPayloadBinding := false, false, false
 	for _, arm := range m.Arms {
 		switch p := arm.Pattern.(type) {
@@ -91,7 +92,7 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 				return err
 			}
 		}
-		if err := g.emitMatchArmBody(arm.Body, arm.Span); err != nil {
+		if err := emitArm(arm); err != nil {
 			return err
 		}
 		g.indent--
@@ -99,6 +100,53 @@ func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
 	g.writeIndent()
 	g.b.WriteString("}\n")
 	return nil
+}
+
+// emitMatchAsStmt lowers a MatchExpr at statement position — each arm
+// body runs as a statement, its value discarded.
+func (g *gen) emitMatchAsStmt(m *ast.MatchExpr) error {
+	return g.emitMatchSwitch(m, func(arm *ast.MatchArm) error {
+		return g.emitMatchArmBody(arm.Body, arm.Span)
+	})
+}
+
+// emitMatchTail lowers a MatchExpr in tail position — the trailing
+// expression of a value-returning body. It reuses the statement-form
+// `switch` (so payload-binding arms, unsupported by the value-position
+// IIFE per §"match in value position", lower correctly) but emits each
+// arm body via emitTailReturn, so the implicit `return` is distributed
+// into the arms. g.expectType (the function's declared return type) is
+// re-established for each arm — the subject's own emission clears it —
+// so leaf Result/Option constructors get explicit type args stamped.
+func (g *gen) emitMatchTail(m *ast.MatchExpr) error {
+	expect := g.expectType
+	if err := g.emitMatchSwitch(m, func(arm *ast.MatchArm) error {
+		g.expectType = expect
+		return g.emitTailReturn(arm.Body)
+	}); err != nil {
+		return err
+	}
+	// A Go `switch` without a `default` is not a terminating statement
+	// even when the Tide match is exhaustive (sema-guaranteed), so a
+	// value-returning function would trip Go's "missing return". Emit an
+	// unreachable guard after the switch (lowering-go.md §MatchIR
+	// UnreachableIR) unless a wildcard arm already produced a `default`.
+	if !hasWildcardArm(m) {
+		g.writeIndent()
+		g.b.WriteString("panic(\"unreachable: non-exhaustive match\")\n")
+	}
+	return nil
+}
+
+// hasWildcardArm reports whether a match has a `_` arm — which lowers
+// to a Go `default:`, making the switch terminating on its own.
+func hasWildcardArm(m *ast.MatchExpr) bool {
+	for _, arm := range m.Arms {
+		if _, ok := arm.Pattern.(*ast.WildcardPat); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // emitMatchAsExpr lowers a MatchExpr in value position to a Go IIFE:

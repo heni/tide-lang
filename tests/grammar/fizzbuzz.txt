@@ -38,7 +38,7 @@ func main() {
                 (IntLitExpr 15 @5:12-5:14))
               (IntLitExpr 0 @5:18-5:19))
             (Block @5:20-7:6
-              (ExprStmt @6:7-6:30
+              (trailing
                 (Call @6:7-6:30
                   (Field "println" @6:7-6:18
                     (Ident "fmt" @6:7-6:10))
@@ -51,7 +51,7 @@ func main() {
                     (IntLitExpr 3 @7:19-7:20))
                   (IntLitExpr 0 @7:24-7:25))
                 (Block @7:26-9:6
-                  (ExprStmt @8:7-8:26
+                  (trailing
                     (Call @8:7-8:26
                       (Field "println" @8:7-8:18
                         (Ident "fmt" @8:7-8:10))
@@ -64,14 +64,14 @@ func main() {
                         (IntLitExpr 5 @9:19-9:20))
                       (IntLitExpr 0 @9:24-9:25))
                     (Block @9:26-11:6
-                      (ExprStmt @10:7-10:26
+                      (trailing
                         (Call @10:7-10:26
                           (Field "println" @10:7-10:18
                             (Ident "fmt" @10:7-10:10))
                           (StringLitExpr "Buzz" @10:19-10:25))))
                     (else
                       (Block @11:12-13:6
-                        (ExprStmt @12:7-12:21
+                        (trailing
                           (Call @12:7-12:21
                             (Field "println" @12:7-12:18
                               (Ident "fmt" @12:7-12:10))

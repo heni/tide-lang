@@ -25,7 +25,7 @@ func main() {
       (LetStmt @5:3-5:13
         (IdentPat "u" @5:7-5:8)
         (UnitLit @5:11-5:13))
-      (ExprStmt @6:3-6:14
+      (trailing
         (Call @6:3-6:14
           (Ident "consume" @6:3-6:10)
           (UnitLit @6:11-6:13))))))

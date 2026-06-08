@@ -1,0 +1,80 @@
+--- TITLE ---
+Implicit tail return + value-position typing: a value `if`/`match` as a function body trailing returns each leaf, with Result constructor type-args stamped from the declared return type.
+
+--- INPUT ---
+import fmt
+import strconv
+
+func half(n: int): Result<int, string> {
+  if n % 2 == 0 {
+    Ok(n / 2)
+  } else {
+    Err("odd: " + strconv.itoa(n))
+  }
+}
+
+func describe(n: int): string {
+  match half(n) {
+    Ok(v)  => "half=" + strconv.itoa(v),
+    Err(e) => "err=" + e,
+  }
+}
+
+func main() {
+  for n in [4, 7, 10] {
+    fmt.println(describe(n))
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func half(n int) Result[int, string] {
+	if n%2 == 0 {
+		return ResultOk[int, string](n / 2)
+	} else {
+		return ResultErr[int, string]("odd: " + strconv.Itoa(n))
+	}
+}
+func describe(n int) string {
+	__tide_match_1 := half(n)
+	switch __tide_match_1.Tag {
+	case 0:
+		v := __tide_match_1.V
+		return "half=" + strconv.Itoa(v)
+	case 1:
+		e := __tide_match_1.E
+		return "err=" + e
+	}
+	panic("unreachable: non-exhaustive match")
+}
+func main() {
+	for _, n := range []int{4, 7, 10} {
+		fmt.Println(describe(n))
+	}
+}
+
+--- STDOUT ---
+half=2
+err=odd: 7
+half=5
+
+--- EXIT ---
+0

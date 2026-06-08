@@ -507,7 +507,18 @@ func (g *gen) emitClosure(cl *ast.ClosureLit) error {
 			}
 			g.b.WriteByte('\n')
 		}
+	} else if hasReturn {
+		// Full form with a known value return type: the trailing
+		// expression is an implicit return (same rule as a function
+		// body), so it flows through emitFuncBody's tail path.
+		if err := g.emitFuncBody(cl.Body, cl.ReturnType, false); err != nil {
+			return err
+		}
 	} else if err := g.emitBlockBody(cl.Body); err != nil {
+		// Unit- or unknown-return closure: statement-position body, the
+		// trailing value discarded (matches a unit function body). A
+		// trailing call whose Go result is unused — e.g. a `defer`
+		// closure wrapping `fmt.println` — must not become a `return`.
 		return err
 	}
 	g.indent--

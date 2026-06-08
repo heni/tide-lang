@@ -15,7 +15,7 @@ func main() {
     (type-params)
     (params)
     (Block @1:13-6:2
-      (ExprStmt @2:3-5:4
+      (trailing
         (MatchExpr @2:3-5:4
           (Ident "m" @2:9-2:10)
           (MatchArm @3:5-3:20

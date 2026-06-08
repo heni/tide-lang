@@ -12,7 +12,7 @@ func main() {
     (type-params)
     (params)
     (Block @1:13-3:2
-      (ExprStmt @2:3-2:13
+      (trailing
         (Call @2:3-2:13
           (Ident "print" @2:3-2:8)
           (Unary "-" @2:9-2:12

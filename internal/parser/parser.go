@@ -630,7 +630,7 @@ func (p *parser) parseMethod() (*ast.Method, *Diag) {
 			return nil, err
 		}
 	}
-	body, err := p.parseBlock()
+	body, err := p.parseValueBlock()
 	if err != nil {
 		return nil, err
 	}
@@ -675,7 +675,7 @@ func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
 			return nil, err
 		}
 	}
-	body, err := p.parseBlock()
+	body, err := p.parseValueBlock()
 	if err != nil {
 		return nil, err
 	}
@@ -994,12 +994,37 @@ func (p *parser) parseValueBlock() (*ast.Block, *Diag) {
 		return nil, err
 	}
 	if n := len(blk.Stmts); n > 0 {
-		if es, ok := blk.Stmts[n-1].(*ast.ExprStmt); ok && !isStmtOnlyExpr(es.Expr) {
-			blk.Trailing = es.Expr
+		switch last := blk.Stmts[n-1].(type) {
+		case *ast.ExprStmt:
+			if !isStmtOnlyExpr(last.Expr) {
+				blk.Trailing = last.Expr
+				blk.Stmts = blk.Stmts[:n-1]
+			}
+		case *ast.IfStmt:
+			// `if` is an expression (D11); when it is the final form
+			// of a value block it is the block's value. Its branch
+			// blocks are already value blocks (parseIfStmt parses them
+			// with parseValueBlock), so only the node kind changes.
+			blk.Trailing = ifStmtToExpr(last)
 			blk.Stmts = blk.Stmts[:n-1]
 		}
 	}
 	return blk, nil
+}
+
+// ifStmtToExpr reinterprets a statement-position `if` as the
+// equivalent IfExpr, for when an `if` is the trailing (value) form of
+// a value block. The else-if chain is converted recursively; branch
+// blocks are shared unchanged (already value blocks).
+func ifStmtToExpr(s *ast.IfStmt) *ast.IfExpr {
+	e := &ast.IfExpr{Span: s.Span, Cond: s.Cond, ThenBlock: s.ThenBlock}
+	switch els := s.Else.(type) {
+	case *ast.IfStmt:
+		e.Else = ifStmtToExpr(els)
+	case *ast.Block:
+		e.Else = els
+	}
+	return e
 }
 
 // isStmtOnlyExpr reports whether e is an expression that yields no
@@ -1249,7 +1274,7 @@ func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
 	if err != nil {
 		return nil, err
 	}
-	then, err := p.parseBlock()
+	then, err := p.parseValueBlock()
 	if err != nil {
 		return nil, err
 	}
@@ -1272,7 +1297,7 @@ func (p *parser) parseIfStmt() (*ast.IfStmt, *Diag) {
 			stmt.Span.EndLine = elseIf.Span.EndLine
 			stmt.Span.EndCol = elseIf.Span.EndCol
 		} else {
-			elseBlk, err := p.parseBlock()
+			elseBlk, err := p.parseValueBlock()
 			if err != nil {
 				return nil, err
 			}
@@ -2132,7 +2157,7 @@ func (p *parser) parseFuncClosure() (*ast.ClosureLit, *Diag) {
 			return nil, err
 		}
 	}
-	body, err := p.parseBlock()
+	body, err := p.parseValueBlock()
 	if err != nil {
 		return nil, err
 	}
