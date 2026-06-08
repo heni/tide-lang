@@ -166,10 +166,14 @@ func (c *checker) inferScope(s *ast.ScopeExpr) Type {
 	c.scopeDepth++
 	c.checkBlock(s.Body)
 	c.scopeDepth--
-	// The scope evaluates to Result<T, E>; Result is opaque-nominal
-	// in sema (like Option), so match/try on the value resolve
-	// through the variant registry.
-	return &Named{N: "Result"}
+	// The scope evaluates to Result<T, E>, with T / E taken from the
+	// `scope<T, E>` type arguments when present (T-ScopeExpr).
+	var t, e Type = &Unknown{}, &Unknown{}
+	if len(s.TypeArgs) == 2 {
+		t = c.typeFromExpr(s.TypeArgs[0])
+		e = c.typeFromExpr(s.TypeArgs[1])
+	}
+	return &Result{T: t, E: e}
 }
 
 // inferSpawn types `spawn { body }` as unit (T-Spawn). E0405 when it
@@ -568,6 +572,9 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 	var result Type = &Unknown{}
 	for _, arm := range m.Arms {
 		c.checkNoFloatPat(arm.Pattern)
+		if vp, ok := arm.Pattern.(*ast.VariantPat); ok {
+			c.typeMatchPayload(subjectType, vp)
+		}
 		at := c.inferExpr(arm.Body)
 		if isUnknown(result) && concrete(at) {
 			if _, never := at.(*Never); !never {
@@ -576,6 +583,67 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 		}
 	}
 	return result
+}
+
+// typeMatchPayload assigns component types to the binding symbols of a
+// variant pattern's sub-patterns, from the matched subject's sum type:
+//
+//	Result<T,E>: Ok(v)→v:T, Err(e)→e:E
+//	Option<T>:   Some(v)→v:T   (None carries no payload)
+//	user sum:    each sub-pattern → the variant field's declared type
+//
+// Mirrors checkForBinding/setForVar (body.go). WildcardPat subs and
+// arity mismatches are skipped — arity / exhaustiveness is exhaust.go's
+// concern, and an Unknown subject leaves the bindings Unknown.
+func (c *checker) typeMatchPayload(subject Type, vp *ast.VariantPat) {
+	if len(vp.QName) == 0 {
+		return
+	}
+	name := vp.QName[len(vp.QName)-1]
+	switch s := subject.(type) {
+	case *Result:
+		switch name {
+		case "Ok":
+			c.bindPayload(vp, 0, s.T)
+		case "Err":
+			c.bindPayload(vp, 0, s.E)
+		}
+	case *Option:
+		if name == "Some" {
+			c.bindPayload(vp, 0, s.T)
+		}
+	case *Named:
+		td, ok := s.Decl.(*ast.TypeDecl)
+		if !ok {
+			return
+		}
+		body, ok := td.Body.(*ast.SumTypeBody)
+		if !ok {
+			return
+		}
+		for _, v := range body.Variants {
+			if v.Name != name {
+				continue
+			}
+			for i, fld := range v.Fields {
+				c.bindPayload(vp, i, c.typeFromExpr(fld.DeclType))
+			}
+			return
+		}
+	}
+}
+
+// bindPayload sets the type of the i-th sub-pattern's binding symbol
+// when it is an IdentPat (skips wildcards, nil types, out-of-range i).
+func (c *checker) bindPayload(vp *ast.VariantPat, i int, t Type) {
+	if t == nil || i >= len(vp.Sub) {
+		return
+	}
+	if ip, ok := vp.Sub[i].(*ast.IdentPat); ok {
+		if sym := c.info.Def[ip]; sym != nil {
+			sym.Type = t
+		}
+	}
 }
 
 // checkNoFloatPat fires E0305 for a float-literal pattern anywhere in

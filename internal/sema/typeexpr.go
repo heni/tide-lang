@@ -77,14 +77,27 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 
 	switch sym.Kind {
 	case SymBuiltinType:
-		// `Any` / `Dynamic` are opaque builtins; Map / Set / Stack
-		// and Channel / SendChan / RecvChan are the modelled
-		// containers; Option / Result stay Unknown (opaque Named).
+		// `Any` / `Dynamic` are opaque builtins; Map / Set / Stack,
+		// Channel / SendChan / RecvChan, and Result / Option are the
+		// modelled parametrised builtins; `error` is the predeclared
+		// Go-error boundary type.
 		switch head {
 		case "Any":
 			return &Any{}
 		case "Dynamic":
 			return &Dynamic{}
+		case "error":
+			return &Builtin{N: "error"}
+		case "Result":
+			if len(v.Args) == 2 {
+				return &Result{T: c.typeFromExprSeen(v.Args[0], seen), E: c.typeFromExprSeen(v.Args[1], seen)}
+			}
+			return &Unknown{}
+		case "Option":
+			if len(v.Args) == 1 {
+				return &Option{T: c.typeFromExprSeen(v.Args[0], seen)}
+			}
+			return &Unknown{}
 		case "Map":
 			if len(v.Args) == 2 {
 				return &Map{Key: c.typeFromExprSeen(v.Args[0], seen), Val: c.typeFromExprSeen(v.Args[1], seen)}

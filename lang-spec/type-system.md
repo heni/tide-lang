@@ -509,6 +509,15 @@ The arm bodies must all unify to the same type `U`. A
 `DivergingExpr` body has type `Never`, which unifies with any
 `U`.
 
+A **variant pattern** binds its payload sub-patterns at the
+variant's component types, drawn from the subject type `T`: over
+`Result<A, B>`, `Ok(v)` binds `v : A` and `Err(e)` binds `e : B`;
+over `Option<A>`, `Some(v)` binds `v : A`; over a user sum, each
+sub-pattern binds at the declared field type of that variant. (A
+`WildcardPat` sub-pattern binds nothing.) `Result<T, E>` and
+`Option<T>` are modelled parametrised types — their type arguments
+flow into these bindings — not opaque nominals.
+
 Exhaustiveness algorithm (Maranget's): the pattern matrix must
 **cover** every value of the scrutinee type. Failure → **E0303
 Non-exhaustive match**, with a witness value showing what's

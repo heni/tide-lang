@@ -79,6 +79,23 @@ type Stack struct{ Elem Type }
 func (*Stack) typeMarker()      {}
 func (s *Stack) String() string { return "Stack<" + s.Elem.String() + ">" }
 
+// Result — `Result<T, E>`, the predeclared value/error sum. Payload
+// types feed match bindings: `Ok(v): T`, `Err(e): E` (builtins.md
+// §Result). Equality is structural over the components.
+type Result struct{ T, E Type }
+
+func (*Result) typeMarker() {}
+func (r *Result) String() string {
+	return "Result<" + r.T.String() + ", " + r.E.String() + ">"
+}
+
+// Option — `Option<T>`, the predeclared optional sum. `Some(v): T`;
+// `None` carries no payload (builtins.md §Option).
+type Option struct{ T Type }
+
+func (*Option) typeMarker()      {}
+func (o *Option) String() string { return "Option<" + o.T.String() + ">" }
+
 // Channel — `Channel<T>` (bidirectional). SendChan / RecvChan are
 // the one-way widenings (builtins.md §Channel); Channel<T> widens
 // implicitly into either at argument sites (T-Chan-Widen, enforced
@@ -236,6 +253,12 @@ func equal(a, b Type) bool {
 	case *RecvChan:
 		y, ok := b.(*RecvChan)
 		return ok && equal(x.Elem, y.Elem)
+	case *Result:
+		y, ok := b.(*Result)
+		return ok && equal(x.T, y.T) && equal(x.E, y.E)
+	case *Option:
+		y, ok := b.(*Option)
+		return ok && equal(x.T, y.T)
 	case *Tuple:
 		y, ok := b.(*Tuple)
 		if !ok || len(x.Comps) != len(y.Comps) {
@@ -280,7 +303,9 @@ func comparable(t Type) bool {
 			}
 		}
 		return true
-	case *Slice, *Map, *Set, *Stack, *Channel, *SendChan, *RecvChan, *Func, *Never:
+	case *Slice, *Map, *Set, *Stack, *Channel, *SendChan, *RecvChan, *Func, *Never, *Result, *Option:
+		// Result / Option are matched, not compared with `==` in v1
+		// (their payloads may themselves be non-comparable).
 		return false
 	default:
 		return false

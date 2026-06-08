@@ -197,9 +197,8 @@ func channelMethodType(recv Type, name string) *Func {
 		}
 	case "tryRecv":
 		if canRecv {
-			// Option<T> is opaque in sema (Named); the element type
-			// is recovered at the use site / by codegen.
-			return &Func{Return: &Named{N: "Option"}}
+			// `tryRecv` yields Option<T> over the channel element type.
+			return &Func{Return: &Option{T: elem}}
 		}
 	}
 	return nil

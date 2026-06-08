@@ -395,6 +395,16 @@ func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 		if elem, ok := g.goTypeFromSema(v.Elem); ok {
 			return "[]" + elem, true
 		}
+	case *sema.Result:
+		tt, okT := g.goTypeFromSema(v.T)
+		et, okE := g.goTypeFromSema(v.E)
+		if okT && okE {
+			return "Result[" + tt + ", " + et + "]", true
+		}
+	case *sema.Option:
+		if tt, ok := g.goTypeFromSema(v.T); ok {
+			return "Option[" + tt + "]", true
+		}
 	case *sema.Tuple:
 		var sb strings.Builder
 		sb.WriteString("struct { ")
