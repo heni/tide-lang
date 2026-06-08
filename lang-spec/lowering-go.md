@@ -424,6 +424,16 @@ receiver otherwise. For v1 every class uses a pointer receiver
 unconditionally — keeps the lowering uniform; the few
 pure-value classes pay an unnoticeable indirection cost.
 
+**Go-error method rewrite.** A method call `e.error()` on a value
+whose sema type is the predeclared `error` builtin lowers to Go's
+`e.Error()` — the PascalCase↔lowerCamel binding-name convention at
+the Go boundary (a **D6** rule, cf. the D14 footnote). This is
+gated on the *receiver's sema type*: a user class that
+`implements error` is a nominal `Named` type, not the `error`
+builtin, so its own declared `error()` method lowers unchanged to
+`t.error()`. (v1 hand-codes this single boundary method; the
+general exported-method rewrite arrives with the bindgen pipeline.)
+
 ## Slice methods
 
 ```

@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 25,
     "sema_fail": 4,
-    "emit_fail": 2,
-    "build_ok": 21
+    "emit_fail": 1,
+    "build_ok": 22
   },
   "files": [
     {
@@ -175,8 +175,8 @@
     },
     {
       "path": "examples/raku/error_chain.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/raku/set_algebra.td",

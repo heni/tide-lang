@@ -2157,8 +2157,33 @@ func (g *gen) emitField(f *ast.Field) error {
 		return err
 	}
 	g.b.WriteByte('.')
-	g.b.WriteString(mapFieldName(f.Receiver, f.Name))
+	g.b.WriteString(g.goFieldName(f.Receiver, f.Name))
 	return nil
+}
+
+// goFieldName maps a Tide field / method name to its Go spelling.
+// Beyond the stdlib-namespace renames (mapFieldName), it applies the
+// D6 binding-name rewrite for the one Go-interface method reachable in
+// v1: `.error()` on a value typed as the predeclared `error` builtin is
+// Go's `error.Error()` (the PascalCase↔lowerCamel boundary convention;
+// D14 footnote). A user class that *implements* `error` is typed
+// nominally — never as the builtin — so its own `error()` method is
+// left untouched.
+func (g *gen) goFieldName(receiver ast.Expr, name string) string {
+	if name == "error" && g.isErrorBuiltinReceiver(receiver) {
+		return "Error"
+	}
+	return mapFieldName(receiver, name)
+}
+
+// isErrorBuiltinReceiver reports whether sema typed receiver as the
+// predeclared `error` type (the Go-error binding boundary).
+func (g *gen) isErrorBuiltinReceiver(receiver ast.Expr) bool {
+	if g.info == nil {
+		return false
+	}
+	b, ok := g.info.Type[receiver].(*sema.Builtin)
+	return ok && b.N == "error"
 }
 
 // goIdent maps a Tide identifier to its Go form. PR-C handles

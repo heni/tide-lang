@@ -1,0 +1,84 @@
+--- TITLE ---
+Go-error binding method rewrite: `.error()` on an `error`-typed value lowers to `.Error()`; a user class implementing `error` keeps its own lowercase `.error()` method.
+
+--- INPUT ---
+import strconv
+import fmt
+
+class MyErr implements error {
+  let msg: string
+
+  error(): string {
+    return msg
+  }
+}
+
+func render(e: error): string {
+  return e.error()
+}
+
+func main() {
+  let m = MyErr{ msg: "custom" }
+  fmt.println(m.error())
+  match strconv.atoi("xx") {
+    Ok(_)  => fmt.println("ok"),
+    Err(e) => fmt.println(render(e)),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideResultOf[T any](v T, err error) Result[T, error] {
+	if err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+
+type MyErr struct {
+	msg string
+}
+
+func (t *MyErr) error() string {
+	return t.msg
+}
+func render(e error) string {
+	return e.Error()
+}
+func main() {
+	var m = &MyErr{msg: "custom"}
+	fmt.Println(m.error())
+	__tide_match_1 := tideResultOf(strconv.Atoi("xx"))
+	switch __tide_match_1.Tag {
+	case 0:
+		fmt.Println("ok")
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println(render(e))
+	}
+}
+
+--- STDOUT ---
+custom
+strconv.Atoi: parsing "xx": invalid syntax
+
+--- EXIT ---
+0
