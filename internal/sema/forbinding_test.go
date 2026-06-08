@@ -24,7 +24,10 @@ func checkInfo(t *testing.T, src string) *Info {
 }
 
 // defTypeByName returns the inferred type of the first binding whose
-// Symbol has the given name, via the Info.Def back-reference.
+// Symbol has the given name, via the Info.Def back-reference. The
+// Def-map walk order is non-deterministic, so callers must use a name
+// that is unique in the source (or whose same-named symbols share a
+// type) — true for every test below.
 func defTypeByName(info *Info, name string) Type {
 	for _, sym := range info.Def {
 		if sym.Name == name {

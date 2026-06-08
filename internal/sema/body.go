@@ -193,10 +193,11 @@ func (c *checker) setBindingType(bindNode ast.Node, pat ast.Pattern, t Type) {
 // element type(s) (builtins.md §IterElem). A numeric range binds the
 // single variable to int. A single variable over a collection takes
 // its element (a Map yields its key). A two-variable tuple pattern
-// takes the index/value pair: a slice/set yields `(int, Elem)`, a
-// Map yields `(Key, Val)`. iterT is the iterable's inferred type
-// (nil for a range — handled by the AST check). Unmodelled shapes
-// (e.g. Stack — not iterable in v1) leave the variable Unknown.
+// takes the index/value pair: a slice yields `(int, Elem)` — the only
+// indexed IterElem clause in the spec — and a Map yields `(Key, Val)`.
+// iterT is the iterable's inferred type (nil for a range — handled by
+// the AST check). Unmodelled shapes (Stack — not iterable in v1; a
+// 2-tuple over a Set/Channel — no indexed clause) leave it Unknown.
 func (c *checker) checkForBinding(f *ast.ForStmt, iterT Type) {
 	if _, isRange := f.Iterable.(*ast.RangeExpr); isRange {
 		if ip, ok := f.Pattern.(*ast.IdentPat); ok {
@@ -258,8 +259,6 @@ func iterSingleElem(t Type) Type {
 func iterPairElems(t Type) (Type, Type) {
 	switch v := t.(type) {
 	case *Slice:
-		return &Builtin{N: "int"}, v.Elem
-	case *Set:
 		return &Builtin{N: "int"}, v.Elem
 	case *Map:
 		return v.Key, v.Val

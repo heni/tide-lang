@@ -551,6 +551,8 @@ IterElem : Type → Type
   Set<T>           → T                            [insertion order]
   Iterable<int>    → int                          [a RangeExpr `a..b` / `a..=b`]
   RecvChan<T>      → T                            [terminates on close]
+  Channel<T>       → T                            [bidirectional channel iterates
+                                                    as its receive side]
 ```
 
 Notable absence: `Stack<T>` is not iterable in v1 (see §Stack).
