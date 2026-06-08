@@ -1423,17 +1423,8 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 			}
 		}
 		g.b.WriteString(strings.Join(v.QName, "."))
-		if len(v.Args) > 0 {
-			g.b.WriteByte('[')
-			for i, a := range v.Args {
-				if i > 0 {
-					g.b.WriteString(", ")
-				}
-				if err := g.emitTypeExpr(a); err != nil {
-					return err
-				}
-			}
-			g.b.WriteByte(']')
+		if err := g.emitTypeArgs(v.Args); err != nil {
+			return err
 		}
 		return nil
 	}

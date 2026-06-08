@@ -1,10 +1,9 @@
 package codegen
 
 // call.go — call-expression lowering: the emitCall dispatch and its
-// stdlib-binding / container / channel / slice-method helpers. Split
-// out of codegen.go (god-file health pass) so the stdlib-bindings
-// epoch finds all call dispatch in one place. Pure same-package move
-// — generated Go is byte-identical.
+// stdlib-binding / container / channel / slice-method helpers, plus the
+// shared emitTypeArgs / emitArgList primitives. The binding registries
+// it consults live in bindings.go.
 
 import (
 	"fmt"
@@ -32,17 +31,8 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// Result<T, error> return form (binding-surface.md §fmt).
 	if isFmtScan(c.Callee) {
 		g.b.WriteString("tideScan")
-		if len(c.TypeArgs) > 0 {
-			g.b.WriteByte('[')
-			for i, ta := range c.TypeArgs {
-				if i > 0 {
-					g.b.WriteString(", ")
-				}
-				if err := g.emitTypeExpr(ta); err != nil {
-					return err
-				}
-			}
-			g.b.WriteByte(']')
+		if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+			return err
 		}
 		g.b.WriteString("()")
 		return nil
@@ -61,16 +51,10 @@ func (g *gen) emitCall(c *ast.Call) error {
 				g.b.WriteString(recv.Name)
 				g.b.WriteByte('.')
 				g.b.WriteString(goName)
-				g.b.WriteByte('(')
-				for i, a := range c.Args {
-					if i > 0 {
-						g.b.WriteString(", ")
-					}
-					if err := g.emitExpr(a); err != nil {
-						return err
-					}
+				if err := g.emitArgList(c.Args); err != nil {
+					return err
 				}
-				g.b.WriteString("))")
+				g.b.WriteByte(')')
 				return nil
 			}
 		}
@@ -93,44 +77,30 @@ func (g *gen) emitCall(c *ast.Call) error {
 			}
 		}
 	}
-	// strings.fromBytes(b) — the []byte → string round-trip binding
-	// (binding-surface.md §strings). Lowers to Go's `string(b)`
-	// conversion.
-	if isFieldCall(c.Callee, "strings", "fromBytes") && len(c.Args) == 1 {
-		g.b.WriteString("string(")
-		if err := g.emitExpr(c.Args[0]); err != nil {
-			return err
+	// Conversion binding — `pkg.method(arg)` that lowers to a Go type
+	// conversion `target(arg)` (e.g. strings.fromBytes → string(b)),
+	// not a package call (bindings.go §stdlibConversion).
+	if f, ok := c.Callee.(*ast.Field); ok && len(c.Args) == 1 {
+		if recv, ok := f.Receiver.(*ast.Ident); ok {
+			if target, ok := stdlibConversionOf(recv.Name, f.Name); ok {
+				g.b.WriteString(target)
+				g.b.WriteByte('(')
+				if err := g.emitExpr(c.Args[0]); err != nil {
+					return err
+				}
+				g.b.WriteByte(')')
+				return nil
+			}
 		}
-		g.b.WriteByte(')')
-		return nil
 	}
 	// makeSlice<T>(n, v) — predeclared generic builtin lowering
 	// to the inline tideMakeSlice helper.
 	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "makeSlice" {
 		g.b.WriteString("tideMakeSlice")
-		if len(c.TypeArgs) > 0 {
-			g.b.WriteByte('[')
-			for i, ta := range c.TypeArgs {
-				if i > 0 {
-					g.b.WriteString(", ")
-				}
-				if err := g.emitTypeExpr(ta); err != nil {
-					return err
-				}
-			}
-			g.b.WriteByte(']')
+		if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+			return err
 		}
-		g.b.WriteByte('(')
-		for i, a := range c.Args {
-			if i > 0 {
-				g.b.WriteString(", ")
-			}
-			if err := g.emitExpr(a); err != nil {
-				return err
-			}
-		}
-		g.b.WriteByte(')')
-		return nil
+		return g.emitArgList(c.Args)
 	}
 	// makeChannel<T>(cap?) — predeclared channel constructor
 	// (lowering-go.md §Channel lowering): `make(chan T)` unbuffered,
@@ -160,27 +130,10 @@ func (g *gen) emitCall(c *ast.Call) error {
 		if targs, info, ok := g.predeclaredCtorTypeArgs(id.Name, expect); ok {
 			g.b.WriteString(goIdent(info.owner))
 			g.b.WriteString(goIdent(id.Name))
-			g.b.WriteByte('[')
-			for i, ta := range targs {
-				if i > 0 {
-					g.b.WriteString(", ")
-				}
-				if err := g.emitTypeExpr(ta); err != nil {
-					return err
-				}
+			if err := g.emitTypeArgs(targs); err != nil {
+				return err
 			}
-			g.b.WriteByte(']')
-			g.b.WriteByte('(')
-			for i, a := range c.Args {
-				if i > 0 {
-					g.b.WriteString(", ")
-				}
-				if err := g.emitExpr(a); err != nil {
-					return err
-				}
-			}
-			g.b.WriteByte(')')
-			return nil
+			return g.emitArgList(c.Args)
 		}
 	}
 	// Channel instance methods (lowering-go.md §Channel lowering):
@@ -231,17 +184,8 @@ func (g *gen) emitCall(c *ast.Call) error {
 			}
 			g.b.WriteByte('&')
 			g.b.WriteString(goIdent(id.Name))
-			if len(c.TypeArgs) > 0 {
-				g.b.WriteByte('[')
-				for i, ta := range c.TypeArgs {
-					if i > 0 {
-						g.b.WriteString(", ")
-					}
-					if err := g.emitTypeExpr(ta); err != nil {
-						return err
-					}
-				}
-				g.b.WriteByte(']')
+			if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+				return err
 			}
 			g.b.WriteByte('{')
 			for i, a := range c.Args {
@@ -266,29 +210,10 @@ func (g *gen) emitCall(c *ast.Call) error {
 				// Thread the call-site TypeArgs onto the generated
 				// package-level Go function (per `lowering-go.md`
 				// §Generics — `Box<int>.new(...)` → `boxNew[int](...)`).
-				if len(c.TypeArgs) > 0 {
-					g.b.WriteByte('[')
-					for i, ta := range c.TypeArgs {
-						if i > 0 {
-							g.b.WriteString(", ")
-						}
-						if err := g.emitTypeExpr(ta); err != nil {
-							return err
-						}
-					}
-					g.b.WriteByte(']')
+				if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+					return err
 				}
-				g.b.WriteByte('(')
-				for i, a := range c.Args {
-					if i > 0 {
-						g.b.WriteString(", ")
-					}
-					if err := g.emitExpr(a); err != nil {
-						return err
-					}
-				}
-				g.b.WriteByte(')')
-				return nil
+				return g.emitArgList(c.Args)
 			}
 		}
 	}
@@ -354,29 +279,10 @@ func (g *gen) emitCall(c *ast.Call) error {
 	if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
-	if len(c.TypeArgs) > 0 {
-		g.b.WriteByte('[')
-		for i, ta := range c.TypeArgs {
-			if i > 0 {
-				g.b.WriteString(", ")
-			}
-			if err := g.emitTypeExpr(ta); err != nil {
-				return err
-			}
-		}
-		g.b.WriteByte(']')
+	if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+		return err
 	}
-	g.b.WriteByte('(')
-	for i, a := range c.Args {
-		if i > 0 {
-			g.b.WriteString(", ")
-		}
-		if err := g.emitExpr(a); err != nil {
-			return err
-		}
-	}
-	g.b.WriteByte(')')
-	return nil
+	return g.emitArgList(c.Args)
 }
 
 // isContainerReceiver reports whether the receiver expression
@@ -460,9 +366,11 @@ func isStdlibNamespaceName(name string) bool {
 
 // isConversionBinding reports whether the stdlib binding pkg.method
 // lowers to a Go type conversion (not a pkg.* call), so it needs no
-// import. Currently only `strings.fromBytes` → `string(b)`.
+// import. Derived from the stdlibConversion registry — the same source
+// the lowering uses, so the two never diverge.
 func isConversionBinding(pkg, method string) bool {
-	return pkg == "strings" && method == "fromBytes"
+	_, ok := stdlibConversionOf(pkg, method)
+	return ok
 }
 
 // mapFieldName lowers a `pkg.method` / `pkg.value` reference to its
@@ -511,6 +419,42 @@ func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.T
 // value stdin binding). Multi-value scan2/scan3 land later.
 func isFmtScan(e ast.Expr) bool {
 	return isFieldCall(e, "fmt", "scan")
+}
+
+// emitTypeArgs writes a Go type-argument list `[A, B, …]` for the
+// given type expressions, or nothing when the slice is empty. The
+// single emit point for every `[…]` instantiation across codegen.
+func (g *gen) emitTypeArgs(targs []ast.TypeExpr) error {
+	if len(targs) == 0 {
+		return nil
+	}
+	g.b.WriteByte('[')
+	for i, ta := range targs {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		if err := g.emitTypeExpr(ta); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte(']')
+	return nil
+}
+
+// emitArgList writes a Go positional argument list `(a, b, …)`,
+// emitting each argument expression in order.
+func (g *gen) emitArgList(args []ast.Expr) error {
+	g.b.WriteByte('(')
+	for i, a := range args {
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		if err := g.emitExpr(a); err != nil {
+			return err
+		}
+	}
+	g.b.WriteByte(')')
+	return nil
 }
 
 // isFieldCall reports whether e is the field access `recv.name`

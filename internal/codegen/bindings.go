@@ -109,6 +109,23 @@ func timeDurationUnit(name string) (string, bool) {
 	return "", false
 }
 
+// stdlibConversion maps a binding that lowers to a Go *type
+// conversion* `<target>(arg)` rather than a package call — so it pulls
+// in no import (binding-surface.md). Single source of truth for both
+// the lowering (emitCall) and the import-suppression check
+// (isConversionBinding); a divergence between the two would mis-track
+// imports.
+var stdlibConversion = map[[2]string]string{
+	{"strings", "fromBytes"}: "string", // []byte → string
+}
+
+// stdlibConversionOf returns the Go conversion target for a conversion
+// binding `recv.name`, or ("", false) when the pair is not one.
+func stdlibConversionOf(recv, name string) (string, bool) {
+	g, ok := stdlibConversion[[2]string{recv, name}]
+	return g, ok
+}
+
 // stdlibRenameOf returns the Go identifier for a value-returning
 // binding `recv.name`, or ("", false) when recv is not a stdlib
 // namespace ident or the pair has no rename entry.

@@ -56,6 +56,29 @@ func TestStdlibResultWrapOf(t *testing.T) {
 	}
 }
 
+// TestStdlibConversionExclusivity locks the three-way exclusivity the
+// import-tracking depends on: `strings.fromBytes` is a *conversion*
+// (→ `string(b)`, no import) and must be neither a rename nor a
+// result-wrap. A drift here would mis-track the `strings` import.
+func TestStdlibConversionExclusivity(t *testing.T) {
+	if got, ok := stdlibConversionOf("strings", "fromBytes"); !ok || got != "string" {
+		t.Errorf(`stdlibConversionOf("strings","fromBytes") = (%q,%v); want ("string",true)`, got, ok)
+	}
+	if _, ok := stdlibRenameOf("strings", "fromBytes"); ok {
+		t.Errorf("fromBytes must not be a rename binding")
+	}
+	if _, ok := stdlibResultWrapOf("strings", "fromBytes"); ok {
+		t.Errorf("fromBytes must not be a result-wrap binding")
+	}
+	// isConversionBinding must agree with the table (single source).
+	if !isConversionBinding("strings", "fromBytes") {
+		t.Errorf("isConversionBinding disagrees with stdlibConversion table")
+	}
+	if isConversionBinding("strings", "split") {
+		t.Errorf("isConversionBinding(split) should be false")
+	}
+}
+
 // TestTimeDurationUnit locks the Duration-constructor mapping. These
 // are NOT renames (they lower to `time.Duration(n) * time.<Unit>`), so
 // they must be absent from stdlibRename and present here.
