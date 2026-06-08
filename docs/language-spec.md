@@ -293,7 +293,10 @@ Patterns support:
 - Wildcards (`_`).
 - Alternatives (`'(' | '[' | '{'`).
 - Variants with positional payloads (`Some(x)`, `Node(v, l, r)`,
-  `Dispensing(_, change)`).
+  `Dispensing(_, change)`). A payload binding takes the variant's
+  component type — `Ok(v)` binds `v` at the `Result`'s value type,
+  `Err(e)` at its error type, and a user variant's bindings at the
+  declared field types.
 - Tuples (`(Idle, InsertCoin(n))`, `(s, e)`). Note that `()` is the
   unit-literal *pattern*, not a tuple — tuples are arity ≥ 2 (G24).
 - Records by name (`User{ id, name }`) — punning omitted in v1.

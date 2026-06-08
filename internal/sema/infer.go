@@ -83,11 +83,11 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		}
 		t = &Never{}
 	case *ast.TryExpr:
-		c.inferExpr(v.Inner)
+		inner := c.inferExpr(v.Inner)
 		if c.curTryForbidden {
 			c.report("E0402", "`try` outside a Result/Option-returning function", v.Span)
 		}
-		t = &Unknown{} // try-unwrap result typing lands with the Result/Option PR
+		t = c.tryResultType(inner, v)
 	case *ast.ScopeExpr:
 		t = c.inferScope(v)
 	case *ast.SpawnExpr:
@@ -308,11 +308,16 @@ func (c *checker) inferCall(call *ast.Call) Type {
 			}
 		}
 	} else if f, ok := call.Callee.(*ast.Field); ok {
-		// Static container constructor `Map<K,V>.new()` /
-		// `Set<T>.new()` / `Set<T>.from(..)` / `Stack<T>.new()`:
-		// the type arguments bind to the container, carried on the
-		// Call. Produces the structured container type.
-		if ct := c.staticContainerCtor(f, call); ct != nil {
+		// Stdlib binding `pkg.method(args)` — its modelled return type
+		// (interim sema binding table; bindings.go) so a match/try over
+		// it is typed rather than Unknown.
+		if bt := c.bindingCallReturn(f); bt != nil {
+			ret = bt
+		} else if ct := c.staticContainerCtor(f, call); ct != nil {
+			// Static container constructor `Map<K,V>.new()` /
+			// `Set<T>.new()` / `Set<T>.from(..)` / `Stack<T>.new()`:
+			// the type arguments bind to the container, carried on the
+			// Call. Produces the structured container type.
 			ret = ct
 		} else if fn, ok := c.info.Type[f].(*Func); ok {
 			// Method call `recv.m(args)`. inferField already typed
@@ -583,6 +588,29 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 		}
 	}
 	return result
+}
+
+// tryResultType types `try e` (T-Try-Result / T-Try-Option): it unwraps
+// the inner Result<T, E> / Option<T> to T. For a Result, it fires E0403
+// when the inner error type differs from the enclosing function's
+// Result error type — v1 has no implicit error conversion (G11), so a
+// `try` may only propagate the function's own error type. An inner
+// shape other than Result/Option (e.g. an un-modelled binding) leaves
+// the result Unknown. E0402 (try in a non-Result/Option function) is
+// handled by the caller via curTryForbidden.
+func (c *checker) tryResultType(inner Type, v *ast.TryExpr) Type {
+	switch in := inner.(type) {
+	case *Result:
+		if out, ok := c.curReturn.(*Result); ok {
+			if concrete(in.E) && concrete(out.E) && !equal(in.E, out.E) {
+				c.report("E0403", "`try` propagates error type "+in.E.String()+" but the function's error type is "+out.E.String(), v.Span)
+			}
+		}
+		return in.T
+	case *Option:
+		return in.T
+	}
+	return &Unknown{}
 }
 
 // typeMatchPayload assigns component types to the binding symbols of a
