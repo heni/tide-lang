@@ -1,0 +1,45 @@
+--- TITLE ---
+generic class brace literal — `Box<int>{ v: 42 }` lowers to `&Box[int]{v: 42}`
+
+--- INPUT ---
+import fmt
+
+class Box<T> {
+  var v: T
+  get(): T {
+    return this.v
+  }
+}
+
+func main() {
+  let b = Box<int>{ v: 42 }
+  let s = Box<string>{ v: "hi" }
+  fmt.println(b.get())
+  fmt.println(s.get())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box[T any] struct {
+	v T
+}
+
+func (t *Box[T]) get() T {
+	return t.v
+}
+func main() {
+	var b = &Box[int]{v: 42}
+	var s = &Box[string]{v: "hi"}
+	fmt.Println(b.get())
+	fmt.Println(s.get())
+}
+
+--- STDOUT ---
+42
+hi
+
+--- EXIT ---
+0

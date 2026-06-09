@@ -554,6 +554,14 @@ Static methods lower to package-level functions named
 `<class>` + capitalised method name (`boxNew`, `mapFrom`, …),
 preserving the lower-case visibility convention for v1.
 
+A **generic class brace literal** instantiates the Go type
+directly — `Box<int>{ v: 42 }` ⟿ `&Box[int]{v: 42}`. Go cannot
+infer struct type parameters from a composite literal, so the
+type-args are emitted explicitly; a generic class brace literal
+without type-args is a codegen error. (Generic *record-type*
+declarations — `type Pair<T> = {…}` — are not yet parsed; the same
+value-form lowering applies once they are.)
+
 Type parameters lower with constraint `any` **by default**, with
 one v1 exception: **constraint propagation from container key
 positions**. If a generic type parameter `K` of a user decl

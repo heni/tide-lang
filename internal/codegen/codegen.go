@@ -1668,10 +1668,20 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 	name := b.TypeName.QName[0]
 	// A class is a reference type — `Bar{ x: 6 }` constructs `&Bar{…}`
 	// so its methods (declared on `*Bar`) are reachable.
-	if _, isClass := g.class[name]; isClass {
+	ci, isClass := g.class[name]
+	if isClass {
 		g.b.WriteByte('&')
 	}
+	if isClass && ci.generic && len(b.TypeName.Args) == 0 {
+		return fmt.Errorf("codegen: brace literal on generic class %s needs explicit type arguments — write %s<T>{…}", name, name)
+	}
 	g.b.WriteString(goIdent(name))
+	// Generic record/class literal `Box<int>{…}` lowers to the
+	// instantiated Go type `Box[int]{…}` — Go cannot infer struct
+	// type parameters from a composite literal.
+	if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+		return err
+	}
 	g.b.WriteByte('{')
 	for i, e := range b.Entries {
 		re, ok := e.(*ast.RecordEntry)
