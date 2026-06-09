@@ -149,6 +149,20 @@ Empty-state semantics (per `builtins.md`):
   `Result[T, error]` with the canonical empty-stack error
   (`tidert.NewError("empty stack")`).
 
+**Container brace literals** (`Set<int>{1,2}`, `Map<K,V>{}`) lower to
+the same constructors, so the brace form and the `.new()` / `.from()`
+form share one Go representation:
+
+- `Set<T>{}` → `setNew[T]()`; `Set<T>{e1,…}` →
+  `setFrom([]T{e1,…})` (Go infers `setFrom`'s `T` from the slice
+  literal).
+- `Map<K,V>{}` → `mapNew[K,V]()`. A non-empty `Map<K,V>{ k: v, … }`
+  lowers to an insertion IIFE —
+  `func() *Map[K,V] { m := mapNew[K,V](); m.set(k, v); …; return m }()`
+  — keeping the literal a single Go expression.
+- `Stack<T>{}` → `stackNew[T]()`. A `Stack` literal is always empty
+  (`ast.md §BraceLit`); entries are a sema error.
+
 **Constructor type-argument stamping.** A constructor call
 (`Ok`/`Err`/`Some`/`None`) constrains only the type parameter its
 argument supplies — `Ok(v)` fixes `T` but leaves `E` open, `Err(e)`

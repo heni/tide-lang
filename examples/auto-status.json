@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 22,
     "sema_fail": 4,
-    "emit_fail": 4,
-    "build_ok": 22
+    "emit_fail": 3,
+    "build_ok": 23
   },
   "files": [
     {
@@ -41,7 +41,7 @@
     {
       "path": "examples/aoc/2025/d07.td",
       "stage": "emit",
-      "blocker": "unknown failure"
+      "blocker": "go build failed"
     },
     {
       "path": "examples/aoc/2025/d08.td",
@@ -180,8 +180,8 @@
     },
     {
       "path": "examples/raku/set_algebra.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/services/graceful_server.td",

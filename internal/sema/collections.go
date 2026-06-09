@@ -43,6 +43,100 @@ func (c *checker) inferSliceLit(s *ast.SliceLit) Type {
 	return &Slice{Elem: elem}
 }
 
+// containerBraceName returns the predeclared container named by a
+// brace literal's type name (Map / Set / Stack), or "" when the
+// literal is a nominal record. The constructor path treats these
+// three names as builtins, so the brace form mirrors that.
+func containerBraceName(b *ast.BraceLit) string {
+	if len(b.TypeName.QName) == 1 {
+		switch b.TypeName.QName[0] {
+		case "Map", "Set", "Stack":
+			return b.TypeName.QName[0]
+		}
+	}
+	return ""
+}
+
+// inferContainerBraceLit types a Map / Set / Stack brace literal
+// (`Set<int>{1,2}`, `Map<K,V>{}`) from its type-args and checks each
+// entry against the element / key+value types. Mirrors the container
+// types built by the `Map<K,V>(...)` constructor path; an empty
+// literal (BraceUnknown) just yields the typed-but-empty container.
+func (c *checker) inferContainerBraceLit(b *ast.BraceLit, name string) Type {
+	args := b.TypeName.Args
+	switch name {
+	case "Set":
+		var elem Type = &Unknown{}
+		if len(args) == 1 {
+			elem = c.typeFromExpr(args[0])
+		}
+		for _, e := range b.Entries {
+			se, ok := e.(*ast.SetEntry)
+			if !ok {
+				c.report("E0201", "Set literal entry must be a bare value", e.NodeSpan())
+				continue
+			}
+			vt := c.inferExpr(se.Value)
+			if !c.fits(elem, se.Value, vt) {
+				c.report("E0201", "Type mismatch — set element is "+vt.String()+", expected "+elem.String(), se.Value.NodeSpan())
+			}
+		}
+		return &Set{Elem: elem}
+	case "Map":
+		var key, val Type = &Unknown{}, &Unknown{}
+		if len(args) == 2 {
+			key = c.typeFromExpr(args[0])
+			val = c.typeFromExpr(args[1])
+		}
+		for _, e := range b.Entries {
+			me, ok := e.(*ast.MapEntry)
+			if !ok {
+				c.report("E0201", "Map literal entry must be `key: value`", e.NodeSpan())
+				continue
+			}
+			kt := c.inferExpr(me.Key)
+			if !c.fits(key, me.Key, kt) {
+				c.report("E0201", "Type mismatch — map key is "+kt.String()+", expected "+key.String(), me.Key.NodeSpan())
+			}
+			vt := c.inferExpr(me.Value)
+			if !c.fits(val, me.Value, vt) {
+				c.report("E0201", "Type mismatch — map value is "+vt.String()+", expected "+val.String(), me.Value.NodeSpan())
+			}
+		}
+		return &Map{Key: key, Val: val}
+	case "Stack":
+		var elem Type = &Unknown{}
+		if len(args) == 1 {
+			elem = c.typeFromExpr(args[0])
+		}
+		// Stack<T>{} is always empty (ast.md §BraceLit); any entry is
+		// a parse-committed Set/Map mismatch against the type name.
+		for _, e := range b.Entries {
+			c.inferBraceEntryValue(e)
+		}
+		if len(b.Entries) > 0 {
+			c.report("E0201", "Stack literal must be empty — push elements after construction", b.Span)
+		}
+		return &Stack{Elem: elem}
+	}
+	return &Unknown{}
+}
+
+// inferBraceEntryValue infers the value expression(s) of any brace
+// entry shape — used on the error path so sub-expressions are still
+// typed even when the entry kind is rejected.
+func (c *checker) inferBraceEntryValue(e ast.BraceEntry) {
+	switch en := e.(type) {
+	case *ast.RecordEntry:
+		c.inferExpr(en.Value)
+	case *ast.MapEntry:
+		c.inferExpr(en.Key)
+		c.inferExpr(en.Value)
+	case *ast.SetEntry:
+		c.inferExpr(en.Value)
+	}
+}
+
 // inferIndex types `recv[idx]` (T-Index-Slice / T-Index-Map).
 func (c *checker) inferIndex(ix *ast.Index) Type {
 	recv := c.inferExpr(ix.Receiver)

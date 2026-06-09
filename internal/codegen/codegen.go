@@ -1645,8 +1645,20 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 
 // emitBraceLit lowers a brace literal. A record literal becomes a Go
 // struct literal `TypeName{ field: value, … }` (same-package field
-// names map directly). Map / Set / Stack literals are not yet lowered.
+// names map directly). Map / Set / Stack literals lower to the
+// predeclared container helpers, sharing the `.new()` / `.from()`
+// representation (builtins.md §Map / §Set / §Stack).
 func (g *gen) emitBraceLit(b *ast.BraceLit) error {
+	if len(b.TypeName.QName) == 1 {
+		switch b.TypeName.QName[0] {
+		case "Map":
+			return g.emitMapBraceLit(b)
+		case "Set":
+			return g.emitSetBraceLit(b)
+		case "Stack":
+			return g.emitStackBraceLit(b)
+		}
+	}
 	if b.Kind != ast.BraceRecord {
 		return fmt.Errorf("codegen: %s brace literal not yet supported — use the container constructor / `.new()`", b.Kind)
 	}
@@ -1676,6 +1688,101 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 		}
 	}
 	g.b.WriteByte('}')
+	return nil
+}
+
+// emitSetBraceLit lowers `Set<T>{}` → `setNew[T]()` and
+// `Set<T>{e1,…}` → `setFrom([]T{e1,…})`, reusing the predeclared Set
+// helpers (Go infers `setFrom`'s `T` from the slice literal).
+func (g *gen) emitSetBraceLit(b *ast.BraceLit) error {
+	if len(b.Entries) == 0 {
+		g.b.WriteString("setNew")
+		if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+			return err
+		}
+		g.b.WriteString("()")
+		return nil
+	}
+	if len(b.TypeName.Args) != 1 {
+		return fmt.Errorf("codegen: Set literal needs an element type argument — write Set<T>{…}")
+	}
+	g.b.WriteString("setFrom([]")
+	if err := g.emitTypeExpr(b.TypeName.Args[0]); err != nil {
+		return err
+	}
+	g.b.WriteByte('{')
+	for i, e := range b.Entries {
+		se, ok := e.(*ast.SetEntry)
+		if !ok {
+			return fmt.Errorf("codegen: non-set entry %T in Set literal", e)
+		}
+		if i > 0 {
+			g.b.WriteString(", ")
+		}
+		if err := g.emitExpr(se.Value); err != nil {
+			return err
+		}
+	}
+	g.b.WriteString("})")
+	return nil
+}
+
+// emitMapBraceLit lowers `Map<K,V>{}` → `mapNew[K,V]()` and a
+// non-empty `Map<K,V>{ k: v, … }` to an insertion IIFE
+// (`func() *Map[K,V] { m := mapNew[K,V](); m.set(k, v); …; return m }()`)
+// — Map has no construct-from-entries helper, and an IIFE keeps the
+// literal a single Go expression.
+func (g *gen) emitMapBraceLit(b *ast.BraceLit) error {
+	if len(b.Entries) == 0 {
+		g.b.WriteString("mapNew")
+		if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+			return err
+		}
+		g.b.WriteString("()")
+		return nil
+	}
+	if len(b.TypeName.Args) != 2 {
+		return fmt.Errorf("codegen: Map literal needs key and value type arguments — write Map<K,V>{…}")
+	}
+	g.b.WriteString("func() *Map")
+	if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+		return err
+	}
+	g.b.WriteString(" { m := mapNew")
+	if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+		return err
+	}
+	g.b.WriteString("(); ")
+	for _, e := range b.Entries {
+		me, ok := e.(*ast.MapEntry)
+		if !ok {
+			return fmt.Errorf("codegen: non-map entry %T in Map literal", e)
+		}
+		g.b.WriteString("m.set(")
+		if err := g.emitExpr(me.Key); err != nil {
+			return err
+		}
+		g.b.WriteString(", ")
+		if err := g.emitExpr(me.Value); err != nil {
+			return err
+		}
+		g.b.WriteString("); ")
+	}
+	g.b.WriteString("return m }()")
+	return nil
+}
+
+// emitStackBraceLit lowers `Stack<T>{}` → `stackNew[T]()`. A Stack
+// literal is always empty (ast.md §BraceLit); sema rejects entries.
+func (g *gen) emitStackBraceLit(b *ast.BraceLit) error {
+	if len(b.Entries) != 0 {
+		return fmt.Errorf("codegen: Stack literal must be empty — push elements after construction")
+	}
+	g.b.WriteString("stackNew")
+	if err := g.emitTypeArgs(b.TypeName.Args); err != nil {
+		return err
+	}
+	g.b.WriteString("()")
 	return nil
 }
 

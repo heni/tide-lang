@@ -196,9 +196,15 @@ func isErrorBuiltin(t Type) bool {
 
 // inferBraceLit types a brace literal. Record literals resolve to
 // their nominal type and check each field value against the declared
-// field type (E0201). Map / Set / Stack literals stay Unknown until
-// their own modelling lands — their entry values are still inferred.
+// field type (E0201). Map / Set / Stack literals resolve to their
+// container type from the type-args, checking each entry against the
+// element / key+value type (inferContainerBraceLit).
 func (c *checker) inferBraceLit(b *ast.BraceLit) Type {
+	// Map / Set / Stack brace literals resolve from their type-args,
+	// not a nominal record decl (collections.go).
+	if name := containerBraceName(b); name != "" {
+		return c.inferContainerBraceLit(b, name)
+	}
 	rt := c.typeFromExpr(b.TypeName)
 	for _, e := range b.Entries {
 		switch en := e.(type) {
