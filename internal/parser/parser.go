@@ -1787,10 +1787,17 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 					return nil, err
 				}
 				e = lit
+			case p.at(lexer.KindPunct, "{"):
+				// `{` reached here only with noBrace set: a generic
+				// brace literal is ambiguous with the header's block.
+				t := p.peek()
+				return nil, p.diag("E0112",
+					"generic brace literal is ambiguous with the block here — parenthesise it",
+					t.Line, t.Col)
 			default:
 				t := p.peek()
 				return nil, p.diag("E0112",
-					fmt.Sprintf("expected `(`, `.`, or `{{` after generic type arguments, got %s %q", t.Kind, t.Lexeme),
+					fmt.Sprintf("expected `(`, `.`, or `{` after generic type arguments, got %s %q", t.Kind, t.Lexeme),
 					t.Line, t.Col)
 			}
 		case p.at(lexer.KindPunct, "."):
