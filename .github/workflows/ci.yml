@@ -1,0 +1,56 @@
+name: ci
+
+# Independent, machine-agnostic verification of every PR and of main.
+# Mirrors the local gates from the contributor rules: gofmt / vet /
+# build / test, plus the example-corpus ratchet. CI only *checks* the
+# committed conformance snapshot — it never regenerates or commits it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: gofmt / vet / build / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: gofmt (no diff allowed)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./...
+
+  corpus:
+    name: example-corpus ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      # Fails if the committed snapshot is stale or build_ok regressed.
+      # Generation stays a local author step; CI is the independent check.
+      - name: corpus-status ratchet
+        run: python3 scripts/corpus_status.py --check
+      - name: publish STATUS.md to job summary
+        if: always()
+        run: cat examples/STATUS.md >> "$GITHUB_STEP_SUMMARY"
