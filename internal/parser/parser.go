@@ -1766,15 +1766,38 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 					return nil, err
 				}
 				e = call
+			case p.at(lexer.KindPunct, "{") && !p.noBrace:
+				// Generic brace literal `T<...>{ … }` — container
+				// (`Set<int>{1,2}`) or generic record/class
+				// (`Broker<T>{ … }`). Shares one path with the bare
+				// form; the type-args ride on the NamedType
+				// (grammar.ebnf §BraceLit). Suppressed in control-flow
+				// headers (noBrace).
+				id, ok := e.(*ast.Ident)
+				if !ok {
+					t := p.peek()
+					return nil, p.diag("E0112", "generic brace literal requires a bare type name", t.Line, t.Col)
+				}
+				lit, err := p.parseBraceLitBody(&ast.NamedType{
+					Span:  id.Span,
+					QName: []string{id.Name},
+					Args:  typeArgs,
+				})
+				if err != nil {
+					return nil, err
+				}
+				e = lit
 			case p.at(lexer.KindPunct, "{"):
+				// `{` reached here only with noBrace set: a generic
+				// brace literal is ambiguous with the header's block.
 				t := p.peek()
 				return nil, p.diag("E0112",
-					"generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form",
+					"generic brace literal is ambiguous with the block here — parenthesise it",
 					t.Line, t.Col)
 			default:
 				t := p.peek()
 				return nil, p.diag("E0112",
-					fmt.Sprintf("expected `(`, `.`, or `{{` after generic type arguments, got %s %q", t.Kind, t.Lexeme),
+					fmt.Sprintf("expected `(`, `.`, or `{` after generic type arguments, got %s %q", t.Kind, t.Lexeme),
 					t.Line, t.Col)
 			}
 		case p.at(lexer.KindPunct, "."):
@@ -1822,7 +1845,7 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 			if !ok {
 				return e, nil // `expr { … }` only forms a literal off a bare name
 			}
-			lit, err := p.parseBraceLitBody(id)
+			lit, err := p.parseBraceLitBody(&ast.NamedType{Span: id.Span, QName: []string{id.Name}})
 			if err != nil {
 				return nil, err
 			}
@@ -1836,16 +1859,18 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 // parseBraceLitBody parses `{ … }` after a type name, committing the
 // BraceKind on the first entry (RecordEntry `Ident:`, MapEntry
 // `MapKey:`, SetEntry bare expr); an empty `{}` stays Unknown for
-// sema. Cursor at the opening `{`. Brace-literal suppression is lifted
+// sema. Cursor at the opening `{`. The `typeName` carries any generic
+// type-args (`Set<int>{…}`), so the generic and bare forms share one
+// path (grammar.ebnf §BraceLit). Brace-literal suppression is lifted
 // inside the body (entries may themselves contain literals).
-func (p *parser) parseBraceLitBody(name *ast.Ident) (*ast.BraceLit, *Diag) {
+func (p *parser) parseBraceLitBody(typeName *ast.NamedType) (*ast.BraceLit, *Diag) {
 	p.advance() // consume '{'
 	saved := p.noBrace
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
 	p.skipStmtSeps()
 	lit := &ast.BraceLit{
-		TypeName: &ast.NamedType{Span: name.Span, QName: []string{name.Name}},
+		TypeName: typeName,
 		Kind:     ast.BraceUnknown,
 	}
 	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
@@ -1912,7 +1937,7 @@ func (p *parser) parseBraceLitBody(name *ast.Ident) (*ast.BraceLit, *Diag) {
 		return nil, err
 	}
 	lit.Span = ast.Span{
-		StartLine: name.Span.StartLine, StartCol: name.Span.StartCol,
+		StartLine: typeName.Span.StartLine, StartCol: typeName.Span.StartCol,
 		EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
 	}
 	return lit, nil
