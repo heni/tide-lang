@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 25,
+    "parse_fail": 22,
     "sema_fail": 4,
-    "emit_fail": 1,
+    "emit_fail": 4,
     "build_ok": 22
   },
   "files": [
@@ -40,8 +40,8 @@
     },
     {
       "path": "examples/aoc/2025/d07.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/aoc/2025/d08.td",
@@ -56,7 +56,7 @@
     {
       "path": "examples/aoc/2025/d11.td",
       "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "blocker": "error[E0112]: expected type expression, got Newline \"\""
     },
     {
       "path": "examples/borgo/concurrency.td",
@@ -96,7 +96,7 @@
     {
       "path": "examples/concurrency/pubsub.td",
       "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "blocker": "error[E0112]: mixed brace-literal entry kinds"
     },
     {
       "path": "examples/concurrency/rate_limited.td",
@@ -131,12 +131,12 @@
     {
       "path": "examples/interview/lru_cache.td",
       "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
     },
     {
       "path": "examples/interview/rpn_calculator.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/interview/vending_machine.td",
@@ -161,7 +161,7 @@
     {
       "path": "examples/leetcode/two_sum.td",
       "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "blocker": "error[E0112]: unexpected keyword \"return\" in expression"
     },
     {
       "path": "examples/leetcode/valid_parentheses.td",
@@ -180,8 +180,8 @@
     },
     {
       "path": "examples/raku/set_algebra.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/services/graceful_server.td",
@@ -201,7 +201,7 @@
     {
       "path": "examples/services/todo_api.td",
       "stage": "parse",
-      "blocker": "error[E0112]: generic literal `T<...>{ ... }` (BraceLit) not yet supported — use the `T<...>(...)` constructor form"
+      "blocker": "error[E0112]: mixed brace-literal entry kinds"
     },
     {
       "path": "examples/services/wc.td",
