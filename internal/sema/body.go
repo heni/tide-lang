@@ -18,6 +18,14 @@ import (
 // unfinished checker never reports a false positive.
 // See docs/internals/sema.md §4.
 func (c *checker) checkBodies(f *ast.File) {
+	// Type module-level constants first so any function/class body
+	// that references one reads back a resolved type — top-level
+	// bindings are visible everywhere (name-resolution.md §File scope).
+	for _, d := range f.Decls {
+		if tl, ok := d.(*ast.TopLevelLet); ok {
+			c.checkTopLevelLet(tl)
+		}
+	}
 	for _, d := range f.Decls {
 		switch v := d.(type) {
 		case *ast.FuncDecl:
@@ -43,6 +51,17 @@ func (c *checker) checkBodies(f *ast.File) {
 			}
 		}
 	}
+}
+
+// checkTopLevelLet infers a module-level constant's initialiser and
+// records the resolved type on its file-scope symbol (keyed in
+// Info.Def at index time). `try` is illegal here — there is no
+// enclosing Result/Option-returning frame (E0402 via curTryForbidden).
+func (c *checker) checkTopLevelLet(tl *ast.TopLevelLet) {
+	c.curReturn = nil
+	c.curThis = nil
+	c.curTryForbidden = true
+	c.checkBinding(tl, nil, tl.DeclType, tl.Value)
 }
 
 func (c *checker) checkBlock(b *ast.Block) {

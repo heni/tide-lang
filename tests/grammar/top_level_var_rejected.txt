@@ -1,0 +1,8 @@
+--- TITLE ---
+Top-level `var` is intentionally not legal (grammar.ebnf §TopLevelLet — module-scope mutable state requires a singleton class). Only `let` is a top-level binding.
+
+--- INPUT ---
+var x = 5
+
+--- ERRORS ---
+src.td:1:1: error[E0112]: expected top-level declaration, got Keyword "var"

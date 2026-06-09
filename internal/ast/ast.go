@@ -168,6 +168,22 @@ func (n *InterfaceDecl) NodeSpan() Span   { return n.Span }
 func (n *InterfaceDecl) NodeKind() string { return "InterfaceDecl" }
 func (n *InterfaceDecl) declMarker()      {}
 
+// TopLevelLet — module-level constant `let Name [: T] = Value`. Per
+// ast.md §TopLevelLet the initialiser is mandatory and `var` is not
+// legal at the top level (grammar.ebnf §TopLevelLet — module-scope
+// mutable state requires a singleton class). The binding is visible
+// everywhere in the file (name-resolution.md §File scope).
+type TopLevelLet struct {
+	Span     Span
+	Name     string
+	DeclType TypeExpr // nil ⇒ inferred from Value
+	Value    Expr
+}
+
+func (n *TopLevelLet) NodeSpan() Span   { return n.Span }
+func (n *TopLevelLet) NodeKind() string { return "TopLevelLet" }
+func (n *TopLevelLet) declMarker()      {}
+
 // InterfaceMethodSig — `name(params): R` inside an interface body.
 type InterfaceMethodSig struct {
 	Span       Span

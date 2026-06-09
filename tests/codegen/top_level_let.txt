@@ -1,0 +1,41 @@
+--- TITLE ---
+TopLevelLet — module-level constants (inferred + annotated) lower to package-level `var`s; visible from function bodies (name-resolution.md §File scope, lowering-go.md §TopLevelLet).
+
+--- INPUT ---
+import fmt
+
+let version = 5
+let greeting: string = "tide"
+
+func banner(): string {
+  return greeting + " v" + intStr(version)
+}
+
+func intStr(n: int): string {
+  return fmt.sprintf("%d", n)
+}
+
+func main() {
+  fmt.println(banner())
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+var version = 5
+var greeting string = "tide"
+
+func banner() string {
+	return greeting + " v" + intStr(version)
+}
+func intStr(n int) string {
+	return fmt.Sprintf("%d", n)
+}
+func main() {
+	fmt.Println(banner())
+}
+
+--- STDOUT ---
+tide v5

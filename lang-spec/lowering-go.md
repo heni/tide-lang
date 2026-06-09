@@ -96,6 +96,25 @@ future expansion.
 package-level variable of type `struct{}` — so `unit`-typed
 expressions are non-empty Go expressions.
 
+## TopLevelLet
+
+A module-level `let Name [: T] = Value` (ast.md §TopLevelLet) lowers
+to a Go **package-level `var`**:
+
+```
+let version = 5            ⟿  var version = 5
+let label: string = "tide" ⟿  var label string = "tide"
+```
+
+The annotation, when present, becomes the Go var's declared type and
+seeds the initialiser's expected type (so a predeclared
+`Result`/`Option` constructor gets its explicit type args — same path
+as a body-level `let`). Emission is source-order; Go resolves
+package-var initialisation order itself, so a constant may reference a
+function or another top-level constant declared later. `var` is not a
+legal top-level form (grammar.ebnf §TopLevelLet); module-scope mutable
+state is a singleton class instead.
+
 ## Container types — runtime representation
 
 ```go

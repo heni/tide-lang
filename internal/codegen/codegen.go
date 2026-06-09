@@ -197,6 +197,15 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 			if err := g.emitInterfaceDecl(v); err != nil {
 				return "", err
 			}
+		case *ast.TopLevelLet:
+			// Module-level constant → package-level `var Name [T] =
+			// value`. Go resolves package-var init order, so source
+			// order need not be topological. Indent is 0 at package
+			// scope; emitLetOrVar emits the same `var` form as a
+			// body-level `let` (lowering-go.md §TopLevelLet).
+			if err := g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value); err != nil {
+				return "", err
+			}
 		default:
 			return "", fmt.Errorf("codegen: unhandled top-level decl %T", d)
 		}
@@ -830,6 +839,9 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			walk(v.DeclType)
 		case *ast.TypeDecl:
 			walk(v.Body)
+		case *ast.TopLevelLet:
+			walk(v.DeclType)
+			walk(v.Value)
 		case *ast.AliasBody:
 			walk(v.Aliased)
 		case *ast.SumTypeBody:

@@ -74,6 +74,17 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 			if prev := file.declare(sym); prev != nil {
 				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
+		case *ast.TopLevelLet:
+			// Module-level constant. Type stays Unknown until the
+			// body pass (checkTopLevelLet) infers it; keyed in
+			// Info.Def[v] so that pass can write the resolved type
+			// back onto this shared symbol.
+			c.checkReservedName(v.Name, v.Span)
+			sym := &Symbol{Name: v.Name, Kind: SymTopLevelLet, Decl: v, Type: &Unknown{}}
+			if prev := file.declare(sym); prev != nil {
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
+			}
+			c.info.Def[v] = sym
 		}
 	}
 	return file

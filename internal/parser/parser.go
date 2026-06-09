@@ -229,10 +229,51 @@ func (p *parser) parseDecl() (ast.Decl, *Diag) {
 	if p.at(lexer.KindKeyword, "interface") {
 		return p.parseInterfaceDecl()
 	}
+	if p.at(lexer.KindKeyword, "let") {
+		return p.parseTopLevelLet()
+	}
 	t := p.peek()
 	return nil, p.diag("E0112",
 		fmt.Sprintf("expected top-level declaration, got %s %q", t.Kind, t.Lexeme),
 		t.Line, t.Col)
+}
+
+// parseTopLevelLet parses a module-level constant
+// `let Ident (":" TypeExpr)? "=" Expr` (grammar.ebnf §TopLevelLet).
+// The initialiser is mandatory; `var` is intentionally not legal at
+// the top level (it falls through to the E0112 arm above).
+func (p *parser) parseTopLevelLet() (*ast.TopLevelLet, *Diag) {
+	kw := p.advance() // consume 'let'
+	if !p.at(lexer.KindIdent) {
+		t := p.peek()
+		return nil, p.diag("E0112", "expected binding name", t.Line, t.Col)
+	}
+	nameTok := p.advance()
+	var declType ast.TypeExpr
+	if p.at(lexer.KindPunct, ":") {
+		p.advance() // consume ':'
+		var err *Diag
+		declType, err = p.parseTypeExpr()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if _, err := p.expect(lexer.KindOp, "="); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.TopLevelLet{
+		Span: ast.Span{
+			StartLine: kw.Line, StartCol: kw.Col,
+			EndLine: value.NodeSpan().EndLine, EndCol: value.NodeSpan().EndCol,
+		},
+		Name:     nameTok.Lexeme,
+		DeclType: declType,
+		Value:    value,
+	}, nil
 }
 
 // parseTypeDecl parses `type Name = TypeBody`. PR-F2 supports

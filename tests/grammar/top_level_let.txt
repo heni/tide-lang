@@ -1,0 +1,15 @@
+--- TITLE ---
+TopLevelLet — module-level `let Ident (":" TypeExpr)? "=" Expr` (grammar.ebnf §TopLevelLet, ast.md §TopLevelLet). Inferred and annotated forms.
+
+--- INPUT ---
+let version = 5
+let greeting: string = "tide"
+
+--- AST ---
+(File @1:1-2:30
+  (TopLevelLet "version" @1:1-1:16
+    (IntLitExpr 5 @1:15-1:16))
+  (TopLevelLet "greeting" @2:1-2:30
+    (type
+      (PrimitiveType "string" @2:15-2:21))
+    (StringLitExpr "tide" @2:24-2:30)))

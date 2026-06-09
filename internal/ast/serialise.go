@@ -246,6 +246,19 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteByte('\n')
 			write(b, v.Value, depth+1)
 		}
+	case *TopLevelLet:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		if v.DeclType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(type\n")
+			write(b, v.DeclType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		write(b, v.Value, depth+1)
 	case *AssignStmt:
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')

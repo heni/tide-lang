@@ -11,7 +11,7 @@
     {
       "path": "examples/agents/counterstack/pentix_agent.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"let\""
+      "blocker": "error[E0112]: expected Op \"=\", got Op \"<\""
     },
     {
       "path": "examples/aoc/2025/d01.td",
@@ -211,7 +211,7 @@
     {
       "path": "examples/timus/p1033.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected top-level declaration, got Keyword \"let\""
+      "blocker": "error[E0112]: expected Op \"=>\", got Op \"|\""
     },
     {
       "path": "examples/timus/p1133.td",

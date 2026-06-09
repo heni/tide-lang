@@ -16,8 +16,9 @@ const (
 	SymUserVariant
 	SymTypeParam // generic type parameter (T in func f<T>(...))
 	SymLocal
-	SymField  // class field accessible via implicit receiver
-	SymMethod // class method accessible via implicit receiver
+	SymTopLevelLet // module-level `let` constant (name-resolution.md §File scope)
+	SymField       // class field accessible via implicit receiver
+	SymMethod      // class method accessible via implicit receiver
 )
 
 // Symbol is the resolution result attached to every name-position node.

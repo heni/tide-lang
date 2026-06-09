@@ -17,6 +17,11 @@ func (c *checker) resolveFile(f *ast.File, fileScope *Scope) {
 			c.resolveInterfaceDecl(v, fileScope)
 		case *ast.FuncDecl:
 			c.resolveFuncDecl(v, fileScope)
+		case *ast.TopLevelLet:
+			if v.DeclType != nil {
+				c.resolveTypeExpr(v.DeclType, fileScope)
+			}
+			c.resolveExpr(v.Value, fileScope)
 		}
 	}
 }
