@@ -257,7 +257,7 @@ func symValueType(sym *Symbol) Type {
 		return &Unknown{}
 	}
 	switch sym.Kind {
-	case SymLocal, SymField:
+	case SymLocal, SymField, SymTopLevelLet:
 		return sym.Type
 	case SymFunc, SymMethod:
 		if sym.Type != nil {

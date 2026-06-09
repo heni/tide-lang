@@ -18,6 +18,24 @@ func f(): int {
 	}
 }
 
+// TestTopLevelLetUseSiteTyped locks that a *use site* of a top-level
+// constant reads back its concrete type (symValueType), not Unknown —
+// the whole point of typing constants before bodies. Regression guard
+// for the symValueType gap (PR #114 review WARNING-1): a local bound
+// from a top-level constant must take the constant's type so codegen
+// value-position inference and downstream checks see it.
+func TestTopLevelLetUseSiteTyped(t *testing.T) {
+	src := `let version = 5
+func f() {
+  let x = version
+}
+`
+	info := checkInfo(t, src)
+	if got := defTypeByName(info, "x"); got == nil || got.String() != "int" {
+		t.Errorf("x (bound from top-level const) type = %v; want int", got)
+	}
+}
+
 // TestTopLevelLetClean — an annotated + inferred pair, both referenced,
 // produces no diagnostics.
 func TestTopLevelLetClean(t *testing.T) {
