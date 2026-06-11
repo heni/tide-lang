@@ -2121,6 +2121,21 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// same file) get qualified to their Go-side variable:
 		// `Red` → `ColorRed`.
 		if info, ok := g.variant[v.Name]; ok {
+			// A bare predeclared nullary constructor (`None`) in an
+			// expected-type position is a generic call with no argument
+			// for Go to infer from — stamp the type args from context
+			// and emit the call form `OptionNone[T]()` (lowering-go.md
+			// §Container types). User sum variants are non-generic Go
+			// consts and emit bare.
+			if targs, _, ok := g.predeclaredCtorTypeArgs(v.Name, g.expectType); ok {
+				g.b.WriteString(goIdent(info.owner))
+				g.b.WriteString(goIdent(v.Name))
+				if err := g.emitTypeArgs(targs); err != nil {
+					return err
+				}
+				g.b.WriteString("()")
+				return nil
+			}
 			g.b.WriteString(goIdent(info.owner))
 			g.b.WriteString(goIdent(v.Name))
 			return nil

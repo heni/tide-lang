@@ -31,18 +31,11 @@ import (
 func (g *gen) emitMatchSwitch(m *ast.MatchExpr, emitArm func(arm *ast.MatchArm) error) error {
 	hasVariant, hasLiteral, hasPayloadBinding := false, false, false
 	for _, arm := range m.Arms {
-		switch p := arm.Pattern.(type) {
-		case *ast.VariantPat:
-			hasVariant = true
-			if len(p.Sub) > 0 {
-				hasPayloadBinding = true
-			}
-		case *ast.IdentPat:
-			if _, ok := g.variant[p.Name]; ok {
-				hasVariant = true
-			}
-		case *ast.IntLitPat, *ast.StringLitPat, *ast.BoolLitPat:
-			hasLiteral = true
+		v, l := g.classifyPattern(arm.Pattern)
+		hasVariant = hasVariant || v
+		hasLiteral = hasLiteral || l
+		if vp, ok := arm.Pattern.(*ast.VariantPat); ok && len(vp.Sub) > 0 {
+			hasPayloadBinding = true
 		}
 	}
 	if hasVariant && hasLiteral {
@@ -173,18 +166,11 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	}
 	hasVariant, hasLiteral, hasPayloadBinding := false, false, false
 	for _, arm := range m.Arms {
-		switch p := arm.Pattern.(type) {
-		case *ast.VariantPat:
-			hasVariant = true
-			if len(p.Sub) > 0 {
-				hasPayloadBinding = true
-			}
-		case *ast.IdentPat:
-			if _, ok := g.variant[p.Name]; ok {
-				hasVariant = true
-			}
-		case *ast.IntLitPat, *ast.StringLitPat, *ast.BoolLitPat:
-			hasLiteral = true
+		v, l := g.classifyPattern(arm.Pattern)
+		hasVariant = hasVariant || v
+		hasLiteral = hasLiteral || l
+		if vp, ok := arm.Pattern.(*ast.VariantPat); ok && len(vp.Sub) > 0 {
+			hasPayloadBinding = true
 		}
 	}
 	if hasVariant && hasLiteral {
@@ -504,48 +490,92 @@ func (g *gen) nextMatchTemp() string {
 	return fmt.Sprintf("__tide_match_%d", g.matchTempCounter)
 }
 
-// emitMatchArmHeader writes either `case <expr>` or `default`.
-func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
+// classifyPattern reports whether a pattern (or any AltPat atom)
+// switches on the variant tag or on the subject value — the choice
+// of the two Go `switch` forms (lowering-go.md §MatchIR). A pattern
+// may be neither (e.g. WildcardPat → `default:`, valid in both).
+func (g *gen) classifyPattern(p ast.Pattern) (variant, literal bool) {
 	switch pat := p.(type) {
-	case *ast.WildcardPat:
+	case *ast.VariantPat:
+		variant = true
+	case *ast.IdentPat:
+		if _, ok := g.variant[pat.Name]; ok {
+			variant = true
+		}
+	case *ast.IntLitPat, *ast.StringLitPat, *ast.BoolLitPat, *ast.RuneLitPat:
+		literal = true
+	case *ast.AltPat:
+		for _, a := range pat.Atoms {
+			v, l := g.classifyPattern(a)
+			variant = variant || v
+			literal = literal || l
+		}
+	}
+	return
+}
+
+// emitMatchArmHeader writes the case clause: `default` for a
+// wildcard, else `case v` (or `case v1, v2, …` for an AltPat —
+// Go's comma-listed case values are exactly alternation).
+func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
+	if _, ok := p.(*ast.WildcardPat); ok {
 		g.b.WriteString("default")
 		return nil
-	case *ast.IntLitPat:
-		g.b.WriteString("case ")
-		g.b.WriteString(strconv.FormatInt(pat.Value, 10))
-		return nil
-	case *ast.StringLitPat:
-		g.b.WriteString("case ")
-		g.b.WriteString(strconv.Quote(pat.Value))
-		return nil
-	case *ast.BoolLitPat:
-		g.b.WriteString("case ")
-		if pat.Value {
-			g.b.WriteString("true")
-		} else {
-			g.b.WriteString("false")
+	}
+	g.b.WriteString("case ")
+	if alt, ok := p.(*ast.AltPat); ok {
+		for i, atom := range alt.Atoms {
+			if i > 0 {
+				g.b.WriteString(", ")
+			}
+			v, err := g.caseValue(atom)
+			if err != nil {
+				return err
+			}
+			g.b.WriteString(v)
 		}
 		return nil
+	}
+	v, err := g.caseValue(p)
+	if err != nil {
+		return err
+	}
+	g.b.WriteString(v)
+	return nil
+}
+
+// caseValue renders the Go `case`-value text for a single (non-alt,
+// non-wildcard) pattern: a literal in its Go spelling, or a variant's
+// integer tag. Payload sub-patterns on a VariantPat are bound
+// separately (emitPayloadBindings), so only the tag matters here.
+func (g *gen) caseValue(p ast.Pattern) (string, error) {
+	switch pat := p.(type) {
+	case *ast.IntLitPat:
+		return strconv.FormatInt(pat.Value, 10), nil
+	case *ast.StringLitPat:
+		return strconv.Quote(pat.Value), nil
+	case *ast.BoolLitPat:
+		if pat.Value {
+			return "true", nil
+		}
+		return "false", nil
+	case *ast.RuneLitPat:
+		// Re-emit the source spelling; Go accepts `'a'` for its rune
+		// (int32) type, matching RuneLitExpr lowering.
+		return pat.RawText, nil
 	case *ast.VariantPat:
-		// Payload sub-patterns are valid in PR-F5+; bindings are
-		// emitted separately by emitPayloadBindings between the
-		// case header and the arm body.
 		info, ok := g.variant[lastSeg(pat.QName)]
 		if !ok {
-			return fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", lastSeg(pat.QName))
+			return "", fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", lastSeg(pat.QName))
 		}
-		g.b.WriteString("case ")
-		g.b.WriteString(strconv.Itoa(info.tag))
-		return nil
+		return strconv.Itoa(info.tag), nil
 	case *ast.IdentPat:
 		if info, ok := g.variant[pat.Name]; ok {
-			g.b.WriteString("case ")
-			g.b.WriteString(strconv.Itoa(info.tag))
-			return nil
+			return strconv.Itoa(info.tag), nil
 		}
-		return fmt.Errorf("codegen: IdentPat %q in match arm is a fresh binding — only variant patterns supported in PR-F2", pat.Name)
+		return "", fmt.Errorf("codegen: IdentPat %q in match arm is a fresh binding — only variant patterns supported in PR-F2", pat.Name)
 	}
-	return fmt.Errorf("codegen: unsupported pattern %T", p)
+	return "", fmt.Errorf("codegen: unsupported pattern %T", p)
 }
 
 // emitMatchArmBody emits the arm body as a Go statement. The

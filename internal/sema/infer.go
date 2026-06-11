@@ -695,6 +695,10 @@ func (c *checker) checkNoFloatPat(p ast.Pattern) {
 		for _, s := range v.Sub {
 			c.checkNoFloatPat(s)
 		}
+	case *ast.AltPat:
+		for _, a := range v.Atoms {
+			c.checkNoFloatPat(a)
+		}
 	}
 }
 

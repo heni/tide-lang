@@ -2366,6 +2366,13 @@ func (p *parser) parsePrimary() (ast.Expr, *Diag) {
 		case "continue":
 			ct := p.advance()
 			return &ast.ContinueExpr{Span: spanFromToken(ct)}, nil
+		case "return":
+			// `return` is a DivergingExpr in PrimaryExpr
+			// (grammar.ebnf §DivergingExpr) — e.g. a match-arm body
+			// `Err(_) => return false`. At statement position the
+			// statement parser intercepts `return` first, so this arm
+			// fires only in true expression position.
+			return p.parseReturnExpr()
 		case "this":
 			p.advance()
 			return &ast.ThisExpr{Span: spanFromToken(t)}, nil
@@ -2724,10 +2731,45 @@ func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 	}, nil
 }
 
-// parsePattern admits IdentPat, WildcardPat (`_`),
-// IntLitPat, StringLitPat, BoolLitPat, TuplePat, and VariantPat
-// (with optional payload subpatterns). Record, AltPat land later.
+// parsePattern parses a full pattern: a single pattern, or — when
+// `|`-separated atoms follow — an AltPat (grammar.ebnf §Pattern).
+// Alternation is greedy here; the `|` is unambiguous in pattern
+// position (match arms separate with `,`/newline/`=>`, `for` with
+// `in`), so consuming it never conflicts with a single-pattern site.
 func (p *parser) parsePattern() (ast.Pattern, *Diag) {
+	first, err := p.parseSinglePat()
+	if err != nil {
+		return nil, err
+	}
+	if !p.at(lexer.KindOp, "|") {
+		return first, nil
+	}
+	atoms := []ast.Pattern{first}
+	end := first.NodeSpan()
+	for p.at(lexer.KindOp, "|") {
+		p.advance() // consume '|'
+		p.skipNewlines()
+		atom, err := p.parseSinglePat()
+		if err != nil {
+			return nil, err
+		}
+		atoms = append(atoms, atom)
+		end = atom.NodeSpan()
+	}
+	return &ast.AltPat{
+		Span: ast.Span{
+			StartLine: first.NodeSpan().StartLine, StartCol: first.NodeSpan().StartCol,
+			EndLine: end.EndLine, EndCol: end.EndCol,
+		},
+		Atoms: atoms,
+	}, nil
+}
+
+// parseSinglePat admits IdentPat, WildcardPat (`_`), IntLitPat,
+// FloatLitPat, StringLitPat, RuneLitPat, BoolLitPat, TuplePat, and
+// VariantPat (with optional payload subpatterns). RecordPat lands
+// later. AltPat is assembled by parsePattern from these.
+func (p *parser) parseSinglePat() (ast.Pattern, *Diag) {
 	t := p.peek()
 	// TuplePat: `(p1, p2, ...)` — arity ≥ 2.
 	if t.Kind == lexer.KindPunct && t.Lexeme == "(" {
@@ -2868,6 +2910,17 @@ func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 		return &ast.StringLitPat{
 			Span:  spanFromToken(t),
 			Value: val,
+		}, nil
+	case lexer.KindRuneLit:
+		p.advance()
+		rv, err := decodeRuneLit(t.Lexeme)
+		if err != nil {
+			return nil, p.diag("E0110", "Malformed escape sequence", t.Line, t.Col)
+		}
+		return &ast.RuneLitPat{
+			Span:    spanFromToken(t),
+			RawText: t.Lexeme,
+			Value:   rv,
 		}, nil
 	case lexer.KindKeyword:
 		switch t.Lexeme {

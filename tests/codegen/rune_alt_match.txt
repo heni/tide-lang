@@ -1,0 +1,48 @@
+--- TITLE ---
+RuneLitPat + AltPat lowering — `case 'x'` and comma-listed `case a, b, c`
+
+--- INPUT ---
+import fmt
+
+func kind(c: rune): int {
+  match c {
+    '(' | '[' | '{' => 1,
+    ')' => 2,
+    _ => 0,
+  }
+}
+
+func main() {
+  fmt.println(kind('['))
+  fmt.println(kind(')'))
+  fmt.println(kind('x'))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func kind(c rune) int {
+	switch c {
+	case '(', '[', '{':
+		return 1
+	case ')':
+		return 2
+	default:
+		return 0
+	}
+}
+func main() {
+	fmt.Println(kind('['))
+	fmt.Println(kind(')'))
+	fmt.Println(kind('x'))
+}
+
+--- STDOUT ---
+1
+2
+0
+
+--- EXIT ---
+0

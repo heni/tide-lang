@@ -2,10 +2,10 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 22,
+    "parse_fail": 19,
     "sema_fail": 4,
-    "emit_fail": 3,
-    "build_ok": 23
+    "emit_fail": 5,
+    "build_ok": 24
   },
   "files": [
     {
@@ -155,18 +155,18 @@
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"return\" in expression"
+      "stage": "emit",
+      "blocker": "go build failed"
     },
     {
       "path": "examples/leetcode/two_sum.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: unexpected keyword \"return\" in expression"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/leetcode/valid_parentheses.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected pattern, got RuneLit \"')'\""
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/raku/deep_destructure.td",
@@ -211,7 +211,7 @@
     {
       "path": "examples/timus/p1033.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Op \"=>\", got Op \"|\""
+      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
     },
     {
       "path": "examples/timus/p1133.td",

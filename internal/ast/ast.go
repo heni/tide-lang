@@ -532,10 +532,9 @@ func (n *Block) exprMarker() {}
 // Patterns
 // ---------------------------------------------------------------
 
-// Pattern is the sum of pattern kinds. PR-B only emits IdentPat
-// (for loop variables); WildcardPat / TuplePat / VariantPat /
-// RecordPat / AltPat land in later PRs together with their
-// fixtures.
+// Pattern is the sum of pattern kinds (ast.md §Pattern). RecordPat
+// is the only one still unparsed; the rest — wildcard, the literal
+// pats, tuple, variant, alt — are produced by the parser.
 type Pattern interface {
 	Node
 	patternMarker()
@@ -614,6 +613,19 @@ func (n *BoolLitPat) NodeSpan() Span   { return n.Span }
 func (n *BoolLitPat) NodeKind() string { return "BoolLitPat" }
 func (n *BoolLitPat) patternMarker()   {}
 
+// RuneLitPat — match against a literal code point (`'a'`). RawText
+// preserves the source spelling so codegen re-emits the same Go
+// rune literal (a `rune` is `int32`); Value is the decoded point.
+type RuneLitPat struct {
+	Span    Span
+	RawText string
+	Value   int32
+}
+
+func (n *RuneLitPat) NodeSpan() Span   { return n.Span }
+func (n *RuneLitPat) NodeKind() string { return "RuneLitPat" }
+func (n *RuneLitPat) patternMarker()   {}
+
 // VariantPat — `V` (nullary), `V(sub1, sub2)` (with payload), or
 // `Type.V` (qualified). QName has length ≥ 1; the last segment
 // is the variant name, earlier segments are the qualifying
@@ -627,6 +639,20 @@ type VariantPat struct {
 func (n *VariantPat) NodeSpan() Span   { return n.Span }
 func (n *VariantPat) NodeKind() string { return "VariantPat" }
 func (n *VariantPat) patternMarker()   {}
+
+// AltPat — `a | b | c`. Matches when any atom matches. Per
+// grammar.ebnf §AltPat each atom is a literal pattern or a nullary
+// VariantPat (`'(' | '[' | '{'`, `Up | Left`); none bind variables,
+// so all atoms agree on the empty binding set (type-system.md
+// §P-Alt). Atoms has length ≥ 2.
+type AltPat struct {
+	Span  Span
+	Atoms []Pattern
+}
+
+func (n *AltPat) NodeSpan() Span   { return n.Span }
+func (n *AltPat) NodeKind() string { return "AltPat" }
+func (n *AltPat) patternMarker()   {}
 
 // ---------------------------------------------------------------
 // Expressions

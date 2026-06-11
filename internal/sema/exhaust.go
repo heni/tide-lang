@@ -60,9 +60,7 @@ func (c *checker) checkExhaustive(m *ast.MatchExpr, subject Type) {
 func (c *checker) checkSumExhaustive(m *ast.MatchExpr, body *ast.SumTypeBody) {
 	covered := map[string]bool{}
 	for _, arm := range m.Arms {
-		if vp, ok := arm.Pattern.(*ast.VariantPat); ok && len(vp.QName) > 0 {
-			covered[vp.QName[len(vp.QName)-1]] = true
-		}
+		collectCoveredVariants(arm.Pattern, covered)
 	}
 	var missing []string
 	for _, v := range body.Variants {
@@ -75,17 +73,43 @@ func (c *checker) checkSumExhaustive(m *ast.MatchExpr, body *ast.SumTypeBody) {
 	}
 }
 
-// checkBoolExhaustive requires both `true` and `false` arms.
+// collectCoveredVariants records the variant names a pattern covers,
+// descending into AltPat atoms (`Up | Left`). Non-variant patterns
+// contribute nothing.
+func collectCoveredVariants(p ast.Pattern, covered map[string]bool) {
+	switch v := p.(type) {
+	case *ast.VariantPat:
+		if len(v.QName) > 0 {
+			covered[v.QName[len(v.QName)-1]] = true
+		}
+	case *ast.AltPat:
+		for _, a := range v.Atoms {
+			collectCoveredVariants(a, covered)
+		}
+	}
+}
+
+// checkBoolExhaustive requires both `true` and `false` arms (either
+// as standalone arms or AltPat atoms — `true | false`).
 func (c *checker) checkBoolExhaustive(m *ast.MatchExpr) {
 	var sawTrue, sawFalse bool
-	for _, arm := range m.Arms {
-		if bp, ok := arm.Pattern.(*ast.BoolLitPat); ok {
-			if bp.Value {
+	var scan func(p ast.Pattern)
+	scan = func(p ast.Pattern) {
+		switch v := p.(type) {
+		case *ast.BoolLitPat:
+			if v.Value {
 				sawTrue = true
 			} else {
 				sawFalse = true
 			}
+		case *ast.AltPat:
+			for _, a := range v.Atoms {
+				scan(a)
+			}
 		}
+	}
+	for _, arm := range m.Arms {
+		scan(arm.Pattern)
 	}
 	if !sawTrue || !sawFalse {
 		c.report("E0303", "Non-exhaustive match — bool match must cover both true and false", m.Span)

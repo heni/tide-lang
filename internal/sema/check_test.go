@@ -365,6 +365,68 @@ func TestFloatPatternFiresE0305(t *testing.T) {
 	}
 }
 
+func TestFloatPatternInAltFiresE0305(t *testing.T) {
+	// checkNoFloatPat must descend into AltPat atoms.
+	src := `func main() {
+  match 3.14 {
+    1.0 | 3.14 => 1,
+    _ => 0,
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0305") {
+		t.Errorf("expected E0305 for float-literal alt atom, got %v", codes)
+	}
+}
+
+func TestRuneAndAltPatternNoFalsePositive(t *testing.T) {
+	// Rune-literal patterns (P-Lit-Rune) and a literal AltPat
+	// (P-Alt) type clean against a rune subject; the `_` arm makes
+	// the (infinite-domain) match exhaustive.
+	src := `func kind(c: rune): int {
+  match c {
+    '(' | '[' | '{' => 1,
+    ')' => 2,
+    _ => 0,
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected clean (rune + alt patterns), got %v", codes)
+	}
+}
+
+func TestVariantAltExhaustiveNoFalsePositive(t *testing.T) {
+	// A sum match whose arms are AltPats covering every variant is
+	// exhaustive — collectCoveredVariants must descend into AltPat.
+	src := `type Dir = | Up | Down | Left | Right
+func vertical(d: Dir): bool {
+  match d {
+    Up | Down => true,
+    Left | Right => false,
+  }
+}
+`
+	if codes := runCheck(t, src); len(codes) != 0 {
+		t.Errorf("expected exhaustive (variant alt covers all), got %v", codes)
+	}
+}
+
+func TestVariantAltNonExhaustiveFiresE0303(t *testing.T) {
+	// Dropping Right from the alts leaves the match non-exhaustive.
+	src := `type Dir = | Up | Down | Left | Right
+func vertical(d: Dir): bool {
+  match d {
+    Up | Down => true,
+    Left => false,
+  }
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0303") {
+		t.Errorf("expected E0303 (missing Right), got %v", codes)
+	}
+}
+
 func TestClosureTypingNoFalsePositive(t *testing.T) {
 	// Closure params are in scope in the body; captured outer
 	// bindings resolve; a func-typed parameter type-checks.

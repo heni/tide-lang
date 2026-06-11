@@ -1,0 +1,33 @@
+--- TITLE ---
+AltPat — `a | b | c` alternation of literal patterns (P-Alt)
+
+--- INPUT ---
+func kind(c: rune): int {
+  match c {
+    '(' | '[' | '{' => 1,
+    _ => 0,
+  }
+}
+
+--- AST ---
+(File @1:1-6:2
+  (FuncDecl "kind" @1:1-6:2
+    (type-params)
+    (params
+      (Param "c" @1:11-1:18
+        (PrimitiveType "rune" @1:14-1:18)))
+    (return
+      (PrimitiveType "int" @1:21-1:24))
+    (Block @1:25-6:2
+      (trailing
+        (MatchExpr @2:3-5:4
+          (Ident "c" @2:9-2:10)
+          (MatchArm @3:5-3:25
+            (AltPat @3:5-3:20
+              (RuneLitPat '(' @3:5-3:8)
+              (RuneLitPat '[' @3:11-3:14)
+              (RuneLitPat '{' @3:17-3:20))
+            (IntLitExpr 1 @3:24-3:25))
+          (MatchArm @4:5-4:11
+            (WildcardPat @4:5-4:6)
+            (IntLitExpr 0 @4:10-4:11)))))))

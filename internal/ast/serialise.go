@@ -473,6 +473,10 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteString("false")
 		}
 		writeSpan(b, v.Span)
+	case *RuneLitPat:
+		b.WriteByte(' ')
+		b.WriteString(v.RawText)
+		writeSpan(b, v.Span)
 	case *VariantPat:
 		b.WriteByte(' ')
 		writeQuoted(b, strings.Join(v.QName, "."))
@@ -480,6 +484,12 @@ func write(b *strings.Builder, n Node, depth int) {
 		for _, s := range v.Sub {
 			b.WriteByte('\n')
 			write(b, s, depth+1)
+		}
+	case *AltPat:
+		writeSpan(b, v.Span)
+		for _, a := range v.Atoms {
+			b.WriteByte('\n')
+			write(b, a, depth+1)
 		}
 	case *Block:
 		writeSpan(b, v.Span)
