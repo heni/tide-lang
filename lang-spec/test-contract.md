@@ -185,6 +185,18 @@ caret, fix hint) follow the primary line indented by two
 spaces; they're informational and not part of the byte-compare
 contract.
 
+**Sema coverage convention.** `tests/sema/` is intentionally
+empty: the sema layer's coverage gate is satisfied by the Go
+table-tests in `internal/sema/*_test.go`, not by `ERRORS`-section
+fixtures. A sema diagnostic's contract is behavioural — *does code
+E fire (in `.td` coordinates) on the failure case, and stay silent
+on the corpus* — which the table-tests assert directly (input →
+the set of emitted codes). The `ERRORS` fixture format above stays
+the **cross-implementation** contract (byte-identical output once a
+Tide re-implementation of sema exists); until then the Go
+table-tests are the authoritative sema coverage. New sema
+diagnostics satisfy the atomic-coverage rule with a table-test.
+
 ## GO
 
 The emitted Go source, after `gofmt -s`. This is the simplest

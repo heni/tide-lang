@@ -138,8 +138,8 @@ admissible at the prompt. Coordinates use the synthetic file
 | E0901 | E | Top-level control-flow not supported at the REPL prompt | RFC-0003 §What the REPL accepts | Wrap `if` / `for` / `while` / `match` in a function and call it. The function body still admits these constructs. |
 | E0902 | E | `main` is owned by the REPL | RFC-0003 §What the REPL accepts | Drop the `func main() { ... }` wrapper — paste the body directly at the prompt. The REPL synthesises `main` itself. |
 | E0903 | E | Unknown meta-command | RFC-0003 §Meta-commands | The set is `:help :quit :reset :imports :show :write[!] :type :inspect :load`. Type `:help` for the full list. |
-| E0904 | E | `:write` target file already exists | RFC-0003 §Meta-commands | Use `:write! <file.td>` to overwrite, or pick a different name. |
-| E0905 | E | Last-value binding is unbound | RFC-0003 §Auto-printing (`_` / `_error`) + §Open questions #2 (unbound-on-fresh-session) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
+| E0904 | E | **reserved** (`:write` target file already exists — `:write` not yet implemented) | RFC-0003 §Meta-commands | Use `:write! <file.td>` to overwrite, or pick a different name. |
+| E0905 | E | **reserved** (Last-value binding is unbound — `_` / `_error` not yet implemented) | RFC-0003 §Auto-printing (`_` / `_error`) + §Open questions #2 (unbound-on-fresh-session) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
 
 ## Diagnostic formatting
 
@@ -182,4 +182,6 @@ Reserved codes: **E0502** / **E0503** (shadow diagnostics) — the
 codes are allocated and `name-resolution.md` describes the
 intended rules, but v1 does not yet enforce them (they need a
 dedicated shadow-tracking name-resolution pass; no v1 program
-requires them). Every other catalog row is live.
+requires them). **E0904** / **E0905** (REPL `:write` target-exists
+and last-value-unbound) — reserved until their features (`:write`,
+the `_` / `_error` bindings) land. Every other catalog row is live.

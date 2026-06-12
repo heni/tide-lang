@@ -200,6 +200,12 @@ func (s *replSession) add(input string) error {
 		s.lastSlot = slotImports
 		s.lastChange = lastChange{kind: changeAppended, slot: slotImports}
 	case "func", "class", "type", "interface":
+		// `main` is synthesised by the REPL (diagnostics.md E0902); a
+		// user `func main` would collide with the generated wrapper, so
+		// reject it with guidance to paste the body directly.
+		if head == "func" && declName(head, input) == "main" {
+			return fmt.Errorf("error[E0902]: `main` is owned by the REPL — drop the `func main()` wrapper and paste the body at the prompt")
+		}
 		// REPL last-wins shadowing per RFC §What the REPL
 		// accepts ("Re-declaring a name shadows the prior
 		// definition"). If a decl with the same name already
@@ -217,7 +223,7 @@ func (s *replSession) add(input string) error {
 		s.lastSlot = slotDecls
 		s.lastChange = lastChange{kind: changeAppended, slot: slotDecls}
 	case "if", "for", "while", "match", "return", "break", "continue":
-		return fmt.Errorf("top-level control-flow not supported in v1 — wrap it in a func")
+		return fmt.Errorf("error[E0901]: top-level control-flow not supported at the REPL prompt — wrap it in a func")
 	case "let", "var":
 		s.stmts = append(s.stmts, replStmt{src: input})
 		s.lastSlot = slotStmts
@@ -795,7 +801,7 @@ func handleMeta(line string, s *replSession, stdout, stderr io.Writer) bool {
 		}
 		oneShot(s, fields[0], expr, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "repl: unknown meta-command %s\n", fields[0])
+		fmt.Fprintf(stderr, "repl: error[E0903]: unknown meta-command %s — type :help for the list\n", fields[0])
 	}
 	return false
 }

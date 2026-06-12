@@ -234,8 +234,33 @@ func TestReplRejectsTopLevelControlFlow(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("repl exit = %d", exit)
 	}
-	if !strings.Contains(stderr, "top-level control-flow") {
-		t.Errorf("expected top-level control-flow rejection; got stderr:\n%s", stderr)
+	if !strings.Contains(stderr, "E0901") || !strings.Contains(stderr, "top-level control-flow") {
+		t.Errorf("expected E0901 top-level control-flow rejection; got stderr:\n%s", stderr)
+	}
+}
+
+func TestReplRejectsUserMain(t *testing.T) {
+	// E0902 — `main` is owned by the REPL; a user `func main` collides
+	// with the synthesised wrapper and is rejected with guidance.
+	input := "func main() { 1 }\n:quit\n"
+	_, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stderr, "E0902") {
+		t.Errorf("expected E0902 (main owned by REPL); got stderr:\n%s", stderr)
+	}
+}
+
+func TestReplRejectsUnknownMetaCommand(t *testing.T) {
+	// E0903 — an unrecognised `:`-command.
+	input := ":nope\n:quit\n"
+	_, stderr, exit := runTideStdin(t, input, "repl")
+	if exit != 0 {
+		t.Fatalf("repl exit = %d", exit)
+	}
+	if !strings.Contains(stderr, "E0903") {
+		t.Errorf("expected E0903 (unknown meta-command); got stderr:\n%s", stderr)
 	}
 }
 

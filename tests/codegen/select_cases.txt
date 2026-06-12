@@ -1,0 +1,45 @@
+--- TITLE ---
+select — send case + receive-and-drop case + default (non-blocking)
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let ch = makeChannel<int>()
+  let done = makeChannel<int>()
+  select {
+    case ch.send(42) => {
+      fmt.println("sent")
+    }
+    case <-done => {
+      fmt.println("got-signal")
+    }
+    default => {
+      fmt.println("idle")
+    }
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var ch = make(chan int)
+	var done = make(chan int)
+	select {
+	case ch <- 42:
+		fmt.Println("sent")
+	case <-done:
+		fmt.Println("got-signal")
+	default:
+		fmt.Println("idle")
+	}
+}
+
+--- STDOUT ---
+idle
+
+--- EXIT ---
+0

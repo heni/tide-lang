@@ -1,0 +1,62 @@
+--- TITLE ---
+Diverging arm in a value-returning tail match — os.exit case + payload case + unreachable guard
+
+--- INPUT ---
+import fmt
+import os
+
+type Outcome =
+  | Bad
+  | Good(n: int)
+
+func pick(o: Outcome): int {
+  match o {
+    Bad => os.exit(3),
+    Good(n) => n * 2,
+  }
+}
+
+func main() {
+  fmt.println(pick(Good(21)))
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+type Outcome struct {
+	Tag   uint8
+	GoodN int
+}
+
+var (
+	OutcomeBad = Outcome{Tag: 0}
+)
+
+func OutcomeGood(n int) Outcome {
+	return Outcome{Tag: 1, GoodN: n}
+}
+func pick(o Outcome) int {
+	__tide_match_1 := o
+	switch __tide_match_1.Tag {
+	case 0:
+		os.Exit(3)
+	case 1:
+		n := __tide_match_1.GoodN
+		return n * 2
+	}
+	panic("unreachable: non-exhaustive match")
+}
+func main() {
+	fmt.Println(pick(OutcomeGood(21)))
+}
+
+--- STDOUT ---
+42
+
+--- EXIT ---
+0
