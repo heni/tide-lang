@@ -597,7 +597,7 @@ sketch below for reviewers' orientation:
 | Tide built-in | Go lowering |
 |---|---|
 | `int`, `string`, ... | identical Go primitives |
-| `[]T` | `[]T`; `xs.push(e)` lowers to `append(xs, e)`; `xs.len()` to `len(xs)`; `xs.copy()` to a fresh `make` + `copy(dst, src)` |
+| `[]T` | `[]T`; `xs.push(e)` lowers to `append(xs, e)`; `xs.len()` to `len(xs)`; `xs.copy()` to a fresh-backing clone (see `lowering-go.md` §Slice methods) |
 | `Option<T>` | tagged struct `{tag uint8; v T}` (zero-cost for `None`) |
 | `Result<T, E>` | tagged struct `{tag uint8; v T; e E}` |
 | `Map<K, V>` | wrapper around `map[K]V` plus `[]K` for insertion-order |

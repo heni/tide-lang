@@ -1,0 +1,39 @@
+--- TITLE ---
+refEq(a, b) — class reference identity lowers to Go `==` on pointers
+
+--- INPUT ---
+import fmt
+
+class Box { var v: int }
+
+func main() {
+  let a = Box(1)
+  let b = a
+  let c = Box(1)
+  fmt.println(refEq(a, b))
+  fmt.println(refEq(a, c))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box struct {
+	v int
+}
+
+func main() {
+	var a = &Box{1}
+	var b = a
+	var c = &Box{1}
+	fmt.Println((a == b))
+	fmt.Println((a == c))
+}
+
+--- STDOUT ---
+true
+false
+
+--- EXIT ---
+0

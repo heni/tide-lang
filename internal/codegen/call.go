@@ -37,6 +37,24 @@ func (g *gen) emitCall(c *ast.Call) error {
 		g.b.WriteString("()")
 		return nil
 	}
+	// refEq(a, b) — class identity. Classes lower to pointer types, so
+	// Go's `==` is reference identity (lowering-go.md §Defer / panic /
+	// refEq); sema's T-RefEq has guaranteed both operands are the same
+	// class. `refEq` is a predeclared builtin (sema §Free functions), so
+	// the bare name is unambiguous. Parenthesised for safe nesting under
+	// a prefix `!` / surrounding operators.
+	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "refEq" && len(c.Args) == 2 {
+		g.b.WriteByte('(')
+		if err := g.emitExpr(c.Args[0]); err != nil {
+			return err
+		}
+		g.b.WriteString(" == ")
+		if err := g.emitExpr(c.Args[1]); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
+	}
 	// Result-wrapping stdlib binding — `pkg.method(args)` whose Go
 	// referent returns `(T, error)`, lowered to
 	// `tideResultOf(pkg.GoName(args))` (bindings.go). Go spreads the
@@ -273,6 +291,26 @@ func (g *gen) emitCall(c *ast.Call) error {
 				return err
 			}
 			g.b.WriteByte(')')
+			return nil
+		case "copy":
+			// `s.copy()` returns a shallow clone with a fresh backing
+			// array (builtins.md §Slice methods). `append(s[:0:0], s...)`
+			// is the expression-position form: the zero-cap reslice
+			// forces append to allocate, so the result never aliases s —
+			// equivalent to `make`+`copy` without naming the element type
+			// (lowering-go.md §Slice methods).
+			if len(c.Args) != 0 {
+				return fmt.Errorf("codegen: .copy takes no arguments, got %d", len(c.Args))
+			}
+			g.b.WriteString("append(")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteString("[:0:0], ")
+			if err := g.emitExpr(f.Receiver); err != nil {
+				return err
+			}
+			g.b.WriteString("...)")
 			return nil
 		}
 	}

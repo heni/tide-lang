@@ -1,0 +1,23 @@
+--- TITLE ---
+panic(msg) — diverging builtin passes through to Go's runtime panic
+
+--- INPUT ---
+import fmt
+
+func main() {
+  fmt.println("before")
+  panic("boom")
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("before")
+	panic("boom")
+}
+
+--- STDOUT ---
+before
