@@ -610,6 +610,12 @@ from the expected type in a return / typed-binding position
 (`return Leaf` ⟿ `TreeLeaf[T]()`), or from the inferred instantiation
 of the enclosing payload-constructor call when nested as an argument
 (`Node(1, Leaf, Leaf)` ⟿ `TreeNode(1, TreeLeaf[int](), TreeLeaf[int]())`).
+The instantiation is read off a value argument whose field type is a
+bare type-parameter (`value: T`). A v1 limitation: if no field pins the
+parameter directly (`Node(left: Tree<T>, right: Tree<T>)` with a nested
+nullary `Node(Leaf, Leaf)`), the type-arg cannot be inferred at the
+nullary use site and the construct does not yet lower — proper inference
+for that shape is deferred to a sema generic-instantiation pass.
 
 Type parameters lower with constraint `any` **by default**, with
 one v1 exception: **constraint propagation from container key

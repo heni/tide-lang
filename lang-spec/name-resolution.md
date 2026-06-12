@@ -231,9 +231,11 @@ declaration list. v1 has no `as` alias for imports —
   by `static new(...)` factory methods or by direct brace
   construction — so the only forward-reference concern is
   method-to-field and method-to-method, both freely allowed.
-- **Type parameters of a generic decl** (`class LRU<K, V>` or
-  `func f<T>(...)`): visible in the entire decl body, including
-  the parameter and return type signatures.
+- **Type parameters of a generic decl** (`class LRU<K, V>`,
+  `func f<T>(...)`, or `type Tree<T> = …` / `type Pair<A, B> = {…}`):
+  visible in the entire decl body, including the parameter and
+  return type signatures, the variant payload types of a sum, and
+  the field types of a record. (anchor: T-Generic-Decl)
 
 ## Generic type-argument resolution
 
