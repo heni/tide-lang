@@ -285,6 +285,13 @@ func (p *parser) parseTypeDecl() (*ast.TypeDecl, *Diag) {
 	if err != nil {
 		return nil, err
 	}
+	// Optional type parameters — `type Pair<T, U> = …`
+	// (grammar.ebnf §TypeDecl). Shares parseTypeParamList with
+	// class / func / interface decls.
+	typeParams, err := p.parseTypeParamList()
+	if err != nil {
+		return nil, err
+	}
 	if _, err := p.expect(lexer.KindOp, "="); err != nil {
 		return nil, err
 	}
@@ -324,8 +331,9 @@ func (p *parser) parseTypeDecl() (*ast.TypeDecl, *Diag) {
 			StartLine: kw.Line, StartCol: kw.Col,
 			EndLine: body.NodeSpan().EndLine, EndCol: body.NodeSpan().EndCol,
 		},
-		Name: nameTok.Lexeme,
-		Body: body,
+		Name:       nameTok.Lexeme,
+		TypeParams: typeParams,
+		Body:       body,
 	}, nil
 }
 

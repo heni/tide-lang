@@ -1,0 +1,63 @@
+--- TITLE ---
+Generic recursive sum type — Tree[T any], stamped nullary ctors, pointer fields
+
+--- INPUT ---
+import fmt
+
+type Tree<T> =
+  | Leaf
+  | Node(value: T, left: Tree<T>, right: Tree<T>)
+
+func sum(t: Tree<int>): int {
+  match t {
+    Leaf => 0,
+    Node(v, l, r) => v + sum(l) + sum(r),
+  }
+}
+
+func main() {
+  let t = Node(5, Node(3, Leaf, Leaf), Leaf)
+  fmt.println(sum(t))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Tree[T any] struct {
+	Tag       uint8
+	NodeValue T
+	NodeLeft  *Tree[T]
+	NodeRight *Tree[T]
+}
+
+func TreeLeaf[T any]() Tree[T] {
+	return Tree[T]{Tag: 0}
+}
+func TreeNode[T any](value T, left Tree[T], right Tree[T]) Tree[T] {
+	return Tree[T]{Tag: 1, NodeValue: value, NodeLeft: &left, NodeRight: &right}
+}
+func sum(t Tree[int]) int {
+	__tide_match_1 := t
+	switch __tide_match_1.Tag {
+	case 0:
+		return 0
+	case 1:
+		v := __tide_match_1.NodeValue
+		l := *__tide_match_1.NodeLeft
+		r := *__tide_match_1.NodeRight
+		return v + sum(l) + sum(r)
+	}
+	panic("unreachable: non-exhaustive match")
+}
+func main() {
+	var t = TreeNode(5, TreeNode(3, TreeLeaf[int](), TreeLeaf[int]()), TreeLeaf[int]())
+	fmt.Println(sum(t))
+}
+
+--- STDOUT ---
+8
+
+--- EXIT ---
+0

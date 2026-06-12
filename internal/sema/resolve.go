@@ -45,18 +45,29 @@ func (c *checker) resolveInterfaceDecl(id *ast.InterfaceDecl, parent *Scope) {
 }
 
 func (c *checker) resolveTypeDecl(t *ast.TypeDecl, parent *Scope) {
+	// Type parameters (`type Pair<T> = …`) are in scope inside the body
+	// so a variant payload / record field / alias may reference them
+	// (T-Generic-Decl). Mirrors resolveClassDecl.
+	scope := parent
+	if len(t.TypeParams) > 0 {
+		scope = newScope(parent)
+		for _, tp := range t.TypeParams {
+			c.checkReservedName(tp, t.Span)
+			scope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
+		}
+	}
 	switch b := t.Body.(type) {
 	case *ast.AliasBody:
-		c.resolveTypeExpr(b.Aliased, parent)
+		c.resolveTypeExpr(b.Aliased, scope)
 	case *ast.SumTypeBody:
 		for _, v := range b.Variants {
 			for _, f := range v.Fields {
-				c.resolveTypeExpr(f.DeclType, parent)
+				c.resolveTypeExpr(f.DeclType, scope)
 			}
 		}
 	case *ast.RecordTypeBody:
 		for _, f := range b.Fields {
-			c.resolveTypeExpr(f.DeclType, parent)
+			c.resolveTypeExpr(f.DeclType, scope)
 		}
 	}
 }

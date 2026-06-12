@@ -592,9 +592,24 @@ A **generic class brace literal** instantiates the Go type
 directly — `Box<int>{ v: 42 }` ⟿ `&Box[int]{v: 42}`. Go cannot
 infer struct type parameters from a composite literal, so the
 type-args are emitted explicitly; a generic class brace literal
-without type-args is a codegen error. (Generic *record-type*
-declarations — `type Pair<T> = {…}` — are not yet parsed; the same
-value-form lowering applies once they are.)
+without type-args is a codegen error. **Generic record-type
+declarations** lower the same way: `type Pair<A, B> = {…}` ⟿
+`type Pair[A any, B any] struct {…}`, and `Pair<int, string>{…}` ⟿
+`Pair[int, string]{…}`.
+
+**Generic sum-type declarations** (`type Tree<T> = | Leaf | Node(…)`)
+carry the type params onto the tagged struct and every constructor:
+`type Tree[T any] struct {…}`, `func TreeNode[T any](…) Tree[T]`. A
+**nullary** variant of a generic sum cannot be a package-level `var`
+(the value would need a type argument), so it becomes a parameterless
+generic constructor — `func TreeLeaf[T any]() Tree[T]` — the same
+shape as `OptionNone`. Go infers the type args of a *payload*
+constructor call from its value arguments, but a nullary constructor
+call has none, so codegen stamps explicit type args at the use site:
+from the expected type in a return / typed-binding position
+(`return Leaf` ⟿ `TreeLeaf[T]()`), or from the inferred instantiation
+of the enclosing payload-constructor call when nested as an argument
+(`Node(1, Leaf, Leaf)` ⟿ `TreeNode(1, TreeLeaf[int](), TreeLeaf[int]())`).
 
 Type parameters lower with constraint `any` **by default**, with
 one v1 exception: **constraint propagation from container key

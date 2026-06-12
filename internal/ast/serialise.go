@@ -400,6 +400,18 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeQuoted(b, v.Name)
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.TypeParams) == 0 {
+			b.WriteString("(type-params)")
+		} else {
+			b.WriteString("(type-params")
+			for _, tp := range v.TypeParams {
+				b.WriteByte(' ')
+				writeQuoted(b, tp)
+			}
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
 		write(b, v.Body, depth+1)
 	case *AliasBody:
 		writeSpan(b, v.Span)

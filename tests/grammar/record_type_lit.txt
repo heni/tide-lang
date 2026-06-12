@@ -10,6 +10,7 @@ func make(): Point {
 --- AST ---
 (File @1:1-4:2
   (TypeDecl "Point" @1:1-1:32
+    (type-params)
     (RecordTypeBody @1:14-1:32
       (FieldDecl "x" @1:16-1:22
         (PrimitiveType "int" @1:19-1:22))

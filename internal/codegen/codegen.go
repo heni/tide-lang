@@ -144,7 +144,7 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 		if td, ok := d.(*ast.TypeDecl); ok {
 			if sb, ok := td.Body.(*ast.SumTypeBody); ok {
 				for i, v := range sb.Variants {
-					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i, fields: v.Fields}
+					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i, fields: v.Fields, sumTypeParams: td.TypeParams}
 				}
 			}
 		}
@@ -298,6 +298,12 @@ type gen struct {
 	// type parameter Go cannot infer from the argument alone (`Ok(v)`
 	// leaves E open, `Err(e)` leaves T open). nil when no context flows.
 	expectType ast.TypeExpr
+	// sumCtorArgs — Go type-arg strings for the generic sum currently
+	// being constructed, threaded through a payload-variant ctor call's
+	// arguments (§Generics). A nested *nullary* variant (`Leaf`) has no
+	// argument for Go to infer from, so it stamps these explicitly
+	// (`TreeLeaf[int]()`). nil outside a generic-sum ctor call.
+	sumCtorArgs []string
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
@@ -308,9 +314,10 @@ type gen struct {
 }
 
 type variantInfo struct {
-	owner  string           // owning sum-type name (e.g. "Color")
-	tag    int              // declaration order, used for the Tag field
-	fields []*ast.FieldDecl // payload fields, nil/empty for nullary variants
+	owner         string           // owning sum-type name (e.g. "Color")
+	tag           int              // declaration order, used for the Tag field
+	fields        []*ast.FieldDecl // payload fields, nil/empty for nullary variants
+	sumTypeParams []string         // owning sum's type params (`Tree<T>`); nil for non-generic
 }
 
 type classInfo struct {
@@ -1064,6 +1071,7 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
+		g.emitTypeParamBrackets(td.TypeParams, true)
 		g.b.WriteString(" struct {\n")
 		g.indent++
 		for _, f := range body.Fields {
@@ -1091,6 +1099,7 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
+		g.emitTypeParamBrackets(td.TypeParams, true)
 		g.b.WriteString(" struct {\n\tTag uint8\n")
 		for _, v := range body.Variants {
 			for _, f := range v.Fields {
@@ -1107,32 +1116,57 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 			}
 		}
 		g.b.WriteString("}\n")
-		// Nullary constants in a single `var ( ... )` block;
-		// payload constructors as separate funcs after it.
-		anyNullary := false
-		for _, v := range body.Variants {
-			if len(v.Fields) == 0 {
-				anyNullary = true
-				break
-			}
-		}
-		if anyNullary {
-			g.b.WriteString("var (\n")
+		generic := len(td.TypeParams) > 0
+		// Nullary variants. For a non-generic sum they are package-level
+		// `var T_V = T{Tag: N}` consts; for a generic sum the value
+		// needs a type argument Go can't supply at package scope, so each
+		// becomes a parameterless generic constructor `func T_V[..]() T[..]`
+		// (the OptionNone shape — §Generics).
+		if generic {
 			for i, v := range body.Variants {
 				if len(v.Fields) != 0 {
 					continue
 				}
-				g.b.WriteByte('\t')
+				g.b.WriteString("func ")
 				g.b.WriteString(goIdent(td.Name))
 				g.b.WriteString(goIdent(v.Name))
-				g.b.WriteString(" = ")
+				g.emitTypeParamBrackets(td.TypeParams, true)
+				g.b.WriteString("() ")
 				g.b.WriteString(goIdent(td.Name))
-				g.b.WriteByte('{')
-				g.b.WriteString("Tag: ")
+				g.emitTypeParamBrackets(td.TypeParams, false)
+				g.b.WriteString(" {\n\treturn ")
+				g.b.WriteString(goIdent(td.Name))
+				g.emitTypeParamBrackets(td.TypeParams, false)
+				g.b.WriteString("{Tag: ")
 				g.b.WriteString(strconv.Itoa(i))
-				g.b.WriteString("}\n")
+				g.b.WriteString("}\n}\n")
 			}
-			g.b.WriteString(")\n")
+		} else {
+			anyNullary := false
+			for _, v := range body.Variants {
+				if len(v.Fields) == 0 {
+					anyNullary = true
+					break
+				}
+			}
+			if anyNullary {
+				g.b.WriteString("var (\n")
+				for i, v := range body.Variants {
+					if len(v.Fields) != 0 {
+						continue
+					}
+					g.b.WriteByte('\t')
+					g.b.WriteString(goIdent(td.Name))
+					g.b.WriteString(goIdent(v.Name))
+					g.b.WriteString(" = ")
+					g.b.WriteString(goIdent(td.Name))
+					g.b.WriteByte('{')
+					g.b.WriteString("Tag: ")
+					g.b.WriteString(strconv.Itoa(i))
+					g.b.WriteString("}\n")
+				}
+				g.b.WriteString(")\n")
+			}
 		}
 		for i, v := range body.Variants {
 			if len(v.Fields) == 0 {
@@ -1141,6 +1175,7 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 			g.b.WriteString("func ")
 			g.b.WriteString(goIdent(td.Name))
 			g.b.WriteString(goIdent(v.Name))
+			g.emitTypeParamBrackets(td.TypeParams, true)
 			g.b.WriteByte('(')
 			for j, f := range v.Fields {
 				if j > 0 {
@@ -1154,8 +1189,10 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 			}
 			g.b.WriteString(") ")
 			g.b.WriteString(goIdent(td.Name))
+			g.emitTypeParamBrackets(td.TypeParams, false)
 			g.b.WriteString(" {\n\treturn ")
 			g.b.WriteString(goIdent(td.Name))
+			g.emitTypeParamBrackets(td.TypeParams, false)
 			g.b.WriteByte('{')
 			g.b.WriteString("Tag: ")
 			g.b.WriteString(strconv.Itoa(i))
@@ -2144,12 +2181,33 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// same file) get qualified to their Go-side variable:
 		// `Red` → `ColorRed`.
 		if info, ok := g.variant[v.Name]; ok {
-			// A bare predeclared nullary constructor (`None`) in an
-			// expected-type position is a generic call with no argument
-			// for Go to infer from — stamp the type args from context
-			// and emit the call form `OptionNone[T]()` (lowering-go.md
-			// §Container types). User sum variants are non-generic Go
-			// consts and emit bare.
+			// A bare nullary constructor of a *generic* sum is a
+			// parameterless generic call Go can't infer — stamp explicit
+			// type args (`OptionNone[T]()`, `TreeLeaf[int]()`;
+			// lowering-go.md §Container types / §Generics). The args come
+			// from the enclosing ctor call's inferred instantiation
+			// (g.sumCtorArgs, set while emitting a `Node(…)`'s arguments),
+			// else the expected type. User sums with no type params and
+			// all other variants emit bare.
+			if len(info.sumTypeParams) > 0 {
+				if len(g.sumCtorArgs) == len(info.sumTypeParams) {
+					g.b.WriteString(goIdent(info.owner))
+					g.b.WriteString(goIdent(v.Name))
+					g.b.WriteByte('[')
+					g.b.WriteString(strings.Join(g.sumCtorArgs, ", "))
+					g.b.WriteString("]()")
+					return nil
+				}
+				if targs, ok := g.userSumCtorArgsFromExpect(info, g.expectType); ok {
+					g.b.WriteString(goIdent(info.owner))
+					g.b.WriteString(goIdent(v.Name))
+					if err := g.emitTypeArgs(targs); err != nil {
+						return err
+					}
+					g.b.WriteString("()")
+					return nil
+				}
+			}
 			if targs, _, ok := g.predeclaredCtorTypeArgs(v.Name, g.expectType); ok {
 				g.b.WriteString(goIdent(info.owner))
 				g.b.WriteString(goIdent(v.Name))

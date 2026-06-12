@@ -7,6 +7,7 @@ type Maybe = | Just(value: int) | Nothing
 --- AST ---
 (File @1:1-1:42
   (TypeDecl "Maybe" @1:1-1:42
+    (type-params)
     (SumTypeBody @1:14-1:42
       (Variant "Just" @1:16-1:32
         (FieldDecl "value" @1:21-1:31

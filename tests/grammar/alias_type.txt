@@ -7,5 +7,6 @@ type Age = int
 --- AST ---
 (File @1:1-1:15
   (TypeDecl "Age" @1:1-1:15
+    (type-params)
     (AliasBody @1:12-1:15
       (PrimitiveType "int" @1:12-1:15))))

@@ -50,9 +50,10 @@ type Decl interface {
 // TypeDecl — `type Name = TypeBody`. TypeBody is the sum of
 // AliasBody, TupleAliasBody, RecordTypeBody, SumTypeBody.
 type TypeDecl struct {
-	Span Span
-	Name string
-	Body TypeBody
+	Span       Span
+	Name       string
+	TypeParams []string // `type Pair<T, U> = …`; nil when non-generic
+	Body       TypeBody
 }
 
 func (n *TypeDecl) NodeSpan() Span   { return n.Span }

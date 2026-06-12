@@ -2,16 +2,16 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 19,
+    "parse_fail": 18,
     "sema_fail": 4,
     "emit_fail": 5,
-    "build_ok": 24
+    "build_ok": 25
   },
   "files": [
     {
       "path": "examples/agents/counterstack/pentix_agent.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Op \"=\", got Op \"<\""
+      "blocker": "error[E0112]: expected expression, got Newline \"\""
     },
     {
       "path": "examples/aoc/2025/d01.td",
@@ -145,8 +145,8 @@
     },
     {
       "path": "examples/leetcode/invert_binary_tree.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected Op \"=\", got Op \"<\""
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/leetcode/merge_intervals.td",

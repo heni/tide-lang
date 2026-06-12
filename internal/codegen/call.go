@@ -276,6 +276,23 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return nil
 		}
 	}
+	// Generic user-sum payload-variant constructor `Node(...)`. Go
+	// infers the type args from the value arguments (`value: T` ← the
+	// first arg), so the constructor emits bare — but a nested *nullary*
+	// variant (`Node(1, Leaf, Leaf)`) has no argument for Go to infer
+	// from, so thread the inferred instantiation down to the arguments
+	// (§Generics) where the bare-variant emit consumes it.
+	if id, ok := c.Callee.(*ast.Ident); ok {
+		if info, isVar := g.variant[id.Name]; isVar && len(info.sumTypeParams) > 0 && len(info.fields) > 0 {
+			g.b.WriteString(goIdent(info.owner))
+			g.b.WriteString(goIdent(id.Name))
+			prev := g.sumCtorArgs
+			g.sumCtorArgs = g.genericSumCtorArgs(info, c.Args)
+			err := g.emitArgList(c.Args)
+			g.sumCtorArgs = prev
+			return err
+		}
+	}
 	if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
@@ -283,6 +300,57 @@ func (g *gen) emitCall(c *ast.Call) error {
 		return err
 	}
 	return g.emitArgList(c.Args)
+}
+
+// genericSumCtorArgs infers the Go type-argument strings for a generic
+// sum variant constructor call, by reading the Go type of each value
+// argument whose declared field type is a bare sum type-parameter
+// (`value: T` pins `T`). Returns nil when not every parameter can be
+// pinned — the caller then leaves nested variants un-stamped (Go
+// inference covers the all-payload case; only nullary variants need
+// the explicit args).
+func (g *gen) genericSumCtorArgs(info variantInfo, args []ast.Expr) []string {
+	subst := map[string]string{}
+	for i, f := range info.fields {
+		if i >= len(args) {
+			break
+		}
+		nt, ok := f.DeclType.(*ast.NamedType)
+		if !ok || len(nt.QName) != 1 || len(nt.Args) != 0 {
+			continue
+		}
+		for _, tp := range info.sumTypeParams {
+			if nt.QName[0] == tp {
+				if s, err := g.inferArmResultType(args[i]); err == nil {
+					subst[tp] = s
+				}
+			}
+		}
+	}
+	out := make([]string, len(info.sumTypeParams))
+	for i, tp := range info.sumTypeParams {
+		s, ok := subst[tp]
+		if !ok {
+			return nil
+		}
+		out[i] = s
+	}
+	return out
+}
+
+// userSumCtorArgsFromExpect returns the type args to stamp on a bare
+// nullary user-sum variant (`Leaf`) from an expected `Sum<…>` type — the
+// generic analogue of predeclaredCtorTypeArgs for user sums (`return
+// Leaf` in a `Tree<T>`-returning function).
+func (g *gen) userSumCtorArgsFromExpect(info variantInfo, expect ast.TypeExpr) ([]ast.TypeExpr, bool) {
+	nt, ok := expect.(*ast.NamedType)
+	if !ok || len(nt.QName) != 1 || nt.QName[0] != info.owner {
+		return nil, false
+	}
+	if len(nt.Args) != len(info.sumTypeParams) {
+		return nil, false
+	}
+	return nt.Args, true
 }
 
 // isContainerReceiver reports whether the receiver expression
