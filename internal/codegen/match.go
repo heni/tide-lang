@@ -458,6 +458,12 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 			g.writeIndent()
 			g.b.WriteString(goIdent(sp.Name))
 			g.b.WriteString(" := ")
+			// A self-referential payload field is stored as a pointer
+			// (§Recursive sum types); deref it so the binding has the
+			// sum's value type, not `*T`.
+			if isSelfRefField(info.fields[i], info.owner) {
+				g.b.WriteByte('*')
+			}
 			g.b.WriteString(subjectExpr)
 			g.b.WriteByte('.')
 			// Predeclared sums use spec-fixed field names (V / E)

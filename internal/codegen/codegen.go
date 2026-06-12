@@ -1085,7 +1085,9 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		// across variants). Nullary variants get a `var T_V =
 		// T{Tag: N}`; payload variants get a `func T_V(...) T`
 		// constructor. Tag is declaration order (§Variant-tag
-		// numbering).
+		// numbering). A payload field that names the sum itself is
+		// pointer-ized to break Go's infinite-size cycle (§Recursive
+		// sum types).
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
@@ -1095,6 +1097,9 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 				g.b.WriteByte('\t')
 				g.b.WriteString(payloadFieldName(v.Name, f.Name))
 				g.b.WriteByte(' ')
+				if isSelfRefField(f, td.Name) {
+					g.b.WriteByte('*')
+				}
 				if err := g.emitTypeExpr(f.DeclType); err != nil {
 					return err
 				}
@@ -1158,6 +1163,9 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 				g.b.WriteString(", ")
 				g.b.WriteString(payloadFieldName(v.Name, f.Name))
 				g.b.WriteString(": ")
+				if isSelfRefField(f, td.Name) {
+					g.b.WriteByte('&')
+				}
 				g.b.WriteString(goIdent(f.Name))
 			}
 			g.b.WriteString("}\n}\n")
@@ -2000,6 +2008,21 @@ func inferSliceElemType(items []ast.Expr) (string, error) {
 // `Just` with field `value` → `JustValue`.
 func payloadFieldName(variantName, fieldName string) string {
 	return capFirst(variantName) + capFirst(fieldName)
+}
+
+// isSelfRefField reports whether a payload field directly names the
+// enclosing sum type `sumName` (`Tree` or `Tree<…>`). Such a field
+// would make the lowered Go struct infinitely sized, so it is
+// pointer-ized — `*Tree`, with `&` at construction and `*` at the
+// match-binding deref (lowering-go.md §Recursive sum types).
+// Indirection through a slice / map / channel is already a pointer in
+// Go and needs no rewrite; only the direct-named case is detected
+// (by-value recursion nested inside another type — `Option<Tree>` —
+// is a v1 limitation). A nil DeclType (predeclared Option/Result
+// payload registration) fails the assertion and returns false.
+func isSelfRefField(f *ast.FieldDecl, sumName string) bool {
+	nt, ok := f.DeclType.(*ast.NamedType)
+	return ok && len(nt.QName) == 1 && nt.QName[0] == sumName
 }
 
 func capFirst(s string) string {

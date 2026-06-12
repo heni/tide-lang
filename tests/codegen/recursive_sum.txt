@@ -1,0 +1,62 @@
+--- TITLE ---
+Recursive sum type — self-referential payload fields pointer-ized (*Tree, &v, deref)
+
+--- INPUT ---
+import fmt
+
+type Tree =
+  | Leaf
+  | Node(left: Tree, right: Tree)
+
+func count(t: Tree): int {
+  match t {
+    Leaf => 0,
+    Node(l, r) => 1 + count(l) + count(r),
+  }
+}
+
+func main() {
+  let t = Node(Node(Leaf, Leaf), Node(Leaf, Node(Leaf, Leaf)))
+  fmt.println(count(t))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Tree struct {
+	Tag       uint8
+	NodeLeft  *Tree
+	NodeRight *Tree
+}
+
+var (
+	TreeLeaf = Tree{Tag: 0}
+)
+
+func TreeNode(left Tree, right Tree) Tree {
+	return Tree{Tag: 1, NodeLeft: &left, NodeRight: &right}
+}
+func count(t Tree) int {
+	__tide_match_1 := t
+	switch __tide_match_1.Tag {
+	case 0:
+		return 0
+	case 1:
+		l := *__tide_match_1.NodeLeft
+		r := *__tide_match_1.NodeRight
+		return 1 + count(l) + count(r)
+	}
+	panic("unreachable: non-exhaustive match")
+}
+func main() {
+	var t = TreeNode(TreeNode(TreeLeaf, TreeLeaf), TreeNode(TreeLeaf, TreeNode(TreeLeaf, TreeLeaf)))
+	fmt.Println(count(t))
+}
+
+--- STDOUT ---
+4
+
+--- EXIT ---
+0

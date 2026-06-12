@@ -400,6 +400,21 @@ variant = 0, second = 1, …). The runtime never persists
 tags across runs, so re-ordering variants is a source-level
 change with no runtime stability concerns.
 
+**Recursive sum types.** A payload field whose declared type
+directly names the enclosing sum (`Node(left: Tree, right: Tree)`,
+or `Tree<T>` for the generic form) would make the lowered Go struct
+infinitely sized — Go forbids a struct that contains itself by
+value. Such a field is **pointer-ized**: the struct field becomes
+`*Tree` (resp. `*Tree[T]`), the constructor stores the address of
+its by-value parameter (`NodeLeft: &left`), and the match-binding
+dereferences (`l := *subject.NodeLeft`) so the bound name keeps the
+sum's value type. Tide sum values are immutable, so the introduced
+sharing is unobservable. Only the **direct** self-reference is
+detected; recursion routed through a slice / map / channel
+(`[]Tree`, `Map<K, Tree>`) is already an indirection in Go and is
+left as-is, while by-value recursion nested inside another generic
+(`Option<Tree>`) is a v1 limitation.
+
 ## Implicit tail return
 
 A function / method / closure body is a block, and a block's
