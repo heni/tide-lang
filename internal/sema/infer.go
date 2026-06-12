@@ -275,15 +275,52 @@ func (c *checker) inferIdent(id *ast.Ident) Type {
 		return &Unknown{}
 	}
 	if sym := c.info.Symbol[id]; sym != nil {
+		switch sym.Kind {
+		case SymTypeParam, SymClass, SymTypeDecl, SymBuiltinType, SymInterface:
+			// A type parameter or named type used where a value is
+			// expected (name-resolution.md §Generic type-argument
+			// resolution / E0108). Legitimate qualifier positions — a
+			// call callee (`Counter(...)`, `int(x)`), a field/method
+			// receiver (`Counter.new`, `Tree.Leaf`), a brace literal
+			// (`Counter{...}`) — never reach here: inferCall skips Ident
+			// callees, inferReceiver handles qualifiers, brace literals
+			// carry a NamedType (typed via typeFromExpr). So this is a
+			// genuine value position.
+			c.report("E0108", "Type used as value — `"+id.Name+"` is a type, not a value", id.Span)
+			return &Unknown{}
+		}
 		return symValueType(sym)
 	}
 	return &Unknown{}
 }
 
+// inferReceiver types a field / method receiver. A namespace or type
+// qualifier (`fmt.x`, `Counter.new`, `Tree.Leaf`) sits in value-ish
+// position but is not a value, so it must not trigger E0108 (which
+// inferIdent would fire) — the member-access dispatch handles it.
+func (c *checker) inferReceiver(e ast.Expr) Type {
+	if id, ok := e.(*ast.Ident); ok {
+		if sym := c.info.Symbol[id]; sym != nil {
+			switch sym.Kind {
+			case SymBuiltinModule, SymClass, SymTypeDecl, SymBuiltinType, SymInterface, SymTypeParam:
+				return symValueType(sym)
+			}
+		}
+	}
+	return c.inferExpr(e)
+}
+
 // inferCall types a call and checks argument types against the
 // callee's parameters (E0201) on top of the arity check (E0202).
 func (c *checker) inferCall(call *ast.Call) Type {
-	c.inferExpr(call.Callee)
+	// An Ident callee is typed by the symbol switch below, not as a
+	// value — skip inferExpr so a class / type-name callee (`Box(...)`,
+	// `int(x)`) is not misread as a value (E0108). A Field callee
+	// (`fmt.println`, `Box.new`) still routes through inferField, which
+	// uses inferReceiver to keep its qualifier from firing E0108.
+	if _, isIdent := call.Callee.(*ast.Ident); !isIdent {
+		c.inferExpr(call.Callee)
+	}
 	args := make([]Type, len(call.Args))
 	for i, a := range call.Args {
 		args[i] = c.inferExpr(a)
@@ -402,7 +439,7 @@ func (c *checker) checkArgTypes(params, args []Type, nodes []ast.Expr, callee st
 // its declared type, a class method gives its Func type. Module
 // access and everything else stays Unknown for PR-C1.
 func (c *checker) inferField(f *ast.Field) Type {
-	recv := c.inferExpr(f.Receiver)
+	recv := c.inferReceiver(f.Receiver)
 	// Channel methods (`.send` / `.recv` / `.tryRecv` / `.close`)
 	// dispatch on the channel kind, not on a Named declaration.
 	if ct := channelMethodType(recv, f.Name); ct != nil {

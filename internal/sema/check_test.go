@@ -352,6 +352,47 @@ func main() {
 	}
 }
 
+func TestClassNameAsValueFiresE0108(t *testing.T) {
+	src := `class Counter { var n: int }
+func bad(): int {
+  let x = Counter
+  return 0
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0108") {
+		t.Errorf("expected E0108 for class name used as value, got %v", codes)
+	}
+}
+
+func TestTypeParamAsValueFiresE0108(t *testing.T) {
+	src := `func f<T>(): int {
+  let y = T
+  return 0
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0108") {
+		t.Errorf("expected E0108 for type parameter used as value, got %v", codes)
+	}
+}
+
+func TestTypeQualifierUsesNoE0108(t *testing.T) {
+	// Constructor call, brace literal, static call, variant ref, and
+	// field access are legitimate — none is a "type used as value".
+	src := `import fmt
+class Counter { var n: int  static make(): Counter { return Counter{n: 0} } }
+type Color = | Red | Green
+func ok() {
+  let a = Counter{n: 1}
+  let b = Counter.make()
+  let c = Red
+  fmt.println(a.n, b.n)
+}
+`
+	if codes := runCheck(t, src); contains(codes, "E0108") {
+		t.Errorf("expected no E0108 for legitimate type qualifiers, got %v", codes)
+	}
+}
+
 func TestFloatPatternFiresE0305(t *testing.T) {
 	src := `func main() {
   match 3.14 {

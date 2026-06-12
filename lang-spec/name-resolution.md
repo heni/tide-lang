@@ -111,6 +111,11 @@ enough to be a hard error.
 
 ### Write-shadow of a class field — **E0502 (error)**
 
+> **v1 status: reserved — not yet enforced.** The rule below is the
+> intended behaviour; v1 does not implement shadow tracking, so a
+> write-shadow currently compiles (the closest binding wins, as for a
+> read). E0502 is a reserved code in `diagnostics.md`.
+
 If, inside an instance method, a parameter or method-body local
 introduces a name `n` that **also** names a field of the
 enclosing class, then a **write** to bare `n` is a compile
@@ -134,6 +139,10 @@ closest binding (param / local) wins, which is almost always
 what the developer wants.
 
 ### Soft shadows — **E0503 (warning)**
+
+> **v1 status: reserved — not yet enforced.** The cases below are the
+> intended warnings; v1 does not implement shadow tracking. E0503 is a
+> reserved code in `diagnostics.md`.
 
 Three cases of less-dangerous overlap emit a warning, not an
 error:
@@ -264,9 +273,10 @@ ones above:
   type appears where an expression is required.
 - **E0501** — `this` outside an instance-method body.
 - **E0502** — Write-shadow of a field by a method param or
-  local; a bare write to that name is a hard error.
+  local; a bare write to that name is a hard error. *(v1: reserved
+  — not yet enforced.)*
 - **E0503** — Soft-shadow warnings (local/local,
   param/method-name, local/free-function). Emitted as a
-  warning, not an error.
+  warning, not an error. *(v1: reserved — not yet enforced.)*
 - **E0601** — `scope` reference outside a `scope { ... }`
   block.

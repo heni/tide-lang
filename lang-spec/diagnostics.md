@@ -104,8 +104,8 @@ severity column.
 | Code | Sev | Message | Authoritative rule | Fix |
 |---|---|---|---|---|
 | E0501 | E | `this` outside an instance-method body | `name-resolution.md` §Implicit receiver | Move the reference into an instance method, or drop `this`. |
-| E0502 | E | Write-shadow of a field | `name-resolution.md` §Shadowing — write-shadow | Rename the parameter / local, or qualify the write: `this.f = ...`. |
-| E0503 | W | Soft shadow | `name-resolution.md` §Soft shadows | Rename to make the shadow intent explicit, or accept the warning. |
+| E0502 | E | **reserved** (v1 — Write-shadow of a field; shadow diagnostics deferred) | `name-resolution.md` §Shadowing — write-shadow | Rename the parameter / local, or qualify the write: `this.f = ...`. |
+| E0503 | W | **reserved** (v1 — Soft shadow; shadow diagnostics deferred) | `name-resolution.md` §Soft shadows | Rename to make the shadow intent explicit, or accept the warning. |
 
 ### E06xx — Special names
 
@@ -178,5 +178,8 @@ but missing) block the audit.
 The reverse is NOT required: this file may add codes that
 aren't yet referenced anywhere (reserved for future use), as
 long as they're marked **reserved** in the message column.
-Currently there are no reserved codes — every catalog row is
-live.
+Reserved codes: **E0502** / **E0503** (shadow diagnostics) — the
+codes are allocated and `name-resolution.md` describes the
+intended rules, but v1 does not yet enforce them (they need a
+dedicated shadow-tracking name-resolution pass; no v1 program
+requires them). Every other catalog row is live.
