@@ -119,8 +119,10 @@ class `implements error`) become `this.m(...)`. The resolver has
 already determined the bind; this stage materialises it so
 codegen does not re-walk scopes.
 
-Writes to bare `n` that shadow a field are already blocked by
-E0502 at name resolution; they cannot reach desugaring.
+Writes to bare `n` that shadow a field would be blocked by E0502 at
+name resolution — but E0502 is **reserved / not yet enforced in v1**
+(see `name-resolution.md` §Write-shadow), so in v1 such a write does
+reach desugaring and resolves to the closest binding (the local).
 
 ## Stage 2 — (no-op; parser-level normalisation)
 
