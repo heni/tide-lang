@@ -492,7 +492,10 @@ s.copy()          → append(s[:0:0], s...)     (fresh-backing clone: the
                                                 append to allocate, so the
                                                 result never aliases s —
                                                 expression-form, no element
-                                                type named)
+                                                type named; the receiver is
+                                                emitted twice, so v1 expects
+                                                a side-effect-free receiver
+                                                — an Ident in the corpus)
 s[i]              → s[i]                       (panics on out-of-bounds,
                                                 Go semantics)
 s[lo:hi]          → s[lo:hi]

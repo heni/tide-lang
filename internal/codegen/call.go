@@ -40,10 +40,12 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// refEq(a, b) — class identity. Classes lower to pointer types, so
 	// Go's `==` is reference identity (lowering-go.md §Defer / panic /
 	// refEq); sema's T-RefEq has guaranteed both operands are the same
-	// class. `refEq` is a predeclared builtin (sema §Free functions), so
-	// the bare name is unambiguous. Parenthesised for safe nesting under
-	// a prefix `!` / surrounding operators.
-	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "refEq" && len(c.Args) == 2 {
+	// class. Gated on the callee resolving to the predeclared builtin
+	// (SymBuiltinFunc) so a user decl that shadows the name is still
+	// called normally rather than silently rewritten. Parenthesised for
+	// safe nesting under a prefix `!` / surrounding operators.
+	if id, ok := c.Callee.(*ast.Ident); ok && id.Name == "refEq" && len(c.Args) == 2 &&
+		g.info != nil && g.info.Symbol[id] != nil && g.info.Symbol[id].Kind == sema.SymBuiltinFunc {
 		g.b.WriteByte('(')
 		if err := g.emitExpr(c.Args[0]); err != nil {
 			return err
