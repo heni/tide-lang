@@ -327,6 +327,19 @@ component is.
                       Γ, x : T ⊢ let x : T' = e : unit         (annotation T'
                                                                 optional)
 
+(T-Let-Destructure)
+               Γ ⊢ e : (T_1, ..., T_n)    pat = (p_1, ..., p_n) irrefutable
+               Γ, p_1 : T_1, ..., p_n : T_n ⊢ ...
+               ───────────────────────────────────────────────────────────
+                      Γ ⊢ let (p_1, ..., p_n) = e : unit
+
+       A `let` (not `var`) binding may destructure a tuple value: the
+       pattern's binders take the value's components positionally. The
+       pattern must be irrefutable — names, `_`, and nested tuples only;
+       a literal / variant component is rejected (it would be a runtime
+       test, which a binding cannot express). An arity or non-tuple
+       mismatch is a type error.
+
 (T-Var-Init)   Γ ⊢ e : T     annotation T' (if present) satisfies T' = T
                ─────────────────────────────────────────────────────────
                       Γ, x : T ⊢ var x : T' = e : unit

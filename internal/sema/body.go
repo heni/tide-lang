@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strconv"
+
 	"github.com/heni/tide-lang/internal/ast"
 )
 
@@ -193,18 +195,54 @@ func (c *checker) checkBinding(bindNode ast.Node, pat ast.Pattern, ann ast.TypeE
 
 // setBindingType records the resolved type on the binding's
 // Symbol via Info.Def (LetStmt → its IdentPat; VarStmt → itself).
+// A destructuring `let (a, b) = e` distributes the value's tuple
+// components across the pattern (setPatternType).
 func (c *checker) setBindingType(bindNode ast.Node, pat ast.Pattern, t Type) {
 	if t == nil {
 		return
 	}
-	if ip, ok := pat.(*ast.IdentPat); ok {
-		if sym := c.info.Def[ip]; sym != nil {
-			sym.Type = t
-		}
+	if pat != nil {
+		c.setPatternType(pat, t)
 		return
 	}
 	if sym := c.info.Def[bindNode]; sym != nil {
 		sym.Type = t
+	}
+}
+
+// setPatternType types the binders of an irrefutable let/var pattern
+// from t. An IdentPat takes t directly; a TuplePat distributes t's
+// components when t is a Tuple of matching arity (T-Let-Destructure),
+// reporting E0201 on an arity / non-tuple mismatch. A concretely-bad
+// shape is diagnosed; an Unknown value type leaves binders Unknown.
+func (c *checker) setPatternType(pat ast.Pattern, t Type) {
+	switch p := pat.(type) {
+	case *ast.IdentPat:
+		if sym := c.info.Def[p]; sym != nil {
+			sym.Type = t
+		}
+	case *ast.WildcardPat:
+		// `_` binds nothing.
+	case *ast.TuplePat:
+		tup, ok := t.(*Tuple)
+		if !ok {
+			if concrete(t) {
+				c.report("E0201", "Cannot destructure — value is "+t.String()+", not a tuple", p.Span)
+			}
+			return
+		}
+		if len(tup.Comps) != len(p.Sub) {
+			c.report("E0201", "Tuple destructuring arity mismatch — pattern binds "+
+				strconv.Itoa(len(p.Sub))+" but value has "+strconv.Itoa(len(tup.Comps)), p.Span)
+			return
+		}
+		for i, sub := range p.Sub {
+			c.setPatternType(sub, tup.Comps[i])
+		}
+	default:
+		// Literal / variant components are refutable — a let/var
+		// binding must be irrefutable (only names, `_`, nested tuples).
+		c.report("E0201", "Refutable pattern in binding — `let`/`var` bind irrefutably; use `match` to test a value", pat.NodeSpan())
 	}
 }
 

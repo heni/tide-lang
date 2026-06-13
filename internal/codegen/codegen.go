@@ -310,6 +310,9 @@ type gen struct {
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
+	// destructureTempCounter generates unique temp names for the
+	// `let (a, b) = e` tuple-destructuring binding.
+	destructureTempCounter int
 	// loopTempCounter generates unique throwaway counter names for
 	// `for _ in low..high` (a wildcard loop var over a numeric range,
 	// where Go's `i++` form needs a named — not `_` — counter).
@@ -1664,13 +1667,14 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.ForStmt:
 		return g.emitForStmt(v)
 	case *ast.LetStmt:
-		// PR-F1 admits only IdentPat at let position (parser
-		// enforced). Pattern destructuring lands later.
-		idPat, ok := v.Pattern.(*ast.IdentPat)
-		if !ok {
-			return fmt.Errorf("codegen: only IdentPat in `let` for PR-F1, got %T", v.Pattern)
+		switch pat := v.Pattern.(type) {
+		case *ast.IdentPat:
+			return g.emitLetOrVar(v.Span, pat.Name, v.DeclType, v.Value)
+		case *ast.TuplePat:
+			return g.emitDestructureLet(v.Span, pat, v.Value)
+		default:
+			return fmt.Errorf("codegen: unsupported `let` pattern %T", v.Pattern)
 		}
-		return g.emitLetOrVar(v.Span, idPat.Name, v.DeclType, v.Value)
 	case *ast.VarStmt:
 		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
 	case *ast.AssignStmt:
@@ -2108,6 +2112,33 @@ func lastSeg(q []string) string {
 		return ""
 	}
 	return q[len(q)-1]
+}
+
+// emitDestructureLet lowers `let (a, b) = e` (lowering-go.md
+// §While-loops neighbour — Tuple destructuring). The value is bound to
+// a fresh temp once (so a side-effecting RHS runs exactly once), then
+// each component is bound positionally via bindSubPattern (`a :=
+// tmp._0`, …), recursing for nested tuples; a `_` component binds
+// nothing.
+func (g *gen) emitDestructureLet(span ast.Span, pat *ast.TuplePat, value ast.Expr) error {
+	tmp := g.nextDestructureTemp()
+	g.line(span.StartLine)
+	g.writeIndent()
+	g.b.WriteString(tmp)
+	g.b.WriteString(" := ")
+	if err := g.emitExpr(value); err != nil {
+		return err
+	}
+	g.b.WriteByte('\n')
+	return g.bindSubPattern(pat, tmp)
+}
+
+// nextDestructureTemp returns a fresh Go identifier for a
+// tuple-destructuring temp, sharing the runtime-prefix convention with
+// the other codegen-internal temps.
+func (g *gen) nextDestructureTemp() string {
+	g.destructureTempCounter++
+	return fmt.Sprintf("__tide_destructure_%d", g.destructureTempCounter)
 }
 
 // emitLetOrVar lowers both `let` and `var` to Go's `var name [T] = value`.

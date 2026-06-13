@@ -2,8 +2,8 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 12,
-    "sema_fail": 6,
+    "parse_fail": 11,
+    "sema_fail": 7,
     "emit_fail": 5,
     "build_ok": 29
   },
@@ -35,8 +35,8 @@
     },
     {
       "path": "examples/aoc/2025/d05.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected binding name"
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name sort"
     },
     {
       "path": "examples/aoc/2025/d07.td",
@@ -196,7 +196,7 @@
     {
       "path": "examples/services/parallel_fetcher.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected binding name"
+      "blocker": "error[E0112]: expected Punct \"{\", got Punct \".\""
     },
     {
       "path": "examples/services/todo_api.td",

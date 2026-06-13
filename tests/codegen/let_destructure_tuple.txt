@@ -1,0 +1,41 @@
+--- TITLE ---
+`let (a, b) = e` tuple destructuring — bind value to a temp, then components
+
+--- INPUT ---
+import fmt
+
+func pair(): (int, string) {
+  return (7, "hi")
+}
+
+func main() {
+  let (n, s) = pair()
+  let (a, _) = pair()
+  fmt.println(n, s, a)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func pair() struct {
+	_0 int
+	_1 string
+} {
+	return struct {
+		_0 int
+		_1 string
+	}{_0: 7, _1: "hi"}
+}
+func main() {
+	__tide_destructure_1 := pair()
+	n := __tide_destructure_1._0
+	s := __tide_destructure_1._1
+	__tide_destructure_2 := pair()
+	a := __tide_destructure_2._0
+	fmt.Println(n, s, a)
+}
+
+--- STDOUT ---
+7 hi 7

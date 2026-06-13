@@ -1304,6 +1304,13 @@ func (p *parser) parseAssignmentTail(lvalue ast.Expr) (*ast.AssignStmt, *Diag) {
 
 func (p *parser) parseLetOrVar(isLet bool) (ast.Stmt, *Diag) {
 	kw := p.advance() // consume 'let' or 'var'
+	// `let (a, b) = e` — tuple-destructuring binding (let only; `var`
+	// keeps a single Name). The pattern parser yields a TuplePat; sema
+	// distributes the RHS tuple's components and rejects refutable /
+	// arity-mismatched shapes.
+	if isLet && p.at(lexer.KindPunct, "(") {
+		return p.parseDestructureLet(kw)
+	}
 	if !p.at(lexer.KindIdent) {
 		t := p.peek()
 		return nil, p.diag("E0112", "expected binding name", t.Line, t.Col)
@@ -1360,6 +1367,29 @@ func (p *parser) parseLetOrVar(isLet bool) (ast.Stmt, *Diag) {
 	return &ast.VarStmt{
 		Span: span, Name: nameTok.Lexeme, DeclType: declType, Value: value,
 	}, nil
+}
+
+// parseDestructureLet parses `let (a, b, ...) = e`. The `(`-led binding
+// is a TuplePat (reusing the pattern parser); only `let` admits it (a
+// destructuring `var` has no single Name to carry). Component
+// irrefutability and tuple-arity checks are sema's (T-Let-Destructure).
+func (p *parser) parseDestructureLet(kw lexer.Token) (ast.Stmt, *Diag) {
+	pat, err := p.parseSinglePat()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.KindOp, "="); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	span := ast.Span{
+		StartLine: kw.Line, StartCol: kw.Col,
+		EndLine: value.NodeSpan().EndLine, EndCol: value.NodeSpan().EndCol,
+	}
+	return &ast.LetStmt{Span: span, Pattern: pat, Value: value}, nil
 }
 
 // parseReturnExpr parses `return` or `return <expr>` and returns
