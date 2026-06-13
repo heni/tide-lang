@@ -26,6 +26,19 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return g.emitReflectCall(f.Name, c.TypeArgs, c.Args)
 		}
 	}
+	// `error(msg)` free constructor (builtins.md §error) → Go's
+	// errors.New(msg). Distinguished from the `.error()` interface
+	// method (a Field callee) and from any error-conversion by the
+	// bare `error` identifier callee with exactly one argument (the
+	// `error(): string` method takes none).
+	if isErrorCtorCall(c) {
+		g.b.WriteString("errors.New(")
+		if err := g.emitExpr(c.Args[0]); err != nil {
+			return err
+		}
+		g.b.WriteByte(')')
+		return nil
+	}
 	// fmt.scan<T>() — stdin binding. Lowers to the tideScan helper,
 	// which wraps Go's pointer-mutation `fmt.Scan(&v)` into the
 	// Result<T, error> return form (binding-surface.md §fmt).
@@ -527,6 +540,16 @@ func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.T
 // value stdin binding). Multi-value scan2/scan3 land later.
 func isFmtScan(e ast.Expr) bool {
 	return isFieldCall(e, "fmt", "scan")
+}
+
+// isErrorCtorCall reports whether c is the `error(msg)` free
+// constructor (builtins.md §error): a bare `error` identifier callee
+// with exactly one argument. The `error(): string` interface method
+// takes no arguments, and `.error()` calls are Field callees, so the
+// one-argument bare-Ident form is unambiguous.
+func isErrorCtorCall(c *ast.Call) bool {
+	id, ok := c.Callee.(*ast.Ident)
+	return ok && id.Name == "error" && len(c.Args) == 1
 }
 
 // emitTypeArgs writes a Go type-argument list `[A, B, …]` for the

@@ -1,0 +1,58 @@
+--- TITLE ---
+`error(msg)` free constructor lowers to errors.New(msg)
+
+--- INPUT ---
+import fmt
+
+func check(ok: bool): Result<int, error> {
+  if ok { return Ok(1) }
+  return Err(error("not ok"))
+}
+
+func main() {
+  match check(false) {
+    Ok(n)  => fmt.println("ok:", n),
+    Err(e) => fmt.println("err:", e.error()),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func check(ok bool) Result[int, error] {
+	if ok {
+		return ResultOk[int, error](1)
+	}
+	return ResultErr[int, error](errors.New("not ok"))
+}
+func main() {
+	__tide_match_1 := check(false)
+	switch __tide_match_1.Tag {
+	case 0:
+		n := __tide_match_1.V
+		fmt.Println("ok:", n)
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err:", e.Error())
+	}
+}
+
+--- STDOUT ---
+err: not ok
