@@ -50,6 +50,26 @@ func (g *gen) emitCall(c *ast.Call) error {
 		g.b.WriteString("()")
 		return nil
 	}
+	// fmt.scan2<A,B>() / fmt.scan3<A,B,C>() — multi-value stdin bindings
+	// returning Result<(A,B[,C]), error> (binding-surface.md §fmt). Lower
+	// to the tideScan2 / tideScan3 helpers (one fmt.Scan of N pointers,
+	// folded into a tuple Ok). The tuple Ok payload destructures through
+	// the existing tuple-in-variant-payload match path.
+	if n := fmtScanMultiArity(c.Callee); n > 0 && len(c.TypeArgs) == n {
+		if n == 2 {
+			g.usesScan2 = true
+			g.b.WriteString("tideScan2")
+		} else {
+			g.usesScan3 = true
+			g.b.WriteString("tideScan3")
+		}
+		g.usesResult = true
+		if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+			return err
+		}
+		g.b.WriteString("()")
+		return nil
+	}
 	// refEq(a, b) — class identity. Classes lower to pointer types, so
 	// Go's `==` is reference identity (lowering-go.md §Defer / panic /
 	// refEq); sema's T-RefEq has guaranteed both operands are the same
@@ -595,9 +615,22 @@ func (g *gen) predeclaredCtorTypeArgs(name string, expect ast.TypeExpr) ([]ast.T
 }
 
 // isFmtScan reports whether e is the callee `fmt.scan` (the single-
-// value stdin binding). Multi-value scan2/scan3 land later.
+// value stdin binding).
 func isFmtScan(e ast.Expr) bool {
 	return isFieldCall(e, "fmt", "scan")
+}
+
+// fmtScanMultiArity returns the arity of a multi-value `fmt.scanN`
+// stdin binding callee (2 for `fmt.scan2`, 3 for `fmt.scan3`), or 0
+// when e is not one. The single-value `fmt.scan` is isFmtScan's domain.
+func fmtScanMultiArity(e ast.Expr) int {
+	switch {
+	case isFieldCall(e, "fmt", "scan2"):
+		return 2
+	case isFieldCall(e, "fmt", "scan3"):
+		return 3
+	}
+	return 0
 }
 
 // isErrorCtorCall reports whether c is the `error(msg)` free
