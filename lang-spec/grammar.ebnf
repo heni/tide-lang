@@ -232,6 +232,7 @@ Token = Newline
 // `ast.md` — forthcoming). The grammar is presented in the
 // order a recursive-descent parser would consume it.
 //
+// §SyntaxNewlineSuppression
 // "Newline" below means the Newline token from the lexical
 // part. Inside `(...)`, `[...]`, and `<...>` regions, Newline
 // tokens are silently dropped before the parser sees them — this
