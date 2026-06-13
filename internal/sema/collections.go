@@ -283,8 +283,9 @@ func containerMethodType(recv Type, name string) *Func {
 			return &Func{Return: &Slice{Elem: r.Key}}
 		case "values":
 			return &Func{Return: &Slice{Elem: r.Val}}
-		case "entries":
-			return &Func{Return: &Slice{Elem: &Tuple{Comps: []Type{r.Key, r.Val}}}}
+			// `entries()` is in builtins.md but has no prelude method in
+			// codegen yet — left out so the sema table stays in lockstep
+			// with what codegen can lower (no spec-ahead typing).
 		}
 	case *Set:
 		switch name {
