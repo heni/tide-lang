@@ -437,11 +437,10 @@ func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 	return "", false
 }
 
-// emitPayloadBindings writes one `b := <subject>.<PayloadField>`
-// line per sub-pattern of a VariantPat. IdentPat sub-patterns
-// produce a binding; WildcardPat sub-patterns emit nothing.
-// Other sub-pattern shapes (nested VariantPat etc.) are not
-// supported in v1.
+// emitPayloadBindings binds each sub-pattern of a VariantPat against
+// its payload field `<subject>.<PayloadField>`, delegating the
+// per-sub-pattern shape (Ident / Wildcard / nested Tuple) to
+// bindSubPattern.
 func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error {
 	name := lastSeg(vp.QName)
 	info, ok := g.variant[name]
@@ -453,34 +452,57 @@ func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error 
 			name, len(info.fields), len(vp.Sub))
 	}
 	for i, sub := range vp.Sub {
-		switch sp := sub.(type) {
-		case *ast.IdentPat:
-			g.writeIndent()
-			g.b.WriteString(goIdent(sp.Name))
-			g.b.WriteString(" := ")
-			// A self-referential payload field is stored as a pointer
-			// (§Recursive sum types); deref it so the binding has the
-			// sum's value type, not `*T`.
-			if isSelfRefField(info.fields[i], info.owner) {
-				g.b.WriteByte('*')
-			}
-			g.b.WriteString(subjectExpr)
-			g.b.WriteByte('.')
-			// Predeclared sums use spec-fixed field names (V / E)
-			// per `lang-spec/lowering-go.md` §Container types;
-			// user-declared variants follow the PR-F5a
-			// `<Variant><FieldName>` convention.
-			if pf := predeclaredPayloadField(name); pf != "" {
-				g.b.WriteString(pf)
-			} else {
-				g.b.WriteString(payloadFieldName(name, info.fields[i].Name))
-			}
-			g.b.WriteByte('\n')
-		case *ast.WildcardPat:
-			// Nothing to bind.
-		default:
-			return fmt.Errorf("codegen: nested sub-pattern %T in variant payload not supported in v1", sub)
+		// A self-referential payload field is stored as a pointer
+		// (§Recursive sum types); deref it so the binding has the
+		// sum's value type, not `*T`.
+		deref := ""
+		if isSelfRefField(info.fields[i], info.owner) {
+			deref = "*"
 		}
+		// Predeclared sums use spec-fixed field names (V / E)
+		// per `lang-spec/lowering-go.md` §Container types;
+		// user-declared variants follow the PR-F5a
+		// `<Variant><FieldName>` convention.
+		var fieldName string
+		if pf := predeclaredPayloadField(name); pf != "" {
+			fieldName = pf
+		} else {
+			fieldName = payloadFieldName(name, info.fields[i].Name)
+		}
+		fieldExpr := deref + subjectExpr + "." + fieldName
+		if err := g.bindSubPattern(sub, fieldExpr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bindSubPattern writes the binding lines destructuring `valueExpr`
+// (the Go expression yielding the matched value) according to sub.
+// IdentPat binds the whole value; WildcardPat binds nothing; a
+// TuplePat destructures positionally (`valueExpr._0`, `._1`, …),
+// recursing on each component — this is how a tuple nested in a
+// variant payload (`Some((i, j))`) binds its parts. A component that
+// is itself a literal/variant pattern would need conditional matching
+// and is unsupported in payload position in v1.
+func (g *gen) bindSubPattern(sub ast.Pattern, valueExpr string) error {
+	switch sp := sub.(type) {
+	case *ast.IdentPat:
+		g.writeIndent()
+		g.b.WriteString(goIdent(sp.Name))
+		g.b.WriteString(" := ")
+		g.b.WriteString(valueExpr)
+		g.b.WriteByte('\n')
+	case *ast.WildcardPat:
+		// Nothing to bind.
+	case *ast.TuplePat:
+		for i, comp := range sp.Sub {
+			if err := g.bindSubPattern(comp, fmt.Sprintf("%s._%d", valueExpr, i)); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("codegen: nested sub-pattern %T in variant payload not supported in v1", sub)
 	}
 	return nil
 }
