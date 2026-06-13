@@ -589,6 +589,21 @@ ForChanIR { iter: ch : RecvChan<T>, bind: x, body: B }
 The `Order()` accessor on `Map` and `Set` is in the runtime
 package; it exposes the insertion-order slice.
 
+## While-loops
+
+```
+WhileIR { cond: C, body: B }   ⟿   for <lowering of C> { <lowering of B> }
+
+WhileIR { cond: true, body: B } ⟿   for { <lowering of B> }
+```
+
+`while true` lowers to Go's condition-less `for { … }`, **not**
+`for true { … }`. Only the condition-less form is a *terminating
+statement* in Go: a `while true` whose sole exits are `return`s in
+the body (a common shape for `match`-driven loops) would otherwise
+draw a spurious "missing return" after the loop. The literal `true`
+is recognised through redundant parentheses.
+
 ## Generics
 
 Tide generics lower to Go generics one-to-one:

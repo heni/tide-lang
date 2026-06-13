@@ -213,15 +213,23 @@ func (g *gen) emitIfExprAsStmt(e *ast.IfExpr) error {
 }
 
 // emitWhileStmt lowers `while cond { body }` to Go's condition-only
-// `for cond { body }` (lowering-go.md §Loops).
+// `for cond { body }` (lowering-go.md §While-loops). `while true` lowers
+// to the unconditional `for { body }`: Go counts only the condition-less
+// form as a terminating statement, so a `while true` whose only exits
+// are `return`s inside the body needs `for {` — `for true {` is not
+// terminating to Go, yielding a spurious "missing return" after it.
 func (g *gen) emitWhileStmt(s *ast.WhileStmt) error {
 	g.line(s.Span.StartLine)
 	g.writeIndent()
-	g.b.WriteString("for ")
-	if err := g.emitExpr(s.Cond); err != nil {
-		return err
+	if isBoolTrueLit(s.Cond) {
+		g.b.WriteString("for {\n")
+	} else {
+		g.b.WriteString("for ")
+		if err := g.emitExpr(s.Cond); err != nil {
+			return err
+		}
+		g.b.WriteString(" {\n")
 	}
-	g.b.WriteString(" {\n")
 	g.indent++
 	if err := g.emitBlockBody(s.Body); err != nil {
 		return err
@@ -230,6 +238,21 @@ func (g *gen) emitWhileStmt(s *ast.WhileStmt) error {
 	g.writeIndent()
 	g.b.WriteString("}\n")
 	return nil
+}
+
+// isBoolTrueLit reports whether e is the boolean literal `true`
+// (looking through redundant parentheses) — the `while true` infinite
+// loop, lowered to Go's terminating `for {}` form.
+func isBoolTrueLit(e ast.Expr) bool {
+	for {
+		if p, ok := e.(*ast.ParenExpr); ok {
+			e = p.Inner
+			continue
+		}
+		break
+	}
+	b, ok := e.(*ast.BoolLitExpr)
+	return ok && b.Value
 }
 
 // patGoName renders a for-loop sub-pattern as a Go binding: the

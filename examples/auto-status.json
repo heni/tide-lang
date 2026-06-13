@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 12,
     "sema_fail": 6,
-    "emit_fail": 6,
-    "build_ok": 28
+    "emit_fail": 5,
+    "build_ok": 29
   },
   "files": [
     {
@@ -155,8 +155,8 @@
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",
-      "stage": "emit",
-      "blocker": "go build failed"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/leetcode/two_sum.td",

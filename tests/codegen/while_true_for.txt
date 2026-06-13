@@ -1,0 +1,38 @@
+--- TITLE ---
+`while true` lowers to Go's terminating `for {}` (no spurious missing-return)
+
+--- INPUT ---
+import fmt
+
+func firstEven(xs: []int): int {
+  var i = 0
+  while true {
+    if xs[i] % 2 == 0 { return xs[i] }
+    i = i + 1
+  }
+}
+
+func main() {
+  fmt.println(firstEven([1, 3, 4, 7]))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func firstEven(xs []int) int {
+	var i = 0
+	for {
+		if xs[i]%2 == 0 {
+			return xs[i]
+		}
+		i = i + 1
+	}
+}
+func main() {
+	fmt.Println(firstEven([]int{1, 3, 4, 7}))
+}
+
+--- STDOUT ---
+4
