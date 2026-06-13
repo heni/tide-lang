@@ -83,6 +83,25 @@ func TestLayoutEquivalence(t *testing.T) {
 			},
 		},
 		{
+			name:  "generic type-argument list",
+			canon: "func main() { let m = Map<int, string>{}\n}",
+			variants: []string{
+				"func main() { let m = Map<int,\nstring>{}\n}",   // newline after `,`
+				"func main() { let m = Map<int, string\n>{}\n}",  // newline before `>`
+				"func main() { let m = Map<\nint, string>{}\n}",  // newline after `<`
+				"func main() { let m = Map< int , string >{}\n}", // whitespace
+			},
+		},
+		{
+			name:  "leading-dot method chain",
+			canon: "func main() { let s = items.filter(p).map(f)\n}",
+			variants: []string{
+				"func main() { let s = items\n.filter(p)\n.map(f)\n}",      // newline before each `.`
+				"func main() { let s = items // c\n.filter(p)\n.map(f)\n}", // line comment before `.`
+				"func main() { let s = items\n  .filter(p) .map(f)\n}",     // mixed
+			},
+		},
+		{
 			name:  "block interior keeps significant newlines under enclosing parens",
 			canon: "func apply(f: func(): int): int { return f() }\nfunc main() { let r = apply(func(): int { let a = 1\nreturn a })\n}",
 			variants: []string{
