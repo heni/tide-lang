@@ -1,0 +1,37 @@
+--- TITLE ---
+Braceless assignment as a match-arm body — parses into an implicit unit Block wrapping the AssignStmt (MatchArm body; AssignStmt)
+
+--- INPUT ---
+func apply(s: Step) {
+  match s {
+    Forward(n) => pos = pos + n,
+    Reset => pos = 0,
+  }
+}
+
+--- AST ---
+(File @1:1-6:2
+  (FuncDecl "apply" @1:1-6:2
+    (type-params)
+    (params
+      (Param "s" @1:12-1:19
+        (NamedType "Step" @1:15-1:19)))
+    (Block @1:21-6:2
+      (trailing
+        (MatchExpr @2:3-5:4
+          (Ident "s" @2:9-2:10)
+          (MatchArm @3:5-3:32
+            (VariantPat "Forward" @3:5-3:15
+              (IdentPat "n" @3:13-3:14))
+            (Block @3:19-3:32
+              (AssignStmt @3:19-3:32
+                (Ident "pos" @3:19-3:22)
+                (Binary "+" @3:25-3:32
+                  (Ident "pos" @3:25-3:28)
+                  (Ident "n" @3:31-3:32)))))
+          (MatchArm @4:5-4:21
+            (VariantPat "Reset" @4:5-4:10)
+            (Block @4:14-4:21
+              (AssignStmt @4:14-4:21
+                (Ident "pos" @4:14-4:17)
+                (IntLitExpr 0 @4:20-4:21)))))))))

@@ -1178,60 +1178,71 @@ func (p *parser) parseStmt() (ast.Stmt, *Diag) {
 		if err != nil {
 			return nil, err
 		}
-		// `lvalue = value` — distinguishing from `==` is a
-		// non-issue because `=` is its own Op token (the lexer
-		// emits `==` as a single token; bare `=` only appears
-		// in assignment position).
-		if p.at(lexer.KindOp, "=") {
-			eqTok := p.advance()
+		if assign, err := p.parseAssignmentTail(e); err != nil {
+			return nil, err
+		} else if assign != nil {
+			return assign, nil
+		}
+		return &ast.ExprStmt{Span: e.NodeSpan(), Expr: e}, nil
+	}
+}
+
+// parseAssignmentTail consumes a `= rhs` or compound-assign (`+=` …)
+// tail following an already-parsed lvalue and builds the AssignStmt.
+// Returns (nil, nil) when no assignment operator follows — the caller
+// then treats the lvalue as a plain expression. Shared by statement
+// position and the braceless-assignment match-arm body.
+func (p *parser) parseAssignmentTail(lvalue ast.Expr) (*ast.AssignStmt, *Diag) {
+	// `lvalue = value` — distinguishing from `==` is a non-issue
+	// because `=` is its own Op token (the lexer emits `==` as a
+	// single token; bare `=` only appears in assignment position).
+	if p.at(lexer.KindOp, "=") {
+		p.advance()
+		rhs, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.AssignStmt{
+			Span: ast.Span{
+				StartLine: lvalue.NodeSpan().StartLine, StartCol: lvalue.NodeSpan().StartCol,
+				EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
+			},
+			LValue: lvalue,
+			Value:  rhs,
+		}, nil
+	}
+	// Compound assignment: `lhs += rhs` desugars to `lhs = lhs + rhs`
+	// at the AST level. The LValue is reused on both sides — this is
+	// correct as long as the LValue has no side-effecting subexpression
+	// (a plain identifier or field/index path); sema will tighten this
+	// once it lands.
+	for _, op := range []string{"+=", "-=", "*=", "/=", "%="} {
+		if p.at(lexer.KindOp, op) {
+			opTok := p.advance()
 			rhs, err := p.parseExpr()
 			if err != nil {
 				return nil, err
 			}
-			_ = eqTok
+			binOp := op[:1]
 			return &ast.AssignStmt{
 				Span: ast.Span{
-					StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+					StartLine: lvalue.NodeSpan().StartLine, StartCol: lvalue.NodeSpan().StartCol,
 					EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
 				},
-				LValue: e,
-				Value:  rhs,
-			}, nil
-		}
-		// Compound assignment: `lhs += rhs` desugars to
-		// `lhs = lhs + rhs` at the AST level. The LValue is
-		// reused on both sides — this is correct as long as
-		// the LValue has no side-effecting subexpression
-		// (a plain identifier or field/index path); sema will
-		// tighten this once it lands.
-		for _, op := range []string{"+=", "-=", "*=", "/=", "%="} {
-			if p.at(lexer.KindOp, op) {
-				opTok := p.advance()
-				rhs, err := p.parseExpr()
-				if err != nil {
-					return nil, err
-				}
-				binOp := op[:1]
-				return &ast.AssignStmt{
+				LValue: lvalue,
+				Value: &ast.Binary{
 					Span: ast.Span{
-						StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+						StartLine: opTok.Line, StartCol: opTok.Col,
 						EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
 					},
-					LValue: e,
-					Value: &ast.Binary{
-						Span: ast.Span{
-							StartLine: opTok.Line, StartCol: opTok.Col,
-							EndLine: rhs.NodeSpan().EndLine, EndCol: rhs.NodeSpan().EndCol,
-						},
-						Op:    binOp,
-						Left:  e,
-						Right: rhs,
-					},
-				}, nil
-			}
+					Op:    binOp,
+					Left:  lvalue,
+					Right: rhs,
+				},
+			}, nil
 		}
-		return &ast.ExprStmt{Span: e.NodeSpan(), Expr: e}, nil
 	}
+	return nil, nil
 }
 
 func (p *parser) parseLetOrVar(isLet bool) (ast.Stmt, *Diag) {
@@ -2702,6 +2713,16 @@ func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 		body, err := p.parseExpr()
 		if err != nil {
 			return nil, err
+		}
+		// A braceless assignment (`Some(h) => h.prev = x`) is a
+		// side-effecting arm body. The grammar's MatchArm body is an
+		// Expr, so wrap the assignment in an implicit unit Block —
+		// the existing block-arm lowering then applies (grammar
+		// §SyntaxNewlineSuppression note on MatchArm; AssignStmt).
+		if assign, aerr := p.parseAssignmentTail(body); aerr != nil {
+			return nil, aerr
+		} else if assign != nil {
+			body = &ast.Block{Span: assign.Span, Stmts: []ast.Stmt{assign}}
 		}
 		arms = append(arms, &ast.MatchArm{
 			Span: ast.Span{

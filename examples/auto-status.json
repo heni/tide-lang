@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 14,
+    "parse_fail": 12,
     "sema_fail": 6,
-    "emit_fail": 6,
+    "emit_fail": 8,
     "build_ok": 26
   },
   "files": [
@@ -131,7 +131,7 @@
     {
       "path": "examples/interview/lru_cache.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
+      "blocker": "error[E0112]: expected expression, got Punct \",\""
     },
     {
       "path": "examples/interview/rpn_calculator.td",
@@ -210,8 +210,8 @@
     },
     {
       "path": "examples/timus/p1033.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/timus/p1133.td",
@@ -220,8 +220,8 @@
     },
     {
       "path": "examples/timus/p1242.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected `,` between match arms (or `}` to close)"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/timus/p1335.td",

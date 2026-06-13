@@ -517,7 +517,11 @@ ShortParam     = ( Ident | "_" ) ( ":" TypeExpr )? ;
 
 IfExpr       = "if" Expr Block "else" ( IfExpr | Block ) ;   // both arms required for value
 MatchExpr    = "match" Expr "{" Newline? MatchArm ( "," Newline? MatchArm )* ","? Newline? "}" ;
-MatchArm     = Pattern "=>" Newline? Expr ;          // Newline?: body may wrap to next line. Expr covers inline expressions, Blocks (via PrimaryExpr→Block), and divergences (return/break/continue) via DivergingExpr
+MatchArm     = Pattern "=>" Newline? ( Expr | AssignStmt ) ;
+             // Newline?: body may wrap to next line. Expr covers inline expressions,
+             // Blocks (via PrimaryExpr→Block), and divergences (return/break/continue)
+             // via DivergingExpr. A braceless AssignStmt (`Some(h) => h.prev = x`) is a
+             // side-effecting arm body, wrapped by the parser in an implicit unit Block.
 
 ScopeExpr    = "scope" TypeArgs? ( "(" Expr ")" )? Block ;   // optional parent ctx
 TryExpr      = "try" Expr ;

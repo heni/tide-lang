@@ -1,0 +1,67 @@
+--- TITLE ---
+Braceless assignment as a match-arm body — `=> lhs = rhs` / `=> lhs += rhs` lower to a `case` assignment (wrapped in an implicit unit Block)
+
+--- INPUT ---
+import fmt
+
+type Step = | Forward(n: int) | Reset
+
+func apply(pos: int, s: Step): int {
+  var p = pos
+  match s {
+    Forward(n) => p += n,
+    Reset      => p = 0,
+  }
+  return p
+}
+
+func main() {
+  var pos = 0
+  pos = apply(pos, Forward(3))
+  pos = apply(pos, Reset)
+  pos = apply(pos, Forward(5))
+  fmt.println(pos)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Step struct {
+	Tag      uint8
+	ForwardN int
+}
+
+var (
+	StepReset = Step{Tag: 1}
+)
+
+func StepForward(n int) Step {
+	return Step{Tag: 0, ForwardN: n}
+}
+func apply(pos int, s Step) int {
+	var p = pos
+	__tide_match_1 := s
+	switch __tide_match_1.Tag {
+	case 0:
+		n := __tide_match_1.ForwardN
+		p = p + n
+	case 1:
+		p = 0
+	}
+	return p
+}
+func main() {
+	var pos = 0
+	pos = apply(pos, StepForward(3))
+	pos = apply(pos, StepReset)
+	pos = apply(pos, StepForward(5))
+	fmt.Println(pos)
+}
+
+--- STDOUT ---
+5
+
+--- EXIT ---
+0
