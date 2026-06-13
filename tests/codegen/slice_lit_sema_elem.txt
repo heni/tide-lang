@@ -1,0 +1,38 @@
+--- TITLE ---
+Inferred slice literal with non-literal elements — element Go type comes from sema's side-table (`[v]`, `[xs[0], xs[0]+1]`), not first-literal inference
+
+--- INPUT ---
+import fmt
+
+func wrap(v: int): []int {
+  return [v]
+}
+
+func main() {
+  let xs = wrap(7)
+  let ys = [xs[0], xs[0] + 1]
+  fmt.println(ys[0])
+  fmt.println(ys[1])
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func wrap(v int) []int {
+	return []int{v}
+}
+func main() {
+	var xs = wrap(7)
+	var ys = []int{xs[0], xs[0] + 1}
+	fmt.Println(ys[0])
+	fmt.Println(ys[1])
+}
+
+--- STDOUT ---
+7
+8
+
+--- EXIT ---
+0

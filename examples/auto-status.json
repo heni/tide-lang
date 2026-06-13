@@ -211,7 +211,7 @@
     {
       "path": "examples/timus/p1033.td",
       "stage": "emit",
-      "blocker": "unknown failure"
+      "blocker": "go build failed"
     },
     {
       "path": "examples/timus/p1133.td",
