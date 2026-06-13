@@ -31,7 +31,7 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// method (a Field callee) and from any error-conversion by the
 	// bare `error` identifier callee with exactly one argument (the
 	// `error(): string` method takes none).
-	if isErrorCtorCall(c) {
+	if g.isErrorCtorCall(c) {
 		g.b.WriteString("errors.New(")
 		if err := g.emitExpr(c.Args[0]); err != nil {
 			return err
@@ -544,12 +544,23 @@ func isFmtScan(e ast.Expr) bool {
 
 // isErrorCtorCall reports whether c is the `error(msg)` free
 // constructor (builtins.md §error): a bare `error` identifier callee
-// with exactly one argument. The `error(): string` interface method
-// takes no arguments, and `.error()` calls are Field callees, so the
-// one-argument bare-Ident form is unambiguous.
-func isErrorCtorCall(c *ast.Call) bool {
+// with exactly one argument whose sema symbol is the predeclared
+// `error` builtin type. Gating on the resolved symbol (not the bare
+// name) means a user who shadows `error` with their own decl is not
+// silently hijacked — same discipline as the refEq intercept. The
+// `error(): string` interface method takes no arguments, and
+// `.error()` calls are Field callees, so the one-argument form is
+// otherwise unambiguous.
+func (g *gen) isErrorCtorCall(c *ast.Call) bool {
 	id, ok := c.Callee.(*ast.Ident)
-	return ok && id.Name == "error" && len(c.Args) == 1
+	if !ok || id.Name != "error" || len(c.Args) != 1 {
+		return false
+	}
+	if g.info == nil {
+		return false
+	}
+	sym := g.info.Symbol[id]
+	return sym != nil && sym.Kind == sema.SymBuiltinType
 }
 
 // emitTypeArgs writes a Go type-argument list `[A, B, …]` for the

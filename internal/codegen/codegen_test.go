@@ -247,3 +247,32 @@ func main() {
 		t.Errorf("hello stdout = %q; want %q", got, "Tide is rising.\n")
 	}
 }
+
+// TestErrorCtorLowersToErrorsNew locks the `error(msg)` free-constructor
+// lowering and its shadow-safety: the genuine builtin lowers to
+// errors.New, but a user decl that shadows `error` is called normally
+// (gated on the sema SymBuiltinType symbol, mirroring the refEq intercept).
+func TestErrorCtorLowersToErrorsNew(t *testing.T) {
+	src := `func make_err(): Result<int, error> {
+  return Err(error("bad"))
+}
+`
+	out := emitString(t, src)
+	if !strings.Contains(out, `errors.New("bad")`) {
+		t.Errorf("expected errors.New lowering, got:\n%s", out)
+	}
+}
+
+func TestUserErrorDeclNotHijacked(t *testing.T) {
+	src := `func error(msg: string): int { return 42 }
+
+func use(): int { return error("hello") }
+`
+	out := emitString(t, src)
+	if strings.Contains(out, "errors.New") {
+		t.Errorf("user-declared error must not be rewritten to errors.New, got:\n%s", out)
+	}
+	if !strings.Contains(out, `error("hello")`) {
+		t.Errorf("expected the user error func to be called, got:\n%s", out)
+	}
+}

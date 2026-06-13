@@ -969,7 +969,7 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			// fact); a same-named user method would over-pull the
 			// helper, harmless dead code.
 			// `error(msg)` free constructor → errors.New(msg).
-			if isErrorCtorCall(v) {
+			if g.isErrorCtorCall(v) {
 				g.usesErrorCtor = true
 			}
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "tryRecv" {
