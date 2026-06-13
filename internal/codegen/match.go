@@ -437,11 +437,10 @@ func (g *gen) goTypeFromSema(t sema.Type) (string, bool) {
 	return "", false
 }
 
-// emitPayloadBindings writes one `b := <subject>.<PayloadField>`
-// line per sub-pattern of a VariantPat. IdentPat sub-patterns
-// produce a binding; WildcardPat sub-patterns emit nothing.
-// Other sub-pattern shapes (nested VariantPat etc.) are not
-// supported in v1.
+// emitPayloadBindings binds each sub-pattern of a VariantPat against
+// its payload field `<subject>.<PayloadField>`, delegating the
+// per-sub-pattern shape (Ident / Wildcard / nested Tuple) to
+// bindSubPattern.
 func (g *gen) emitPayloadBindings(vp *ast.VariantPat, subjectExpr string) error {
 	name := lastSeg(vp.QName)
 	info, ok := g.variant[name]
