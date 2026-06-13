@@ -258,6 +258,71 @@ func channelWidens(want, got Type) bool {
 	return false
 }
 
+// containerMethodType returns the Func type of a predeclared-container
+// method (`Map`/`Set`/`Stack`/`[]T`) for the given receiver, or nil
+// when recv is not such a container or has no method of that name.
+// Signatures mirror the prelude methods emitted by codegen exactly
+// (builtins.md §Slice/Map/Set/Stack); without this, a container-method
+// call types Unknown, so a match payload over `m.get(k)` is untyped
+// (T-Container-Method, type-system.md).
+func containerMethodType(recv Type, name string) *Func {
+	switch r := recv.(type) {
+	case *Map:
+		switch name {
+		case "len":
+			return &Func{Return: &Builtin{N: "int"}}
+		case "has":
+			return &Func{Params: []Type{r.Key}, Return: &Builtin{N: "bool"}}
+		case "get":
+			return &Func{Params: []Type{r.Key}, Return: &Option{T: r.Val}}
+		case "set":
+			return &Func{Params: []Type{r.Key, r.Val}, Return: &Unit{}}
+		case "delete":
+			return &Func{Params: []Type{r.Key}, Return: &Unit{}}
+		case "keys":
+			return &Func{Return: &Slice{Elem: r.Key}}
+		case "values":
+			return &Func{Return: &Slice{Elem: r.Val}}
+		case "entries":
+			return &Func{Return: &Slice{Elem: &Tuple{Comps: []Type{r.Key, r.Val}}}}
+		}
+	case *Set:
+		switch name {
+		case "len":
+			return &Func{Return: &Builtin{N: "int"}}
+		case "has":
+			return &Func{Params: []Type{r.Elem}, Return: &Builtin{N: "bool"}}
+		case "add":
+			return &Func{Params: []Type{r.Elem}, Return: &Unit{}}
+		case "delete":
+			return &Func{Params: []Type{r.Elem}, Return: &Unit{}}
+		case "toSlice":
+			return &Func{Return: &Slice{Elem: r.Elem}}
+		}
+	case *Stack:
+		switch name {
+		case "len":
+			return &Func{Return: &Builtin{N: "int"}}
+		case "push":
+			return &Func{Params: []Type{r.Elem}, Return: &Unit{}}
+		case "pop":
+			return &Func{Return: &Result{T: r.Elem, E: &Builtin{N: "error"}}}
+		case "peek":
+			return &Func{Return: &Option{T: r.Elem}}
+		}
+	case *Slice:
+		switch name {
+		case "len":
+			return &Func{Return: &Builtin{N: "int"}}
+		case "push":
+			return &Func{Params: []Type{r.Elem}, Return: &Slice{Elem: r.Elem}}
+		case "copy":
+			return &Func{Return: &Slice{Elem: r.Elem}}
+		}
+	}
+	return nil
+}
+
 // channelMethodType returns the Func type of a channel method
 // (T-Chan-Send / T-Chan-Recv / T-Chan-Close) for a receiver of
 // channel kind, or nil when recv is not a channel or has no such

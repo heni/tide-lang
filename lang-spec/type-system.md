@@ -431,6 +431,20 @@ the header — see `../docs/language-spec.md` §Collections.)
                ──────────────────────────────────────
                        Γ ⊢ Stack<T>{ e_1, ..., e_n } : Stack<T>
 
+(T-Container-Method)
+               Γ ⊢ recv : C   C ∈ { Map<K,V>, Set<T>, Stack<T>, []T }
+               method m of C has predeclared signature (P̄): R   (builtins.md)
+               Γ ⊢ a_i : P_i
+               ────────────────────────────────────────────────────────────
+                       Γ ⊢ recv.m(ā) : R
+
+       The method set and its result types are the predeclared total
+       methods catalogued in `builtins.md` (`m.get(k): Option<V>`,
+       `s.pop(): Result<T, error>`, `xs.push(e): []T`, …). Dispatch is
+       on the container kind, not on a nominal declaration — these are
+       built-in types, so the result type is read from the receiver's
+       type-arguments, mirroring the prelude methods codegen emits.
+
 (T-Range)      Γ ⊢ lo : int    Γ ⊢ hi : int
                ──────────────────────────────────────
                        Γ ⊢ lo..hi : Iterable<int>

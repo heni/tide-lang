@@ -445,6 +445,12 @@ func (c *checker) inferField(f *ast.Field) Type {
 	if ct := channelMethodType(recv, f.Name); ct != nil {
 		return ct
 	}
+	// Predeclared-container methods (`Map`/`Set`/`Stack`/`[]T`)
+	// dispatch on the container kind, not on a Named declaration
+	// (T-Container-Method).
+	if ct := containerMethodType(recv, f.Name); ct != nil {
+		return ct
+	}
 	named, ok := recv.(*Named)
 	if !ok {
 		return &Unknown{}
