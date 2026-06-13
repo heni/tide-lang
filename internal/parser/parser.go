@@ -3009,9 +3009,12 @@ func (p *parser) parseSliceLit() (*ast.SliceLit, *Diag) {
 			Items:    items,
 		}, nil
 	}
-	// Inferred form: `[e1, e2, ...]`. At least one element.
+	// Inferred form: `[e1, e2, ...]`. Newlines after `[`, between
+	// items, and before a trailing-comma `]` are suppressed (grammar
+	// §SyntaxNewlineSuppression — `[...]` region).
+	p.skipNewlines()
 	var items []ast.Expr
-	for {
+	for !p.at(lexer.KindPunct, "]") {
 		it, err := p.parseExpr()
 		if err != nil {
 			return nil, err

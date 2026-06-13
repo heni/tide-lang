@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 16,
-    "sema_fail": 5,
-    "emit_fail": 5,
+    "parse_fail": 14,
+    "sema_fail": 6,
+    "emit_fail": 6,
     "build_ok": 26
   },
   "files": [
@@ -140,8 +140,8 @@
     },
     {
       "path": "examples/interview/vending_machine.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Newline \"\""
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/leetcode/invert_binary_tree.td",
@@ -150,8 +150,8 @@
     },
     {
       "path": "examples/leetcode/merge_intervals.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Newline \"\""
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name sort"
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",
