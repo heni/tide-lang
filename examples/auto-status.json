@@ -2,9 +2,9 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 18,
+    "parse_fail": 17,
     "sema_fail": 4,
-    "emit_fail": 4,
+    "emit_fail": 5,
     "build_ok": 26
   },
   "files": [
@@ -55,8 +55,8 @@
     },
     {
       "path": "examples/aoc/2025/d11.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Newline \"\""
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/borgo/concurrency.td",
@@ -86,7 +86,7 @@
     {
       "path": "examples/concurrency/nested_scopes.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Newline \"\""
+      "blocker": "error[E0112]: expected Punct \"{\", got Keyword \"return\""
     },
     {
       "path": "examples/concurrency/pipeline.td",
@@ -196,7 +196,7 @@
     {
       "path": "examples/services/parallel_fetcher.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected type expression, got Newline \"\""
+      "blocker": "error[E0112]: expected binding name"
     },
     {
       "path": "examples/services/todo_api.td",

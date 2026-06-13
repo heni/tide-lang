@@ -1,0 +1,22 @@
+--- TITLE ---
+ReturnAnnot wrapping to the next line — Newline after `:` is suppressed (grammar §SyntaxNewlineSuppression, ReturnAnnot)
+
+--- INPUT ---
+func dfs(v: int):
+    int {
+  return v
+}
+
+--- AST ---
+(File @1:1-4:2
+  (FuncDecl "dfs" @1:1-4:2
+    (type-params)
+    (params
+      (Param "v" @1:10-1:16
+        (PrimitiveType "int" @1:13-1:16)))
+    (return
+      (PrimitiveType "int" @2:5-2:8))
+    (Block @2:9-4:2
+      (ExprStmt @3:3-3:11
+        (ReturnExpr @3:3-3:11
+          (Ident "v" @3:10-3:11))))))

@@ -320,7 +320,7 @@ InterfaceMember = Ident "(" ParamList? ")" ReturnAnnot? Newline+ ;
 FuncDecl     = "func" Ident TypeParams? "(" ParamList? ")" ReturnAnnot? Block ;
 ParamList    = Param ( "," Param )* ;
 Param        = ( Ident | "_" ) ":" TypeExpr ;
-ReturnAnnot  = ":" TypeExpr ;
+ReturnAnnot  = ":" Newline? TypeExpr ;   // type may wrap to the next line
 
 // =============================================================
 // Type expressions

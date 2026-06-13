@@ -598,6 +598,7 @@ func (p *parser) parseInterfaceDecl() (*ast.InterfaceDecl, *Diag) {
 		}
 		if p.at(lexer.KindPunct, ":") {
 			p.advance()
+			p.skipNewlines() // ReturnAnnot: type may wrap to next line (grammar §SyntaxNewlineSuppression)
 			rt, err := p.parseTypeExpr()
 			if err != nil {
 				return nil, err
@@ -674,6 +675,7 @@ func (p *parser) parseMethod() (*ast.Method, *Diag) {
 	var retType ast.TypeExpr
 	if p.at(lexer.KindPunct, ":") {
 		p.advance()
+		p.skipNewlines() // ReturnAnnot: type may wrap to next line (grammar §SyntaxNewlineSuppression)
 		retType, err = p.parseTypeExpr()
 		if err != nil {
 			return nil, err
@@ -718,7 +720,8 @@ func (p *parser) parseFuncDecl() (*ast.FuncDecl, *Diag) {
 	}
 	var retType ast.TypeExpr
 	if p.at(lexer.KindPunct, ":") {
-		p.advance() // consume ':'
+		p.advance()      // consume ':'
+		p.skipNewlines() // ReturnAnnot: type may wrap to next line (grammar §SyntaxNewlineSuppression)
 		retType, err = p.parseTypeExpr()
 		if err != nil {
 			return nil, err
@@ -861,6 +864,7 @@ func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
 		}
 		if p.at(lexer.KindPunct, ":") {
 			p.advance()
+			p.skipNewlines() // ReturnAnnot: type may wrap to next line (grammar §SyntaxNewlineSuppression)
 			rt, err := p.parseTypeExpr()
 			if err != nil {
 				return nil, err
