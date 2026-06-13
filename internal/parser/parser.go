@@ -35,8 +35,52 @@ func Parse(toks []lexer.Token) (*ast.File, *Diag) {
 
 // ParseFile is Parse but tags diagnostics with the source filename.
 func ParseFile(toks []lexer.Token, file string) (*ast.File, *Diag) {
-	p := &parser{toks: toks, file: file}
+	p := &parser{toks: suppressBracketNewlines(toks), file: file}
 	return p.parseFile()
+}
+
+// suppressBracketNewlines drops Newline tokens that fall inside an open
+// `(...)` or `[...]` region — per grammar.ebnf §SyntaxNewlineSuppression
+// (and the lexical-part note: the lexer produces every Newline; the
+// parser suppresses those inside open brackets). A `{...}` block is NOT
+// a suppression region — newlines inside it are statement separators —
+// and record/map/set/stack literals (also `{...}`) suppress between
+// entries via their own parsers, not here. So a `{` saves the current
+// bracket depth and resets it to 0; the matching `}` restores it.
+// `<...>` type-argument lists are handled in the type-arg parser, not
+// here: a bare `<` is ambiguous with the less-than operator at the
+// token level. All non-Newline tokens (and their coordinates) are
+// preserved, so spans are unaffected.
+func suppressBracketNewlines(toks []lexer.Token) []lexer.Token {
+	out := make([]lexer.Token, 0, len(toks))
+	depth := 0
+	var stack []int // bracket depths saved at each enclosing `{`
+	for _, t := range toks {
+		if t.Kind == lexer.KindNewline && depth > 0 {
+			continue
+		}
+		out = append(out, t)
+		if t.Kind != lexer.KindPunct {
+			continue
+		}
+		switch t.Lexeme {
+		case "(", "[":
+			depth++
+		case ")", "]":
+			if depth > 0 {
+				depth--
+			}
+		case "{":
+			stack = append(stack, depth)
+			depth = 0
+		case "}":
+			if len(stack) > 0 {
+				depth = stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+	return out
 }
 
 type parser struct {
