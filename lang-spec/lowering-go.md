@@ -589,6 +589,25 @@ ForChanIR { iter: ch : RecvChan<T>, bind: x, body: B }
 The `Order()` accessor on `Map` and `Set` is in the runtime
 package; it exposes the insertion-order slice.
 
+## Tuple destructuring
+
+```
+LetIR { pat: (p_1, ..., p_n), value: e }
+                                       ⟿
+  tmp := <lowering of e>           // value bound once (side-effects)
+  p_1 := tmp._0                    // IdentPat component
+  p_2 := tmp._1
+  ...                             // `_` components bind nothing
+```
+
+`let (a, b) = e` evaluates `e` once into a fresh temp, then binds each
+component positionally off the anonymous-struct tuple representation
+(`tmp._0`, `tmp._1`, …), recursing for a nested tuple component. A
+binding whose every component is `_` discards the value (`_ = e`)
+rather than leaving an unused temp. Refutable / arity-mismatched
+patterns are rejected in sema (T-Let-Destructure), so the lowering
+only ever sees irrefutable name/`_`/tuple patterns.
+
 ## While-loops
 
 ```

@@ -2115,15 +2115,23 @@ func lastSeg(q []string) string {
 }
 
 // emitDestructureLet lowers `let (a, b) = e` (lowering-go.md
-// §While-loops neighbour — Tuple destructuring). The value is bound to
-// a fresh temp once (so a side-effecting RHS runs exactly once), then
-// each component is bound positionally via bindSubPattern (`a :=
-// tmp._0`, …), recursing for nested tuples; a `_` component binds
-// nothing.
+// §Tuple destructuring). The value is bound to a fresh temp once (so a
+// side-effecting RHS runs exactly once), then each component is bound
+// positionally via bindSubPattern (`a := tmp._0`, …), recursing for
+// nested tuples; a `_` component binds nothing. When every component is
+// `_` the value is discarded (`_ = e`) so Go sees no unused temp.
 func (g *gen) emitDestructureLet(span ast.Span, pat *ast.TuplePat, value ast.Expr) error {
-	tmp := g.nextDestructureTemp()
 	g.line(span.StartLine)
 	g.writeIndent()
+	if patternBindsNothing(pat) {
+		g.b.WriteString("_ = ")
+		if err := g.emitExpr(value); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		return nil
+	}
+	tmp := g.nextDestructureTemp()
 	g.b.WriteString(tmp)
 	g.b.WriteString(" := ")
 	if err := g.emitExpr(value); err != nil {
@@ -2131,6 +2139,25 @@ func (g *gen) emitDestructureLet(span ast.Span, pat *ast.TuplePat, value ast.Exp
 	}
 	g.b.WriteByte('\n')
 	return g.bindSubPattern(pat, tmp)
+}
+
+// patternBindsNothing reports whether an irrefutable let pattern
+// introduces no binding at all (every leaf is `_`), so the temp would
+// be unused — the value is discarded instead.
+func patternBindsNothing(p ast.Pattern) bool {
+	switch v := p.(type) {
+	case *ast.WildcardPat:
+		return true
+	case *ast.TuplePat:
+		for _, sub := range v.Sub {
+			if !patternBindsNothing(sub) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // nextDestructureTemp returns a fresh Go identifier for a
