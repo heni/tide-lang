@@ -2230,6 +2230,7 @@ func (p *parser) parseFuncClosure() (*ast.ClosureLit, *Diag) {
 	var ret ast.TypeExpr
 	if p.at(lexer.KindPunct, ":") {
 		p.advance()
+		p.skipNewlines() // ReturnAnnot: type may wrap to next line (grammar §SyntaxNewlineSuppression)
 		ret, err = p.parseTypeExpr()
 		if err != nil {
 			return nil, err
