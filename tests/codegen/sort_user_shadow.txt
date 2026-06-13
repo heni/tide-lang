@@ -1,0 +1,38 @@
+--- TITLE ---
+A user value named `sort` with its own `.sorted(a, b)` method is NOT hijacked by the sort.sorted binding intercept: the intercept is gated on the receiver resolving to the predeclared `sort` module (sema symbol), so this emits an ordinary Go method call, no tideSorted helper, no `import "sort"`.
+
+--- INPUT ---
+import fmt
+
+class Sorter {
+  let id: int
+  sorted(a: int, b: int): int { return a + b }
+}
+
+func main() {
+  let sort = Sorter{ id: 1 }
+  fmt.println(sort.sorted(3, 4))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Sorter struct {
+	id int
+}
+
+func (t *Sorter) sorted(a int, b int) int {
+	return a + b
+}
+func main() {
+	var sort = &Sorter{id: 1}
+	fmt.Println(sort.sorted(3, 4))
+}
+
+--- STDOUT ---
+7
+
+--- EXIT ---
+0

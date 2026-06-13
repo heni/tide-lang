@@ -337,7 +337,6 @@ func (c *checker) inferCall(call *ast.Call) Type {
 	// before the generic arg loop runs (so the closure body checks
 	// against the real element type, not Unknown).
 	if rt, handled := c.inferClosureBinding(call); handled {
-		c.checkCallArity(call)
 		return rt
 	}
 	args := make([]Type, len(call.Args))

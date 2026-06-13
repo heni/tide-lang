@@ -1002,9 +1002,11 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				g.usesErrorCtor = true
 			}
 			// `sort.sorted(s, less)` lowers to the inline tideSorted
-			// helper, which needs Go's "sort".
+			// helper, which needs Go's "sort". Gated on the sema symbol
+			// (as the emitCall intercept is) so a user `sort` value
+			// doesn't drag in the import + helper.
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "sorted" {
-				if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" {
+				if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" && g.isBuiltinModule(recv) {
 					g.usesSortSorted = true
 				}
 			}

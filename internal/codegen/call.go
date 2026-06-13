@@ -114,9 +114,12 @@ func (g *gen) emitCall(c *ast.Call) error {
 	// (binding-surface.md §sort). Lowers to the inline tideSorted helper
 	// (copy + sort.SliceStable), preserving the input's immutability.
 	// The comparator's omitted param types are stamped from sema's
-	// inferred Func (emitClosure reads g.info.Type) — T-Closure.
-	if f, ok := c.Callee.(*ast.Field); ok && len(c.Args) == 2 {
-		if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" && f.Name == "sorted" {
+	// inferred Func (emitClosure reads g.info.Type) — T-Closure. Gated on
+	// the receiver resolving to the predeclared `sort` module (mirrors
+	// the refEq / error-ctor gates) so a user value named `sort` with its
+	// own `.sorted(a, b)` method is not hijacked.
+	if f, ok := c.Callee.(*ast.Field); ok && len(c.Args) == 2 && f.Name == "sorted" {
+		if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" && g.isBuiltinModule(recv) {
 			g.usesSortSorted = true
 			g.b.WriteString("tideSorted")
 			return g.emitArgList(c.Args)
@@ -486,6 +489,18 @@ func (g *gen) varKindOf(id *ast.Ident) string {
 func isStdlibNamespace(e ast.Expr) bool {
 	id, ok := e.(*ast.Ident)
 	return ok && isStdlibNamespaceName(id.Name)
+}
+
+// isBuiltinModule reports whether ident resolves (via sema) to a
+// predeclared stdlib module, not a user value that merely shares the
+// name. Used to gate name-matched binding intercepts so a local
+// shadowing the module is dispatched as an ordinary value.
+func (g *gen) isBuiltinModule(id *ast.Ident) bool {
+	if g.info == nil {
+		return false
+	}
+	sym := g.info.Symbol[id]
+	return sym != nil && sym.Kind == sema.SymBuiltinModule
 }
 
 func isStdlibNamespaceName(name string) bool {
