@@ -564,6 +564,55 @@ func main() {
 	}
 }
 
+func TestStaticMethodCallReturnTyped(t *testing.T) {
+	// A user-class static method call `Box.new()` is typed from the
+	// method's declared return type (the class), so a value derived
+	// from it (`b.sz.len()` in a value-`if`) resolves instead of
+	// cascading Unknown. Regression for the static-factory pattern.
+	src := `import fmt
+class Box {
+  var sz: []int
+  static new(): Box { return Box{ sz: [1, 2, 3] } }
+}
+func main() {
+  let b = Box.new()
+  let top = if b.sz.len() < 3 { b.sz.len() } else { 3 }
+  fmt.println(top)
+}
+`
+	toks, lerr := lexer.LexFile(src, "test.td")
+	if lerr != nil {
+		t.Fatalf("lex: %v", lerr)
+	}
+	f, perr := parser.ParseFile(toks, "test.td")
+	if perr != nil {
+		t.Fatalf("parse: %v", perr)
+	}
+	info, diags := Check(f, "test.td")
+	if len(diags) != 0 {
+		codes := make([]string, 0, len(diags))
+		for _, d := range diags {
+			codes = append(codes, d.Code)
+		}
+		t.Fatalf("expected clean (static factory), got %v", codes)
+	}
+	// `Box.new()` (main's first let value) must type to the class.
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name != "main" {
+			continue
+		}
+		ls, ok := fn.Body.Stmts[0].(*ast.LetStmt)
+		if !ok {
+			t.Fatal("expected `let b = Box.new()` as main's first statement")
+		}
+		got := info.Type[ls.Value]
+		if n, ok := got.(*Named); !ok || n.N != "Box" {
+			t.Fatalf("Box.new() type = %v; want Named Box", got)
+		}
+	}
+}
+
 func TestInterfaceConformanceNoFalsePositive(t *testing.T) {
 	// A class that `implements` an interface is accepted where the
 	// interface is expected; an interface-typed method call types.

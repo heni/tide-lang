@@ -361,6 +361,19 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return err
 		}
 	}
+	// Bare instance-method call via the implicit receiver (`find(a)`
+	// inside a sibling method → `t.find(a)`; name-resolution §Implicit
+	// receiver). Sema resolves the bare name to the method symbol off
+	// the member scope (so the call is typed); codegen prefixes the
+	// receiver `t`, mirroring the bare-field case in emitExpr.
+	if id, ok := c.Callee.(*ast.Ident); ok && g.isImplicitInstanceMethod(id) {
+		g.b.WriteString("t.")
+		g.b.WriteString(goIdent(id.Name))
+		if err := g.emitTypeArgs(c.TypeArgs); err != nil {
+			return err
+		}
+		return g.emitArgList(c.Args)
+	}
 	if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
@@ -368,6 +381,24 @@ func (g *gen) emitCall(c *ast.Call) error {
 		return err
 	}
 	return g.emitArgList(c.Args)
+}
+
+// isImplicitInstanceMethod reports whether ident is a bare reference to
+// an instance method of the enclosing class (sema resolved it to a
+// non-static SymMethod via the member scope). Such a call needs the
+// receiver `t.` prefix — the Go method lives on the receiver, not in
+// package scope. A static method (called bare through the class scope)
+// is excluded: it has no receiver.
+func (g *gen) isImplicitInstanceMethod(id *ast.Ident) bool {
+	if g.info == nil {
+		return false
+	}
+	sym := g.info.Symbol[id]
+	if sym == nil || sym.Kind != sema.SymMethod {
+		return false
+	}
+	m, ok := sym.Decl.(*ast.Method)
+	return ok && !m.IsStatic
 }
 
 // genericSumCtorArgs infers the Go type-argument strings for a generic

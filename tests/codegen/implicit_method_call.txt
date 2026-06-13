@@ -1,0 +1,54 @@
+--- TITLE ---
+Static-method-call return typing + bare instance-method call via the implicit receiver: `Counter.new()` types its result so the value-`if` over `c.n`/`c.bump()` resolves, and the bare sibling call `step()` inside `bump()` lowers to `t.step()` (name-resolution §Implicit receiver).
+
+--- INPUT ---
+import fmt
+
+class Counter {
+  var n: int
+  static new(): Counter { return Counter{ n: 0 } }
+  bump(): int { return step() + this.n }
+  step(): int { return 1 }
+}
+
+func main() {
+  let c = Counter.new()
+  let r = if c.n < 3 { c.bump() } else { 0 }
+  fmt.println(r)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Counter struct {
+	n int
+}
+
+func counterNew() *Counter {
+	return &Counter{n: 0}
+}
+func (t *Counter) bump() int {
+	return t.step() + t.n
+}
+func (t *Counter) step() int {
+	return 1
+}
+func main() {
+	var c = counterNew()
+	var r = func() int {
+		if c.n < 3 {
+			return c.bump()
+		} else {
+			return 0
+		}
+	}()
+	fmt.Println(r)
+}
+
+--- STDOUT ---
+1
+
+--- EXIT ---
+0

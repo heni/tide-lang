@@ -430,6 +430,34 @@ func (c *checker) inferClosureBinding(call *ast.Call) (Type, bool) {
 	return &Slice{Elem: elem}, true
 }
 
+// staticMethodType returns the Func type of a user-class static method
+// referenced as `ClassName.method` (e.g. `DSU.new`), or nil when f is
+// not such a reference. The class-name receiver resolves to SymClass,
+// whose symValueType is Unknown (a class is not a value), so the
+// instance-member path in inferField cannot type it; this resolves the
+// static method off the class declaration directly. Instance methods
+// (m.IsStatic == false) are left to the value path.
+func (c *checker) staticMethodType(f *ast.Field) *Func {
+	id, ok := f.Receiver.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	sym := c.info.Symbol[id]
+	if sym == nil || sym.Kind != SymClass {
+		return nil
+	}
+	cd, ok := sym.Decl.(*ast.ClassDecl)
+	if !ok {
+		return nil
+	}
+	for _, m := range cd.Methods {
+		if m.IsStatic && m.Name == f.Name {
+			return c.methodSigType(m)
+		}
+	}
+	return nil
+}
+
 // staticContainerCtor recognises a predeclared-container static
 // constructor (`Map<K,V>.new()`, `Set<T>.new()/from()`,
 // `Stack<T>.new()`) and returns the structured container type, or
@@ -496,6 +524,13 @@ func (c *checker) checkArgTypes(params, args []Type, nodes []ast.Expr, callee st
 // its declared type, a class method gives its Func type. Module
 // access and everything else stays Unknown for PR-C1.
 func (c *checker) inferField(f *ast.Field) Type {
+	// Static method on a class name (`Box.new`, `DSU.new`) — the
+	// receiver names the class (SymClass), not a value, so the value
+	// path below (which needs a *Named receiver) can't reach it. Look
+	// the static method up on the class decl and give it its Func type.
+	if st := c.staticMethodType(f); st != nil {
+		return st
+	}
 	recv := c.inferReceiver(f.Receiver)
 	// Channel methods (`.send` / `.recv` / `.tryRecv` / `.close`)
 	// dispatch on the channel kind, not on a Named declaration.
