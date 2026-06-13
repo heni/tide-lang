@@ -427,7 +427,15 @@ CmpExpr      = AddExpr ( ( "<" | "<=" | ">" | ">=" ) AddExpr )? ;
 AddExpr      = MulExpr ( ( "+" | "-" ) MulExpr )* ;
 MulExpr      = UnaryExpr ( ( "*" | "/" | "%" ) UnaryExpr )* ;
 UnaryExpr    = ( "!" | "-" )* PostfixExpr ;
-PostfixExpr  = PrimaryExpr ( Suffix )* ;
+PostfixExpr  = PrimaryExpr ( Newline? Suffix )* ;
+             // Newline? before a Suffix is only honoured when the Suffix
+             // begins with `.` (FieldSuffix / TupleFieldSuffix) — i.e.
+             // leading-dot method-chain continuation (`xs⏎ .filter(p)⏎
+             // .map(f)`). A newline before any other Suffix, and before
+             // a binary operator, still terminates the expression:
+             // unbracketed operator continuation is NOT adopted (an open
+             // D11 question). Inside brackets all newlines are already
+             // suppressed (§SyntaxNewlineSuppression).
 Suffix       = CallSuffix
              | IndexSuffix
              | SliceSuffix

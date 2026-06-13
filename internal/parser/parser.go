@@ -129,6 +129,19 @@ func (p *parser) peekAhead(n int) lexer.Token {
 	return p.toks[p.pos+n]
 }
 
+// peekPastNewlines returns the first token at or after the cursor that
+// is not a Newline (a synthetic EOF past the end). Used for leading-dot
+// method-chain continuation, where a `.` on the next line continues the
+// chain but any other token terminates the expression.
+func (p *parser) peekPastNewlines() lexer.Token {
+	for i := p.pos; i < len(p.toks); i++ {
+		if p.toks[i].Kind != lexer.KindNewline {
+			return p.toks[i]
+		}
+	}
+	return lexer.Token{Kind: lexer.KindEOF}
+}
+
 func (p *parser) at(k lexer.Kind, lex ...string) bool {
 	t := p.peek()
 	if t.Kind != k {
@@ -1826,6 +1839,16 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 		return nil, err
 	}
 	for {
+		// Leading-dot continuation: a newline before a `.` does not end
+		// the postfix chain (`items⏎  .filter(p)⏎  .map(f)`). Only `.`
+		// earns this — any other token after the newline terminates the
+		// expression as usual (unbracketed operator continuation is NOT
+		// adopted). Decision 2026-06-13; see grammar §PostfixChain.
+		// (Inside brackets the newline is already gone — token filter.)
+		if p.at(lexer.KindNewline) && p.peekPastNewlines().Kind == lexer.KindPunct &&
+			p.peekPastNewlines().Lexeme == "." {
+			p.skipNewlines()
+		}
 		switch {
 		case p.at(lexer.KindPunct, "("):
 			call, err := p.parseCallSuffix(e, nil)
@@ -2170,11 +2193,15 @@ func (p *parser) couldBeGenericCallSite() bool {
 				}
 				return false
 			}
-		case t.Kind == lexer.KindIdent,
+		case t.Kind == lexer.KindNewline,
+			t.Kind == lexer.KindIdent,
 			t.Kind == lexer.KindKeyword && t.Lexeme == "unit",
 			t.Kind == lexer.KindPunct && (t.Lexeme == "," || t.Lexeme == "." || t.Lexeme == "[" || t.Lexeme == "]"):
 			// allowed inside a type-arg list (`unit` is a keyword but
-			// also the one-inhabitant value-type, legal as a type arg)
+			// also the one-inhabitant value-type, legal as a type arg).
+			// Newline is insignificant inside `<...>` (grammar
+			// §SyntaxNewlineSuppression) — a wrapped `Map<int,⏎ string>`
+			// must still be recognised as a generic call site.
 		default:
 			return false
 		}
@@ -2318,6 +2345,7 @@ func (p *parser) parseCallTypeArgs() ([]ast.TypeExpr, *Diag) {
 			return nil, err
 		}
 		args = append(args, t)
+		p.skipNewlines() // newline before `,` or closing `>` is insignificant inside `<...>`
 		if p.at(lexer.KindPunct, ",") {
 			p.advance()
 			continue
