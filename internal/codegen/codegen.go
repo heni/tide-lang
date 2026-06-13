@@ -263,9 +263,14 @@ type gen struct {
 	usesReflect   bool
 	usesMakeSlice bool
 	usesScan      bool
-	usesResultOf  bool
-	usesTryRecv   bool
-	usesScope     bool
+	// usesScan2 / usesScan3 — the multi-value stdin bindings
+	// `fmt.scan2<A,B>()` / `fmt.scan3<A,B,C>()`, lowered to the
+	// tideScan2 / tideScan3 helpers (Result<(A,B[,C]), error>).
+	usesScan2    bool
+	usesScan3    bool
+	usesResultOf bool
+	usesTryRecv  bool
+	usesScope    bool
 	// usesSortSorted — `sort.sorted(s, less)` is used, so its inline
 	// tideSorted helper (copy + sort.SliceStable) and Go's "sort"
 	// import are needed.
@@ -443,6 +448,8 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredContainers()
 	g.writePredeclaredMakeSlice()
 	g.writePredeclaredScan()
+	g.writePredeclaredScan2()
+	g.writePredeclaredScan3()
 	g.writePredeclaredResultOf()
 	g.writePredeclaredSortSorted()
 	g.writePredeclaredTryRecv()
@@ -515,6 +522,45 @@ func (g *gen) writePredeclaredScan() {
 		return ResultErr[T, error](err)
 	}
 	return ResultOk[T, error](v)
+}
+`)
+}
+
+// writePredeclaredScan2 / writePredeclaredScan3 emit the multi-value
+// stdin helpers backing `fmt.scan2<A,B>()` / `fmt.scan3<A,B,C>()`
+// (binding-surface.md §fmt). Each wraps one `fmt.Scan(&a, &b, …)` of N
+// pointers into Result<(A, B[, C]), error>, the tuple lowered to the
+// anonymous `struct { _0 A; _1 B[; _2 C] }` codegen spells everywhere
+// (matching goTypeFromSema), so the Ok payload destructures through the
+// normal tuple-in-variant-payload match path. Conditional on usage;
+// pulls in Result.
+func (g *gen) writePredeclaredScan2() {
+	if !g.usesScan2 {
+		return
+	}
+	g.b.WriteString(`func tideScan2[A any, B any]() Result[struct { _0 A; _1 B }, error] {
+	var a A
+	var b B
+	if _, err := fmt.Scan(&a, &b); err != nil {
+		return ResultErr[struct { _0 A; _1 B }, error](err)
+	}
+	return ResultOk[struct { _0 A; _1 B }, error](struct { _0 A; _1 B }{a, b})
+}
+`)
+}
+
+func (g *gen) writePredeclaredScan3() {
+	if !g.usesScan3 {
+		return
+	}
+	g.b.WriteString(`func tideScan3[A any, B any, C any]() Result[struct { _0 A; _1 B; _2 C }, error] {
+	var a A
+	var b B
+	var c C
+	if _, err := fmt.Scan(&a, &b, &c); err != nil {
+		return ResultErr[struct { _0 A; _1 B; _2 C }, error](err)
+	}
+	return ResultOk[struct { _0 A; _1 B; _2 C }, error](struct { _0 A; _1 B; _2 C }{a, b, c})
 }
 `)
 }
@@ -979,6 +1025,15 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			// returns Result<T, error> — pull both into the binary.
 			if isFmtScan(v.Callee) {
 				g.usesScan = true
+				g.usesResult = true
+			}
+			// `fmt.scan2`/`fmt.scan3` lower to the tideScan2/tideScan3
+			// helpers, which return Result<(…), error> — pull both in.
+			if n := fmtScanMultiArity(v.Callee); n == 2 {
+				g.usesScan2 = true
+				g.usesResult = true
+			} else if n == 3 {
+				g.usesScan3 = true
 				g.usesResult = true
 			}
 			// A `(T, error)` stdlib binding (`strconv.atoi`,
