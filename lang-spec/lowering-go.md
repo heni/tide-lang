@@ -217,6 +217,15 @@ NewError(msg string) error`. It exists so codegen can emit
 short typed errors without import-rewriting the standard
 `errors` package for every internal use.
 
+The user-level `error(msg): error` free constructor
+(`builtins.md` §error) lowers directly to `errors.New(msg)`,
+pulling in Go's `errors` import on demand (the v1 prelude is
+emitted inline, so there is no `tidert` package to route
+through). It is recognised by the bare-`error` identifier callee
+with exactly one argument — the `error(): string` interface
+method takes none, and `.error()` calls are receiver-qualified,
+so the form is unambiguous.
+
 ## Channel lowering
 
 ```

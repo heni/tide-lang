@@ -266,6 +266,9 @@ type gen struct {
 	usesResultOf  bool
 	usesTryRecv   bool
 	usesScope     bool
+	// usesErrorCtor — the `error(msg)` free constructor (builtins.md)
+	// is used, so its lowering `errors.New(msg)` needs Go's "errors".
+	usesErrorCtor bool
 	// groupVars is the stack of structured-concurrency group binding
 	// names, one per enclosing `scope` IIFE. A `spawn` registers on
 	// the innermost (top-of-stack). inSpawnBody flags that `return
@@ -401,6 +404,10 @@ func (g *gen) writeHeader(f *ast.File) {
 		// generated modules are stdlib-only).
 		add("context")
 		add("sync")
+	}
+	if g.usesErrorCtor {
+		// `error(msg)` lowers to errors.New(msg) (builtins.md §error).
+		add("errors")
 	}
 	// Sort for determinism.
 	for i := 1; i < len(paths); i++ {
@@ -961,6 +968,10 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			// the method name (the receiver's channel kind is a sema
 			// fact); a same-named user method would over-pull the
 			// helper, harmless dead code.
+			// `error(msg)` free constructor → errors.New(msg).
+			if g.isErrorCtorCall(v) {
+				g.usesErrorCtor = true
+			}
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "tryRecv" {
 				g.usesTryRecv = true
 				g.usesOption = true
