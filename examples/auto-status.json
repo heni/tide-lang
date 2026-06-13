@@ -2,16 +2,16 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 17,
-    "sema_fail": 4,
+    "parse_fail": 16,
+    "sema_fail": 5,
     "emit_fail": 5,
     "build_ok": 26
   },
   "files": [
     {
       "path": "examples/agents/counterstack/pentix_agent.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Newline \"\""
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name json"
     },
     {
       "path": "examples/aoc/2025/d01.td",
@@ -171,7 +171,7 @@
     {
       "path": "examples/raku/deep_destructure.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Newline \"\""
+      "blocker": "error[E0112]: expected Punct \")\", got Punct \"{\""
     },
     {
       "path": "examples/raku/error_chain.td",
