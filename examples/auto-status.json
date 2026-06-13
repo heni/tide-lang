@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 12,
     "sema_fail": 6,
-    "emit_fail": 8,
-    "build_ok": 26
+    "emit_fail": 7,
+    "build_ok": 27
   },
   "files": [
     {
@@ -160,8 +160,8 @@
     },
     {
       "path": "examples/leetcode/two_sum.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/leetcode/valid_parentheses.td",
@@ -261,7 +261,7 @@
     {
       "path": "examples/timus/p1820.td",
       "stage": "emit",
-      "blocker": "unknown failure"
+      "blocker": "go build failed"
     },
     {
       "path": "user_tests/leetcode_3131_idiomatic.td",
