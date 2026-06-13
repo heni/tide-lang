@@ -2698,6 +2698,7 @@ func (p *parser) parseMatchExpr() (*ast.MatchExpr, *Diag) {
 		if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
 			return nil, err
 		}
+		p.skipNewlines() // MatchArm: body may wrap to next line (grammar §SyntaxNewlineSuppression)
 		body, err := p.parseExpr()
 		if err != nil {
 			return nil, err
