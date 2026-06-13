@@ -266,6 +266,10 @@ type gen struct {
 	usesResultOf  bool
 	usesTryRecv   bool
 	usesScope     bool
+	// usesSortSorted — `sort.sorted(s, less)` is used, so its inline
+	// tideSorted helper (copy + sort.SliceStable) and Go's "sort"
+	// import are needed.
+	usesSortSorted bool
 	// usesErrorCtor — the `error(msg)` free constructor (builtins.md)
 	// is used, so its lowering `errors.New(msg)` needs Go's "errors".
 	usesErrorCtor bool
@@ -412,6 +416,10 @@ func (g *gen) writeHeader(f *ast.File) {
 		// `error(msg)` lowers to errors.New(msg) (builtins.md §error).
 		add("errors")
 	}
+	if g.usesSortSorted {
+		// sort.sorted lowers onto the tideSorted helper (sort.SliceStable).
+		add("sort")
+	}
 	// Sort for determinism.
 	for i := 1; i < len(paths); i++ {
 		for j := i; j > 0 && paths[j-1] > paths[j]; j-- {
@@ -436,6 +444,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredMakeSlice()
 	g.writePredeclaredScan()
 	g.writePredeclaredResultOf()
+	g.writePredeclaredSortSorted()
 	g.writePredeclaredTryRecv()
 	g.writePredeclaredGroup()
 	g.writePredeclaredReflect()
@@ -524,6 +533,23 @@ func (g *gen) writePredeclaredResultOf() {
 		return ResultErr[T, error](err)
 	}
 	return ResultOk[T, error](v)
+}
+`)
+}
+
+// writePredeclaredSortSorted emits the tideSorted helper backing
+// `sort.sorted(s, less)` (binding-surface.md §sort): a comparator sort
+// that returns a NEW slice (Tide preserves the input's immutability),
+// built on Go's sort.SliceStable for a stable order. Conditional on use.
+func (g *gen) writePredeclaredSortSorted() {
+	if !g.usesSortSorted {
+		return
+	}
+	g.b.WriteString(`func tideSorted[T any](s []T, less func(T, T) bool) []T {
+	out := make([]T, len(s))
+	copy(out, s)
+	sort.SliceStable(out, func(i, j int) bool { return less(out[i], out[j]) })
+	return out
 }
 `)
 }
@@ -974,6 +1000,13 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			// `error(msg)` free constructor → errors.New(msg).
 			if g.isErrorCtorCall(v) {
 				g.usesErrorCtor = true
+			}
+			// `sort.sorted(s, less)` lowers to the inline tideSorted
+			// helper, which needs Go's "sort".
+			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "sorted" {
+				if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" {
+					g.usesSortSorted = true
+				}
 			}
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "tryRecv" {
 				g.usesTryRecv = true

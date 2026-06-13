@@ -117,11 +117,22 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 // is checked with the closure's return type in scope, then the return
 // type is the annotation, or the body's value type when omitted.
 func (c *checker) inferClosure(cl *ast.ClosureLit) Type {
+	expect := c.closureExpect[cl]
 	params := make([]Type, len(cl.Params))
 	for i, prm := range cl.Params {
-		if prm.DeclType != nil {
+		switch {
+		case prm.DeclType != nil:
 			params[i] = c.typeFromExpr(prm.DeclType)
-		} else {
+		case expect != nil && i < len(expect.Params) && concrete(expect.Params[i]):
+			// Unannotated short-closure parameter typed from call
+			// context (T-Closure). The resolve pass declared the
+			// param symbol as Unknown; refine it so the body's
+			// references (`a.start`) type against the real element type.
+			params[i] = expect.Params[i]
+			if sym := c.info.Def[prm]; sym != nil {
+				sym.Type = expect.Params[i]
+			}
+		default:
 			params[i] = &Unknown{}
 		}
 	}
@@ -321,6 +332,14 @@ func (c *checker) inferCall(call *ast.Call) Type {
 	if _, isIdent := call.Callee.(*ast.Ident); !isIdent {
 		c.inferExpr(call.Callee)
 	}
+	// A closure-taking stdlib binding (`sort.sorted(s, less)`) types
+	// its comparator's omitted params from the slice element type
+	// before the generic arg loop runs (so the closure body checks
+	// against the real element type, not Unknown).
+	if rt, handled := c.inferClosureBinding(call); handled {
+		c.checkCallArity(call)
+		return rt
+	}
 	args := make([]Type, len(call.Args))
 	for i, a := range call.Args {
 		args[i] = c.inferExpr(a)
@@ -371,6 +390,45 @@ func (c *checker) inferCall(call *ast.Call) Type {
 		}
 	}
 	return ret
+}
+
+// inferClosureBinding types a stdlib binding that takes a comparator
+// closure whose parameter types come from the receiver slice's element
+// type (`sort.sorted(s, less)` — binding-surface §sort): `less` is
+// `(T, T) => bool` over the element `T`. It pre-types the closure
+// argument's omitted params via closureExpect so the body checks
+// against the real element type, then infers the args. Returns
+// (resultType, true) when it handled the call; (nil, false) otherwise.
+func (c *checker) inferClosureBinding(call *ast.Call) (Type, bool) {
+	f, ok := call.Callee.(*ast.Field)
+	if !ok {
+		return nil, false
+	}
+	recv, ok := f.Receiver.(*ast.Ident)
+	if !ok {
+		return nil, false
+	}
+	if sym := c.info.Symbol[recv]; sym == nil || sym.Kind != SymBuiltinModule || recv.Name != "sort" {
+		return nil, false
+	}
+	if f.Name != "sorted" || len(call.Args) != 2 {
+		return nil, false
+	}
+	sliceT := c.inferExpr(call.Args[0])
+	elem := Type(&Unknown{})
+	if s, ok := sliceT.(*Slice); ok {
+		elem = s.Elem
+	}
+	if cl, ok := call.Args[1].(*ast.ClosureLit); ok {
+		c.closureExpect[cl] = &Func{Params: []Type{elem, elem}, Return: &Builtin{N: "bool"}}
+	}
+	c.inferExpr(call.Args[1])
+	// The result preserves the input slice type — `sorted` returns a
+	// new slice of the same element type (immutability of the input).
+	if _, ok := sliceT.(*Slice); ok {
+		return sliceT, true
+	}
+	return &Slice{Elem: elem}, true
 }
 
 // staticContainerCtor recognises a predeclared-container static

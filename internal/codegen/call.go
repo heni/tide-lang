@@ -110,6 +110,18 @@ func (g *gen) emitCall(c *ast.Call) error {
 			}
 		}
 	}
+	// sort.sorted(s, less) — comparator sort that returns a NEW slice
+	// (binding-surface.md §sort). Lowers to the inline tideSorted helper
+	// (copy + sort.SliceStable), preserving the input's immutability.
+	// The comparator's omitted param types are stamped from sema's
+	// inferred Func (emitClosure reads g.info.Type) — T-Closure.
+	if f, ok := c.Callee.(*ast.Field); ok && len(c.Args) == 2 {
+		if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" && f.Name == "sorted" {
+			g.usesSortSorted = true
+			g.b.WriteString("tideSorted")
+			return g.emitArgList(c.Args)
+		}
+	}
 	// Conversion binding — `pkg.method(arg)` that lowers to a Go type
 	// conversion `target(arg)` (e.g. strings.fromBytes → string(b)),
 	// not a package call (bindings.go §stdlibConversion).
@@ -479,7 +491,7 @@ func isStdlibNamespace(e ast.Expr) bool {
 func isStdlibNamespaceName(name string) bool {
 	switch name {
 	case "fmt", "os", "strings", "strconv", "bufio", "context",
-		"time", "sync", "io", "log", "net", "encoding", "math":
+		"time", "sync", "io", "log", "net", "encoding", "math", "sort":
 		return true
 	}
 	return false

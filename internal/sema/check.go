@@ -8,7 +8,7 @@ import (
 // plus any diagnostics, ordered by source position.
 // See docs/internals/sema.md.
 func Check(f *ast.File, file string) (*Info, []*Diag) {
-	c := &checker{file: file, info: newInfo()}
+	c := &checker{file: file, info: newInfo(), closureExpect: map[*ast.ClosureLit]*Func{}}
 	scope := c.indexDeclarations(f)
 	c.resolveFile(f, scope)
 	c.constructShapes(f, scope)
@@ -31,6 +31,13 @@ type checker struct {
 	curTryForbidden bool // body returns a type that is definitely not Result/Option
 	loopDepth       int  // enclosing for/while nesting — 0 ⇒ break/continue illegal (E0404)
 	scopeDepth      int  // enclosing `scope` nesting — 0 ⇒ spawn illegal (E0405)
+
+	// closureExpect carries the expected Func signature for a closure
+	// passed as a call argument, so an unannotated short-closure
+	// parameter is typed from call context (a comparator to
+	// `sort.sorted`, etc.) rather than left Unknown. Keyed by the
+	// closure node; set just before its enclosing argument is inferred.
+	closureExpect map[*ast.ClosureLit]*Func
 }
 
 func (c *checker) report(code, message string, span ast.Span) {

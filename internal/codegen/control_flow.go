@@ -461,6 +461,21 @@ func (g *gen) emitForStmt(s *ast.ForStmt) error {
 	return nil
 }
 
+// closureParamGoType returns the Go type for closure param i when sema
+// inferred a concrete type for it (the short-closure-param case, typed
+// from call context — e.g. a `sort.sorted` comparator). Returns ok=false
+// when sema left it Unknown / untyped, so the caller errors as before.
+func (g *gen) closureParamGoType(cl *ast.ClosureLit, i int) (string, bool) {
+	if g.info == nil {
+		return "", false
+	}
+	fn, ok := g.info.Type[cl].(*sema.Func)
+	if !ok || i >= len(fn.Params) {
+		return "", false
+	}
+	return g.goTypeFromSema(fn.Params[i])
+}
+
 // emitClosure lowers a closure literal to a Go func literal
 // `func(p T, …) R { … }`. Go captures the surrounding scope
 // automatically. Parameters must be typed (the short form's omitted
@@ -479,13 +494,18 @@ func (g *gen) emitClosure(cl *ast.ClosureLit) error {
 		if i > 0 {
 			g.b.WriteString(", ")
 		}
-		if prm.DeclType == nil {
-			return fmt.Errorf("codegen: untyped closure parameter %q — annotate it (`(%s: T) => …`)", prm.Name, prm.Name)
-		}
 		g.b.WriteString(goIdent(prm.Name))
 		g.b.WriteByte(' ')
-		if err := g.emitTypeExpr(prm.DeclType); err != nil {
-			return err
+		if prm.DeclType != nil {
+			if err := g.emitTypeExpr(prm.DeclType); err != nil {
+				return err
+			}
+		} else if pt, ok := g.closureParamGoType(cl, i); ok {
+			// Unannotated short-closure param typed from call context —
+			// sema stamped Info.Type[cl].Params[i] (T-Closure).
+			g.b.WriteString(pt)
+		} else {
+			return fmt.Errorf("codegen: untyped closure parameter %q — annotate it (`(%s: T) => …`)", prm.Name, prm.Name)
 		}
 	}
 	g.b.WriteByte(')')

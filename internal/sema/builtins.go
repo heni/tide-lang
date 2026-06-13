@@ -48,7 +48,7 @@ func predeclaredSymbols() map[string]*Symbol {
 	for _, m := range []string{
 		"fmt", "os", "strings", "strconv", "bufio", "context",
 		"time", "sync", "io", "log", "net", "encoding", "math",
-		"reflect", "unicode",
+		"reflect", "unicode", "sort",
 	} {
 		addMod(m)
 	}

@@ -3,9 +3,9 @@
   "totals": {
     "total": 52,
     "parse_fail": 11,
-    "sema_fail": 7,
-    "emit_fail": 5,
-    "build_ok": 29
+    "sema_fail": 4,
+    "emit_fail": 6,
+    "build_ok": 31
   },
   "files": [
     {
@@ -35,8 +35,8 @@
     },
     {
       "path": "examples/aoc/2025/d05.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name sort"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/aoc/2025/d07.td",
@@ -45,8 +45,8 @@
     },
     {
       "path": "examples/aoc/2025/d08.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name sort"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/aoc/2025/d09.td",
@@ -150,8 +150,8 @@
     },
     {
       "path": "examples/leetcode/merge_intervals.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name sort"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/leetcode/reverse_linked_list.td",

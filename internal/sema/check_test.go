@@ -3,6 +3,7 @@ package sema
 import (
 	"testing"
 
+	"github.com/heni/tide-lang/internal/ast"
 	"github.com/heni/tide-lang/internal/lexer"
 	"github.com/heni/tide-lang/internal/parser"
 )
@@ -496,6 +497,70 @@ func main() {
 `
 	if codes := runCheck(t, src); !contains(codes, "E0103") {
 		t.Errorf("expected E0103 for closure-param leak, got %v", codes)
+	}
+}
+
+func TestSortSortedClosureParamTypedFromElem(t *testing.T) {
+	// T-Closure: an unannotated comparator passed to
+	// `sort.sorted` has its params typed from the slice element type,
+	// so the body's field access resolves and the inferred Func carries
+	// the element type (not Unknown).
+	src := `import sort
+type Interval = { start: int, end: int }
+func main() {
+  let xs = [Interval{start: 1, end: 2}]
+  let ys = sort.sorted(xs, (a, b) => a.start < b.start)
+}
+`
+	toks, lerr := lexer.LexFile(src, "test.td")
+	if lerr != nil {
+		t.Fatalf("lex: %v", lerr)
+	}
+	f, perr := parser.ParseFile(toks, "test.td")
+	if perr != nil {
+		t.Fatalf("parse: %v", perr)
+	}
+	info, diags := Check(f, "test.td")
+	if len(diags) != 0 {
+		codes := make([]string, 0, len(diags))
+		for _, d := range diags {
+			codes = append(codes, d.Code)
+		}
+		t.Fatalf("expected clean (sort.sorted comparator), got %v", codes)
+	}
+	// Locate the comparator closure: main → `let ys = sort.sorted(xs, cl)`.
+	var cl *ast.ClosureLit
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name != "main" {
+			continue
+		}
+		for _, st := range fn.Body.Stmts {
+			ls, ok := st.(*ast.LetStmt)
+			if !ok {
+				continue
+			}
+			if call, ok := ls.Value.(*ast.Call); ok && len(call.Args) == 2 {
+				if c, ok := call.Args[1].(*ast.ClosureLit); ok {
+					cl = c
+				}
+			}
+		}
+	}
+	if cl == nil {
+		t.Fatal("could not locate the comparator closure")
+	}
+	fnType, ok := info.Type[cl].(*Func)
+	if !ok {
+		t.Fatalf("closure type = %v; want *Func", info.Type[cl])
+	}
+	if len(fnType.Params) != 2 {
+		t.Fatalf("closure params = %d; want 2", len(fnType.Params))
+	}
+	for i, p := range fnType.Params {
+		if p.String() != "Interval" {
+			t.Errorf("closure param %d = %s; want Interval", i, p.String())
+		}
 	}
 }
 
