@@ -1843,7 +1843,7 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 		// the postfix chain (`items⏎  .filter(p)⏎  .map(f)`). Only `.`
 		// earns this — any other token after the newline terminates the
 		// expression as usual (unbracketed operator continuation is NOT
-		// adopted). Decision 2026-06-13; see grammar §PostfixChain.
+		// adopted). Decision 2026-06-13; see grammar §PostfixExpr.
 		// (Inside brackets the newline is already gone — token filter.)
 		if p.at(lexer.KindNewline) && p.peekPastNewlines().Kind == lexer.KindPunct &&
 			p.peekPastNewlines().Lexeme == "." {
