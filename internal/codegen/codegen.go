@@ -2019,6 +2019,22 @@ func (g *gen) tryExprErr() error {
 	return fmt.Errorf("codegen: `try` in expression position not yet supported — use it at let/var/return position; full expression-position lands with PR-Sema-2 (block expressions)")
 }
 
+// semaSliceElem returns the Go element type for an inferred slice
+// literal from sema's side-table — used when literal-only inference
+// (inferSliceElemType) can't see the element type (e.g. `[v]` with an
+// Ident / call element). Returns ("", false) when no usable sema type
+// is available, so the caller falls back to literal inference.
+func (g *gen) semaSliceElem(lit *ast.SliceLit) (string, bool) {
+	if g.info == nil {
+		return "", false
+	}
+	st, ok := g.info.Type[lit].(*sema.Slice)
+	if !ok {
+		return "", false
+	}
+	return g.goTypeFromSema(st.Elem)
+}
+
 // inferSliceElemType returns the Go-side element type for an
 // inferred slice literal. PR-F3 supports Int / String / Bool
 // literal elements; anything else returns an error.
@@ -2244,7 +2260,13 @@ func (g *gen) emitExpr(e ast.Expr) error {
 			if err := g.emitTypeExpr(v.ElemType); err != nil {
 				return err
 			}
+		} else if elem, ok := g.semaSliceElem(v); ok {
+			// Sema typed the literal (e.g. `[v]` from an Ident /
+			// call element): use its element type directly.
+			g.b.WriteString("[]")
+			g.b.WriteString(elem)
 		} else {
+			// No sema info — fall back to first-literal inference.
 			elem, err := inferSliceElemType(v.Items)
 			if err != nil {
 				return err
