@@ -501,6 +501,13 @@ A component pattern contributes a `cond` and `binds`:
 - wildcard `_` → no `cond`, no bind.
 - fresh ident `x` → no `cond`; binds `x := __t`.
 
+A component ident counts as a constructor reference only when it
+names a variant of *that component's own sum type* (resolution is
+scoped to the component type, not the global variant set) — so a
+fresh-binding ident colliding with an unrelated sum's variant binds,
+and a constructor naming a different sum than the component's type is
+a mismatched-constructor error.
+
 An arm whose every component is a wildcard or fresh ident has an
 empty conjunction and lowers to `default:`. Arm order is preserved,
 so Go's first-match `switch` semantics coincide with Tide's. The

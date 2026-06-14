@@ -115,6 +115,7 @@ func (g *gen) emitMatchSwitch(m *ast.MatchExpr, emitArm func(arm *ast.MatchArm) 
 // semantics match Tide's.
 func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm func(arm *ast.MatchArm) error) error {
 	g.line(m.Span.StartLine)
+	compTypes := g.tupleCompTypes(tup)
 	temps := make([]string, len(tup.Components))
 	for j, comp := range tup.Components {
 		tmp := g.nextMatchTemp()
@@ -137,7 +138,7 @@ func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm 
 		if len(tp.Sub) != len(temps) {
 			return fmt.Errorf("codegen: tuple pattern has %d components, subject has %d", len(tp.Sub), len(temps))
 		}
-		conds, err := g.tupleArmConds(tp, temps)
+		conds, err := g.tupleArmConds(tp, temps, compTypes)
 		if err != nil {
 			return err
 		}
@@ -150,7 +151,7 @@ func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm 
 			g.b.WriteString(":\n")
 		}
 		g.indent++
-		if err := g.emitTupleArmBindings(tp, temps); err != nil {
+		if err := g.emitTupleArmBindings(tp, temps, compTypes); err != nil {
 			return err
 		}
 		if err := emitArm(arm); err != nil {
@@ -163,13 +164,46 @@ func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm 
 	return nil
 }
 
+// tupleCompTypes returns the sum-type name of each tuple component
+// (from sema's inferred type), or "" for a component whose type is not
+// a named sum or is untyped. A component ident is a variant *reference*
+// only when it names a variant of that component's own sum (owner ==
+// compType) — without this scoping a fresh-binding ident that happens to
+// collide with an unrelated sum's variant would be mis-lowered as a tag
+// test (the recurring global-vs-scoped name footgun; AI.md §3.10/§3.13).
+func (g *gen) tupleCompTypes(tup *ast.TupleLit) []string {
+	names := make([]string, len(tup.Components))
+	if g.info == nil {
+		return names
+	}
+	for j, comp := range tup.Components {
+		if n, ok := g.info.Type[comp].(*sema.Named); ok {
+			names[j] = n.N
+		}
+	}
+	return names
+}
+
+// identComponentVariant resolves a bare component ident to a variant of
+// the component's own sum type (compType). When the component type is
+// unknown (compType == "", e.g. sema info absent in a golden run) it
+// falls back to the global variant table — preserving prior behaviour
+// where no collision can be detected anyway.
+func (g *gen) identComponentVariant(name, compType string) (variantInfo, bool) {
+	info, ok := g.variant[name]
+	if ok && (compType == "" || info.owner == compType) {
+		return info, true
+	}
+	return variantInfo{}, false
+}
+
 // tupleArmConds builds the Go boolean conjuncts that select a tuple
 // arm — one per component that discriminates (wildcard / fresh-ident
 // components add none).
-func (g *gen) tupleArmConds(tp *ast.TuplePat, temps []string) ([]string, error) {
+func (g *gen) tupleArmConds(tp *ast.TuplePat, temps, compTypes []string) ([]string, error) {
 	var conds []string
 	for j, sub := range tp.Sub {
-		cond, err := g.compCond(sub, temps[j])
+		cond, err := g.compCond(sub, temps[j], compTypes[j])
 		if err != nil {
 			return nil, err
 		}
@@ -186,19 +220,28 @@ func (g *gen) tupleArmConds(tp *ast.TuplePat, temps []string) ([]string, error) 
 // component shape that would need conditional sub-matching (a nested
 // variant/literal *inside* a payload) is not reached here — payloads
 // are bound, not tested — and an unrecognised shape errors.
-func (g *gen) compCond(p ast.Pattern, t string) (string, error) {
+func (g *gen) compCond(p ast.Pattern, t, compType string) (string, error) {
 	switch pat := p.(type) {
 	case *ast.WildcardPat:
 		return "", nil
 	case *ast.IdentPat:
-		if info, ok := g.variant[pat.Name]; ok {
+		if info, ok := g.identComponentVariant(pat.Name, compType); ok {
 			return fmt.Sprintf("%s.Tag == %d", t, info.tag), nil
 		}
 		return "", nil // fresh binding — no test
 	case *ast.VariantPat:
-		info, ok := g.variant[lastSeg(pat.QName)]
+		name := lastSeg(pat.QName)
+		info, ok := g.variant[name]
 		if !ok {
-			return "", fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", lastSeg(pat.QName))
+			return "", fmt.Errorf("codegen: variant pattern %s does not match any declared sum-type variant", name)
+		}
+		// A constructor must belong to the component's own sum, else
+		// its tag would be tested against an unrelated type's value (a
+		// silent miscompile). compType == "" (sema info absent) skips
+		// the check. The proper home is a sema mismatched-constructor
+		// diagnostic; until then codegen fails loudly rather than wrong.
+		if compType != "" && info.owner != compType {
+			return "", fmt.Errorf("codegen: constructor %s belongs to %s, not the matched component type %s — mismatched constructor in tuple pattern", name, info.owner, compType)
 		}
 		return fmt.Sprintf("%s.Tag == %d", t, info.tag), nil
 	case *ast.IntLitPat:
@@ -221,16 +264,16 @@ func (g *gen) compCond(p ast.Pattern, t string) (string, error) {
 // shared with single-subject matches) and a fresh-ident component bound
 // to its whole captured temp. Wildcards, nullary-variant idents, and
 // literals bind nothing.
-func (g *gen) emitTupleArmBindings(tp *ast.TuplePat, temps []string) error {
+func (g *gen) emitTupleArmBindings(tp *ast.TuplePat, temps, compTypes []string) error {
 	for j, sub := range tp.Sub {
-		if err := g.bindCompPattern(sub, temps[j]); err != nil {
+		if err := g.bindCompPattern(sub, temps[j], compTypes[j]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (g *gen) bindCompPattern(p ast.Pattern, t string) error {
+func (g *gen) bindCompPattern(p ast.Pattern, t, compType string) error {
 	switch pat := p.(type) {
 	case *ast.VariantPat:
 		if len(pat.Sub) > 0 {
@@ -238,7 +281,7 @@ func (g *gen) bindCompPattern(p ast.Pattern, t string) error {
 		}
 		return nil
 	case *ast.IdentPat:
-		if _, ok := g.variant[pat.Name]; ok {
+		if _, ok := g.identComponentVariant(pat.Name, compType); ok {
 			return nil // nullary-variant reference — binds nothing
 		}
 		return g.bindSubPattern(pat, t) // fresh binding: `name := t`
@@ -289,12 +332,16 @@ func (g *gen) emitMatchTail(m *ast.MatchExpr) error {
 // makes the Go switch terminating on its own, so no trailing
 // unreachable guard is emitted.
 func (g *gen) matchEmitsDefault(m *ast.MatchExpr) bool {
+	var compTypes []string
+	if tup, ok := m.Subject.(*ast.TupleLit); ok {
+		compTypes = g.tupleCompTypes(tup)
+	}
 	for _, arm := range m.Arms {
 		switch p := arm.Pattern.(type) {
 		case *ast.WildcardPat:
 			return true
 		case *ast.TuplePat:
-			if g.tupleArmIsCatchAll(p) {
+			if g.tupleArmIsCatchAll(p, compTypes) {
 				return true
 			}
 		}
@@ -304,15 +351,19 @@ func (g *gen) matchEmitsDefault(m *ast.MatchExpr) bool {
 
 // tupleArmIsCatchAll reports whether every component of a tuple arm is
 // a wildcard or a fresh-ident binding — i.e. it imposes no test and
-// lowers to `default:`. A variant-named ident or any refining pattern
-// makes it conditional.
-func (g *gen) tupleArmIsCatchAll(tp *ast.TuplePat) bool {
-	for _, sub := range tp.Sub {
+// lowers to `default:`. A variant-named ident (scoped to the component's
+// own sum) or any refining pattern makes it conditional.
+func (g *gen) tupleArmIsCatchAll(tp *ast.TuplePat, compTypes []string) bool {
+	for j, sub := range tp.Sub {
+		compType := ""
+		if j < len(compTypes) {
+			compType = compTypes[j]
+		}
 		switch s := sub.(type) {
 		case *ast.WildcardPat:
 			// imposes no test
 		case *ast.IdentPat:
-			if _, ok := g.variant[s.Name]; ok {
+			if _, ok := g.identComponentVariant(s.Name, compType); ok {
 				return false // nullary-variant ref → a tag test
 			}
 		default:
