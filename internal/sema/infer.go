@@ -374,6 +374,9 @@ func (c *checker) inferCall(call *ast.Call) Type {
 		// it is typed rather than Unknown.
 		if bt := c.bindingCallReturn(f); bt != nil {
 			ret = bt
+		} else if gt := c.genericBindingReturn(call, f); gt != nil {
+			// `fmt.scan<T>()` family — result type from call type-args.
+			ret = gt
 		} else if ct := c.staticContainerCtor(f, call); ct != nil {
 			// Static container constructor `Map<K,V>.new()` /
 			// `Set<T>.new()` / `Set<T>.from(..)` / `Stack<T>.new()`:

@@ -59,6 +59,30 @@ func f(s: string): Result<int, error> {
 	}
 }
 
+// TestScanBindingReturnTyped locks the generic `fmt.scan<T>()` family:
+// the result type comes from the call's type-args, so `try fmt.scan<int>()`
+// types its binding `int` (not Unknown — the p1242 cascade) and the
+// multi-value forms produce the tuple result the destructure expects.
+func TestScanBindingReturnTyped(t *testing.T) {
+	info := checkInfo(t, `import fmt
+func f(): Result<int, error> {
+  let n = try fmt.scan<int>()
+  let p = try fmt.scan2<int, string>()
+  let q = try fmt.scan3<int, string, bool>()
+  return Ok(n)
+}
+`)
+	if got := defTypeByName(info, "n"); got == nil || got.String() != "int" {
+		t.Errorf("try fmt.scan<int>() result n = %v; want int", got)
+	}
+	if got := defTypeByName(info, "p"); got == nil || got.String() != "(int, string)" {
+		t.Errorf("try fmt.scan2<int,string>() result p = %v; want (int, string)", got)
+	}
+	if got := defTypeByName(info, "q"); got == nil || got.String() != "(int, string, bool)" {
+		t.Errorf("try fmt.scan3 result q = %v; want (int, string, bool)", got)
+	}
+}
+
 // TestTryErrorTypeMatch — no E0403 when the inner `try` error type
 // equals the enclosing function's error type.
 func TestTryErrorTypeMatch(t *testing.T) {

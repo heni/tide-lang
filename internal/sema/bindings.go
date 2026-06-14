@@ -47,3 +47,44 @@ func (c *checker) bindingCallReturn(f *ast.Field) Type {
 	}
 	return c.stdlibBindingReturn(recv.Name, f.Name)
 }
+
+// genericBindingReturn types the generic `fmt.scan<T>()` family, whose
+// result type depends on the *call's* type arguments rather than a
+// fixed table row — `scan<T>` → `Result<T, error>`, `scan2<A,B>` →
+// `Result<(A,B), error>`, `scan3<A,B,C>` → `Result<(A,B,C), error>`
+// (binding-surface.md §fmt). Without this a `try fmt.scan<int>()` left
+// its binding Unknown, which cascaded into "cannot infer Go type for
+// tuple literal" once the value reached a tuple component (p1242).
+// Mirrors codegen's scan lowering (internal/codegen/call.go §fmtScan).
+func (c *checker) genericBindingReturn(call *ast.Call, f *ast.Field) Type {
+	recv, ok := f.Receiver.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	if sym := c.info.Symbol[recv]; sym == nil || sym.Kind != SymBuiltinModule || recv.Name != "fmt" {
+		return nil
+	}
+	errT := &Builtin{N: "error"}
+	want := 0
+	switch f.Name {
+	case "scan":
+		want = 1
+	case "scan2":
+		want = 2
+	case "scan3":
+		want = 3
+	default:
+		return nil
+	}
+	if len(call.TypeArgs) != want {
+		return nil
+	}
+	if want == 1 {
+		return &Result{T: c.typeFromExpr(call.TypeArgs[0]), E: errT}
+	}
+	comps := make([]Type, want)
+	for i, ta := range call.TypeArgs {
+		comps[i] = c.typeFromExpr(ta)
+	}
+	return &Result{T: &Tuple{Comps: comps}, E: errT}
+}
