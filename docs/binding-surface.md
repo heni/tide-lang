@@ -263,6 +263,7 @@ context.withTimeout(parent: context.Context, d: time.Duration):
 
 json.parse<T>(data: []byte):   Result<T, error>
 json.serialize(v: Any):        Result<[]byte, error>
+// Not in v1 — needs bounded generics (`W: io.Writer`).
 json.serializeTo<W: io.Writer>(w: W, v: Any): Result<unit, error>
 
 // "Pretty-printed" variant of serialize.
