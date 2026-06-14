@@ -1,0 +1,41 @@
+--- TITLE ---
+Chained tuple-index access `r.1.0` — nested `.N` suffixes lower to `r._1._0`
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let r = ((1, 2), (3, 4))
+  fmt.println(r.0.0, r.0.1, r.1.0, r.1.1)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var r = struct {
+		_0 struct {
+			_0 int
+			_1 int
+		}
+		_1 struct {
+			_0 int
+			_1 int
+		}
+	}{_0: struct {
+		_0 int
+		_1 int
+	}{_0: 1, _1: 2}, _1: struct {
+		_0 int
+		_1 int
+	}{_0: 3, _1: 4}}
+	fmt.Println(r._0._0, r._0._1, r._1._0, r._1._1)
+}
+
+--- STDOUT ---
+1 2 3 4
+
+--- EXIT ---
+0

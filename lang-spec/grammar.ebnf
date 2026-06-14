@@ -447,6 +447,11 @@ IndexSuffix      = "[" Expr "]" ;
 SliceSuffix      = "[" Expr? ":" Expr? "]" ;          // half-open
 FieldSuffix      = "." Ident ;
 TupleFieldSuffix = "." IntLit ;
+// Lexical note: a chained tuple index such as `r.1.0` lexes the `1.0`
+// run as a single FloatLit (the lexer is context-free), not `.1` `.0`.
+// The parser re-splits a `digits "." digits` FloatLit that follows a
+// `.` suffix back into two TupleFieldSuffix indices. Any other float
+// form (exponent, etc.) is not a tuple-index chain and stays an error.
 ArgList          = Expr ( "," Newline? Expr )* ;
 
 PrimaryExpr  = Literal

@@ -1863,6 +1863,26 @@ func (p *parser) parseUnary() (ast.Expr, *Diag) {
 	return p.parsePostfix()
 }
 
+// splitChainedTupleIndex re-splits a FloatLit lexeme `N.M` that the lexer
+// produced for a chained tuple index (`r.1.0` lexes `1.0` as one float). It
+// accepts only the plain `digits "." digits` shape — an exponent or any
+// other float form is not a tuple-index chain, so ok is false.
+func splitChainedTupleIndex(lexeme string) (lhs, rhs int, ok bool) {
+	a, b, found := strings.Cut(lexeme, ".")
+	if !found || a == "" || b == "" {
+		return 0, 0, false
+	}
+	lhs, err := strconv.Atoi(a)
+	if err != nil {
+		return 0, 0, false
+	}
+	rhs, err = strconv.Atoi(b)
+	if err != nil {
+		return 0, 0, false
+	}
+	return lhs, rhs, true
+}
+
 func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 	e, err := p.parsePrimary()
 	if err != nil {
@@ -1977,6 +1997,33 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 					},
 					Receiver: e,
 					Position: pos,
+				}
+				break
+			}
+			// Chained tuple index `r.1.0`: the lexer reads `1.0` as one
+			// FloatLit, but in an index chain it is two suffixes `.1` then
+			// `.0` (grammar §TupleFieldSuffix). Re-split the `N.M` lexeme.
+			if p.at(lexer.KindFloatLit) {
+				ftok := p.advance()
+				lhs, rhs, ok := splitChainedTupleIndex(ftok.Lexeme)
+				if !ok {
+					return nil, p.diag("E0112", "expected field name after `.`", ftok.Line, ftok.Col)
+				}
+				inner := &ast.TupleField{
+					Span: ast.Span{
+						StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
+						EndLine: ftok.Line, EndCol: ftok.Col + len(strconv.Itoa(lhs)),
+					},
+					Receiver: e,
+					Position: lhs,
+				}
+				e = &ast.TupleField{
+					Span: ast.Span{
+						StartLine: inner.Span.StartLine, StartCol: inner.Span.StartCol,
+						EndLine: ftok.Line, EndCol: ftok.Col + len(ftok.Lexeme),
+					},
+					Receiver: inner,
+					Position: rhs,
 				}
 				break
 			}

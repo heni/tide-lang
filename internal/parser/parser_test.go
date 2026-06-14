@@ -422,3 +422,33 @@ func main() {
 		t.Errorf("canonical does not start with (File: %s", a[:40])
 	}
 }
+
+// splitChainedTupleIndex re-splits a `N.M` FloatLit lexeme that the
+// context-free lexer produced for a chained tuple index `r.1.0`. Only the
+// plain `digits "." digits` shape is a chain; every other float form (and
+// malformed input) must be rejected so the parser can report the normal
+// "expected field name after `.`" diagnostic.
+func TestSplitChainedTupleIndex(t *testing.T) {
+	cases := []struct {
+		lexeme   string
+		lhs, rhs int
+		ok       bool
+	}{
+		{"1.0", 1, 0, true},
+		{"0.0", 0, 0, true},
+		{"10.2", 10, 2, true},
+		{"1e3", 0, 0, false},   // exponent, not a chain
+		{"1.5e3", 0, 0, false}, // fractional exponent
+		{"1.", 0, 0, false},    // missing rhs
+		{".5", 0, 0, false},    // missing lhs
+		{"1.2.3", 0, 0, false}, // rhs "2.3" is not an integer
+		{"12", 0, 0, false},    // no dot
+	}
+	for _, c := range cases {
+		lhs, rhs, ok := splitChainedTupleIndex(c.lexeme)
+		if ok != c.ok || (ok && (lhs != c.lhs || rhs != c.rhs)) {
+			t.Errorf("splitChainedTupleIndex(%q) = (%d, %d, %v), want (%d, %d, %v)",
+				c.lexeme, lhs, rhs, ok, c.lhs, c.rhs, c.ok)
+		}
+	}
+}

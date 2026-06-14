@@ -65,15 +65,15 @@ func segmentCrossesRect(rect: Rect, a: Corner, b: Corner): bool {
   let yr1 = rect.1.1
   if a.0 == b.0 {
     // Vertical segment at x = a.0; check y span.
-    return xr0 < a.0 && a.0 < xr1
+    return (xr0 < a.0 && a.0 < xr1
         && intMin(a.1, b.1) < yr1
-        && intMax(a.1, b.1) > yr0
+        && intMax(a.1, b.1) > yr0)
   }
   if a.1 == b.1 {
     // Horizontal segment at y = a.1; check x span.
-    return yr0 < a.1 && a.1 < yr1
+    return (yr0 < a.1 && a.1 < yr1
         && intMin(a.0, b.0) < xr1
-        && intMax(a.0, b.0) > xr0
+        && intMax(a.0, b.0) > xr0)
   }
   // Diagonal segments don't occur in this puzzle's inputs.
   return false
