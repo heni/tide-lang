@@ -5,7 +5,6 @@ import (
 	"go/format"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/heni/tide-lang/internal/ast"
 	"github.com/heni/tide-lang/internal/sema"
@@ -2554,6 +2553,41 @@ func (g *gen) goFieldName(receiver ast.Expr, name string) string {
 	return exportFieldName(name)
 }
 
+// isDataFieldSelector reports whether `recv.name` names a *data field*
+// (as opposed to a method) of recv's record/class type. A func-typed
+// data field can be *called* — `handler.fn(x)` — and the callee is then
+// an `*ast.Field` whose name must take the exported field spelling
+// (goFieldName), not the lowercase method spelling, or it would not
+// match the exported Go struct field. Records have only data fields;
+// classes split fields vs methods; interfaces/containers/stdlib have
+// no data fields reachable this way (→ false, method spelling).
+func (g *gen) isDataFieldSelector(receiver ast.Expr, name string) bool {
+	if g.info == nil {
+		return false
+	}
+	named, ok := g.info.Type[receiver].(*sema.Named)
+	if !ok {
+		return false
+	}
+	switch d := named.Decl.(type) {
+	case *ast.ClassDecl:
+		for _, fld := range d.Fields {
+			if fld.Name == name {
+				return true
+			}
+		}
+	case *ast.TypeDecl:
+		if rb, ok := d.Body.(*ast.RecordTypeBody); ok {
+			for _, fld := range rb.Fields {
+				if fld.Name == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // goMethodName maps a Tide method-call selector `recv.name(...)` to its
 // Go spelling — the pre-export behaviour (stdlib renames + the
 // `error`→`Error` boundary, otherwise the verbatim lowercase name).
@@ -2596,17 +2630,25 @@ func goIdent(name string) string {
 // spelling is invisible at the Tide-source and wire levels. Exported
 // names always start uppercase, so they can never be Go-reserved — no
 // goIdent escaping needed.
+//
+// Identifiers are ASCII `[A-Za-z_][A-Za-z0-9_]*` (the lexer rejects the
+// rest), so a single-byte uppercase suffices. A leading underscore can't
+// be exported by capitalising, so it gets an `X` prefix. (Collision risk
+// — two fields differing only in first-letter case, or `_x` vs `X_x` —
+// is a documented limitation; Go rejects the duplicate field loudly, so
+// it is never a silent miscompile. See lowering-go.md §Record / struct
+// field lowering.)
 func exportFieldName(name string) string {
 	if name == "" {
 		return name
 	}
-	r := []rune(name)
-	if unicode.IsLetter(r[0]) {
-		r[0] = unicode.ToUpper(r[0])
-		return string(r)
+	c := name[0]
+	if c >= 'a' && c <= 'z' {
+		return string(c-'a'+'A') + name[1:]
 	}
-	// A leading non-letter (e.g. `_x`) can't be exported by
-	// capitalising; force an exported spelling with an `X` prefix.
+	if c >= 'A' && c <= 'Z' {
+		return name
+	}
 	return "X" + name
 }
 

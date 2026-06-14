@@ -112,6 +112,19 @@ rename, not the export path) is gated on the receiver's sema symbol
 being a builtin module, not on its spelling — a local value that
 shadows a package name still exports its fields.
 
+A func-typed *data field* may itself be called (`handler.fn(x)`); the
+call site spells it with the exported **field** form (`handler.Fn(x)`),
+not the method form — the two lowering paths are kept distinct so this
+does not collapse to a method-name spelling.
+
+**Known limitation — non-injective export.** `exportFieldName` is not
+injective: two field names differing only in first letter case
+(`port` / `Port`) both map to `Port`, and `_x` / `X_x` both map to
+`X_x`. Such a record produces a duplicate Go struct field — a *loud*
+`go build` failure, never a silent miscompile. v1 leaves this
+unguarded (no corpus shape hits it); a sema diagnostic on colliding
+exported forms is the eventual fix.
+
 Tuple fields keep their positional unexported spelling (`_0`, `_1`):
 they are the anonymous-struct tuple representation, not nominal record
 fields, and no v1 program serialises a tuple to JSON.

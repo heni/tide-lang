@@ -405,7 +405,13 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return err
 		}
 		g.b.WriteByte('.')
-		g.b.WriteString(g.goMethodName(fld.Receiver, fld.Name))
+		// A func-typed *data field* called as `recv.fn(x)` takes the
+		// exported field spelling; a genuine method stays lowercase.
+		if g.isDataFieldSelector(fld.Receiver, fld.Name) {
+			g.b.WriteString(g.goFieldName(fld.Receiver, fld.Name))
+		} else {
+			g.b.WriteString(g.goMethodName(fld.Receiver, fld.Name))
+		}
 	} else if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
