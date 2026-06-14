@@ -55,7 +55,8 @@ func (c *checker) bindingCallReturn(f *ast.Field) Type {
 // (binding-surface.md §fmt). Without this a `try fmt.scan<int>()` left
 // its binding Unknown, which cascaded into "cannot infer Go type for
 // tuple literal" once the value reached a tuple component (p1242).
-// Mirrors codegen's scan lowering (internal/codegen/call.go §fmtScan).
+// Mirrors codegen's scan lowering (internal/codegen/call.go,
+// isFmtScan / fmtScanMultiArity).
 func (c *checker) genericBindingReturn(call *ast.Call, f *ast.Field) Type {
 	recv, ok := f.Receiver.(*ast.Ident)
 	if !ok {
