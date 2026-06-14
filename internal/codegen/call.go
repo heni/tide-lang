@@ -26,6 +26,12 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return g.emitReflectCall(f.Name, c.TypeArgs, c.Args)
 		}
 	}
+	// json.* binding — parse<T> / serialize / serializeIndent
+	// (binding-surface.md §encoding/json). Gated on the receiver's
+	// sema symbol so a user value named `json` isn't hijacked.
+	if handled, err := g.emitJSONCall(c); handled {
+		return err
+	}
 	// `error(msg)` free constructor (builtins.md §error) → Go's
 	// errors.New(msg). Distinguished from the `.error()` interface
 	// method (a Field callee) and from any error-conversion by the
@@ -575,7 +581,8 @@ func (g *gen) isBuiltinModule(id *ast.Ident) bool {
 func isStdlibNamespaceName(name string) bool {
 	switch name {
 	case "fmt", "os", "strings", "strconv", "bufio", "context",
-		"time", "sync", "io", "log", "net", "encoding", "math", "sort":
+		"time", "sync", "io", "log", "net", "encoding", "math", "sort",
+		"json":
 		return true
 	}
 	return false

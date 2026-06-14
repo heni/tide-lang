@@ -26,6 +26,10 @@ func (c *checker) stdlibBindingReturn(pkg, method string) Type {
 		return &Result{T: &Builtin{N: "float64"}, E: errT}
 	case [2]string{"os", "readFile"}:
 		return &Result{T: &Slice{Elem: &Builtin{N: "byte"}}, E: errT}
+	case [2]string{"json", "serialize"}, [2]string{"json", "serializeIndent"}:
+		// json.serialize(v) / serializeIndent(v, prefix, indent) →
+		// Result<[]byte, error> (binding-surface.md §encoding/json).
+		return &Result{T: &Slice{Elem: &Builtin{N: "byte"}}, E: errT}
 	}
 	return nil
 }
@@ -48,9 +52,10 @@ func (c *checker) bindingCallReturn(f *ast.Field) Type {
 	return c.stdlibBindingReturn(recv.Name, f.Name)
 }
 
-// genericBindingReturn types the generic `fmt.scan<T>()` family, whose
-// result type depends on the *call's* type arguments rather than a
-// fixed table row — `scan<T>` → `Result<T, error>`, `scan2<A,B>` →
+// genericBindingReturn types the generic bindings whose result type
+// depends on the *call's* type arguments rather than a fixed table row:
+// `json.parse<T>(data)` → `Result<T, error>`, and the `fmt.scan` family —
+// `scan<T>` → `Result<T, error>`, `scan2<A,B>` →
 // `Result<(A,B), error>`, `scan3<A,B,C>` → `Result<(A,B,C), error>`
 // (binding-surface.md §fmt). Without this a `try fmt.scan<int>()` left
 // its binding Unknown, which cascaded into "cannot infer Go type for
@@ -62,10 +67,21 @@ func (c *checker) genericBindingReturn(call *ast.Call, f *ast.Field) Type {
 	if !ok {
 		return nil
 	}
-	if sym := c.info.Symbol[recv]; sym == nil || sym.Kind != SymBuiltinModule || recv.Name != "fmt" {
+	if sym := c.info.Symbol[recv]; sym == nil || sym.Kind != SymBuiltinModule {
 		return nil
 	}
 	errT := &Builtin{N: "error"}
+	// json.parse<T>(data) → Result<T, error> — generic over the target
+	// type, like the scan family (binding-surface.md §encoding/json).
+	if recv.Name == "json" && f.Name == "parse" {
+		if len(call.TypeArgs) != 1 {
+			return nil
+		}
+		return &Result{T: c.typeFromExpr(call.TypeArgs[0]), E: errT}
+	}
+	if recv.Name != "fmt" {
+		return nil
+	}
 	want := 0
 	switch f.Name {
 	case "scan":

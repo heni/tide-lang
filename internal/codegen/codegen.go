@@ -31,6 +31,7 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 		info:       info,
 		variant:    map[string]variantInfo{},
 		class:      map[string]classInfo{},
+		fieldTypes: map[string]map[string]ast.TypeExpr{},
 		usedGoPkgs: map[string]bool{},
 	}
 	// Predeclared sum-type variants per `lang-spec/builtins.md`
@@ -147,6 +148,13 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 					g.variant[v.Name] = variantInfo{owner: td.Name, tag: i, fields: v.Fields, sumTypeParams: td.TypeParams}
 				}
 			}
+			if rb, ok := td.Body.(*ast.RecordTypeBody); ok {
+				fts := map[string]ast.TypeExpr{}
+				for _, fd := range rb.Fields {
+					fts[fd.Name] = fd.DeclType
+				}
+				g.fieldTypes[td.Name] = fts
+			}
 		}
 		if cd, ok := d.(*ast.ClassDecl); ok {
 			ci := classInfo{
@@ -159,6 +167,11 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 				}
 			}
 			g.class[cd.Name] = ci
+			fts := map[string]ast.TypeExpr{}
+			for _, cf := range cd.Fields {
+				fts[cf.Name] = cf.DeclType
+			}
+			g.fieldTypes[cd.Name] = fts
 		}
 	}
 	// Register the predeclared Kind variants per
@@ -245,6 +258,12 @@ type gen struct {
 	// (`Counter(...)` → `&Counter{...}`) and static-method
 	// calls (`Counter.make(...)` → `counterMake(...)`).
 	class map[string]classInfo
+	// fieldTypes maps a record/class name to its fields' declared Tide
+	// TypeExprs. emitBraceLit sets expectType from it so a constructor
+	// field value whose type Go can't infer — a bare `None` / `Ok` in
+	// `Envelope{ q: None, … }` — gets its type args stamped from the
+	// field's declared type (§Constructor type-argument stamping).
+	fieldTypes map[string]map[string]ast.TypeExpr
 	// matchTempCounter generates unique temp names for the
 	// subject of a `match` when any arm binds payload fields.
 	// Per `lowering-go.md` §MatchIR — capture subject once to
@@ -269,8 +288,14 @@ type gen struct {
 	usesScan2    bool
 	usesScan3    bool
 	usesResultOf bool
-	usesTryRecv  bool
-	usesScope    bool
+	// usesJSON — any json.* binding is used, so Go's encoding/json is
+	// imported and (with usesOption) the Option ⇄ null/value JSON
+	// methods are emitted. usesJSONParse additionally forces the
+	// tideJSONParse helper (json.parse<T>).
+	usesJSON      bool
+	usesJSONParse bool
+	usesTryRecv   bool
+	usesScope     bool
 	// usesSortSorted — `sort.sorted(s, less)` is used, so its inline
 	// tideSorted helper (copy + sort.SliceStable) and Go's "sort"
 	// import are needed.
@@ -407,7 +432,9 @@ func (g *gen) writeHeader(f *ast.File) {
 		if isStdlibNamespaceName(im.Path) && !g.usedGoPkgs[im.Path] {
 			continue
 		}
-		add(im.Path)
+		// Tide import name → Go import path (json → encoding/json); all
+		// other stdlib bindings share the name.
+		add(goImportPath(im.Path))
 	}
 	if g.usesReflect {
 		// reflect.TypeOf for the descriptor registry lookup, plus
@@ -456,6 +483,8 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredScan2()
 	g.writePredeclaredScan3()
 	g.writePredeclaredResultOf()
+	g.writePredeclaredJSONParse()
+	g.writeOptionJSONMethods()
 	g.writePredeclaredSortSorted()
 	g.writePredeclaredTryRecv()
 	g.writePredeclaredGroup()
@@ -1068,6 +1097,25 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "sorted" {
 				if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "sort" && g.isBuiltinModule(recv) {
 					g.usesSortSorted = true
+				}
+			}
+			// json.* bindings (binding-surface.md §encoding/json). Gated
+			// on the sema symbol like sort.sorted. parse<T> needs the
+			// tideJSONParse helper; serialize/serializeIndent reuse
+			// tideResultOf. Either marks usesJSON so the Option JSON
+			// methods + encoding/json import are pulled in.
+			if f, ok := v.Callee.(*ast.Field); ok {
+				if recv, ok := f.Receiver.(*ast.Ident); ok && recv.Name == "json" && g.isBuiltinModule(recv) {
+					switch f.Name {
+					case "parse":
+						g.usesJSON = true
+						g.usesJSONParse = true
+						g.usesResult = true
+					case "serialize", "serializeIndent":
+						g.usesJSON = true
+						g.usesResultOf = true
+						g.usesResult = true
+					}
 				}
 			}
 			if f, ok := v.Callee.(*ast.Field); ok && f.Name == "tryRecv" {
@@ -1880,7 +1928,19 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 		}
 		g.b.WriteString(exportFieldName(re.Name))
 		g.b.WriteString(": ")
-		if err := g.emitExpr(re.Value); err != nil {
+		// Flow the field's declared type as the expected type so a
+		// constructor value Go can't infer — `q: None` /
+		// `r: Ok(v)` — gets its type args stamped (§Constructor
+		// type-argument stamping). nil when the field type is unknown.
+		prevExpect := g.expectType
+		if fts, ok := g.fieldTypes[name]; ok {
+			g.expectType = fts[re.Name]
+		} else {
+			g.expectType = nil
+		}
+		err := g.emitExpr(re.Value)
+		g.expectType = prevExpect
+		if err != nil {
 			return err
 		}
 	}

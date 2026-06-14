@@ -1,0 +1,147 @@
+--- TITLE ---
+encoding/json round-trip into a typed record with an Option field. json.serialize → tideResultOf(json.Marshal); json.parse<T> → tideJSONParse helper; the record's fields are exported + json-tagged; Option marshals as bare value / null (None in a brace literal stamps OptionNone[string]()). Some round-trips to Some, None to None.
+
+--- INPUT ---
+import fmt
+import json
+
+type Item = {
+  id:   int
+  name: Option<string>
+}
+
+func roundtrip(it: Item): Result<Item, error> {
+  let data = try json.serialize(it)
+  let back = try json.parse<Item>(data)
+  return Ok(back)
+}
+
+func show(it: Item) {
+  match roundtrip(it) {
+    Ok(p) => {
+      match p.name {
+        Some(s) => fmt.println(p.id, s),
+        None    => fmt.println(p.id, "none"),
+      }
+    },
+    Err(e) => fmt.println("err:", e),
+  }
+}
+
+func main() {
+  show(Item{ id: 1, name: Some("hi") })
+  show(Item{ id: 2, name: None })
+}
+
+--- GO ---
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Option[T any] struct {
+	Tag uint8
+	V   T
+}
+
+func OptionSome[T any](value T) Option[T] {
+	return Option[T]{Tag: 1, V: value}
+}
+func OptionNone[T any]() Option[T] {
+	return Option[T]{Tag: 0}
+}
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideResultOf[T any](v T, err error) Result[T, error] {
+	if err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+func tideJSONParse[T any](data []byte) Result[T, error] {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return Result[T, error]{Tag: 1, E: err}
+	}
+	return Result[T, error]{Tag: 0, V: v}
+}
+func (o Option[T]) MarshalJSON() ([]byte, error) {
+	if o.Tag == 0 {
+		return []byte("null"), nil
+	}
+	return json.Marshal(o.V)
+}
+func (o *Option[T]) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		var zero T
+		o.Tag, o.V = 0, zero
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	o.Tag, o.V = 1, v
+	return nil
+}
+
+type Item struct {
+	Id   int            `json:"id"`
+	Name Option[string] `json:"name"`
+}
+
+func roundtrip(it Item) Result[Item, error] {
+	__tide_try_1 := tideResultOf(json.Marshal(it))
+	if __tide_try_1.Tag == 1 {
+		return Result[Item, error]{Tag: 1, E: __tide_try_1.E}
+	}
+	var data = __tide_try_1.V
+	__tide_try_2 := tideJSONParse[Item](data)
+	if __tide_try_2.Tag == 1 {
+		return Result[Item, error]{Tag: 1, E: __tide_try_2.E}
+	}
+	var back = __tide_try_2.V
+	return ResultOk[Item, error](back)
+}
+func show(it Item) {
+	__tide_match_1 := roundtrip(it)
+	switch __tide_match_1.Tag {
+	case 0:
+		p := __tide_match_1.V
+		__tide_match_2 := p.Name
+		switch __tide_match_2.Tag {
+		case 1:
+			s := __tide_match_2.V
+			fmt.Println(p.Id, s)
+		case 0:
+			fmt.Println(p.Id, "none")
+		}
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err:", e)
+	}
+}
+func main() {
+	show(Item{Id: 1, Name: OptionSome[string]("hi")})
+	show(Item{Id: 2, Name: OptionNone[string]()})
+}
+
+--- STDOUT ---
+1 hi
+2 none
+
+--- EXIT ---
+0

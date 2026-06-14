@@ -3,15 +3,15 @@
   "totals": {
     "total": 52,
     "parse_fail": 11,
-    "sema_fail": 4,
-    "emit_fail": 1,
-    "build_ok": 36
+    "sema_fail": 2,
+    "emit_fail": 2,
+    "build_ok": 37
   },
   "files": [
     {
       "path": "examples/agents/counterstack/pentix_agent.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name json"
+      "stage": "emit",
+      "blocker": "unknown failure"
     },
     {
       "path": "examples/aoc/2025/d01.td",
@@ -120,8 +120,8 @@
     },
     {
       "path": "examples/interview/config_loader.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name json"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/interview/fizzbuzz.td",
