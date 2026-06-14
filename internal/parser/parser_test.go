@@ -472,7 +472,11 @@ func TestArrowFuncType(t *testing.T) {
 
 	// Without `=>`, a one-element paren-list stays a rejected 1-tuple.
 	toks, _ := lexer.Lex("func f(x: (int)): int { return 0 }\n")
-	if _, perr := Parse(toks); perr == nil {
+	_, perr := Parse(toks)
+	if perr == nil {
 		t.Fatalf("expected 1-tuple type error, got nil")
+	}
+	if perr.Code != "E0112" {
+		t.Fatalf("expected E0112 1-tuple error, got %s", perr.Code)
 	}
 }

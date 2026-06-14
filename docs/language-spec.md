@@ -354,7 +354,11 @@ Top-level functions use the `func` keyword. Methods inside a `class` or an
 **Function types** (for first-class function values):
 
 - Type: `func(T, U): R` (parens around params, colon-return).
-- Zero-param form: `func(): R`.
+- Arrow type: `(T, U) => R` — the same function type, mirroring the
+  short-closure expression syntax. The trailing `=>` disambiguates the
+  paren-list from a tuple type, so the one-element `(int) => R` is a
+  function type, not a (rejected) 1-tuple.
+- Zero-param form: `func(): R`, or `() => R`.
 - Unit return: `func(T, U)` — the `: unit` is omitted. `func()` is
   shorthand for `func(): unit` — typical for cleanup/cancel callbacks
   (e.g. the second element of `context.withTimeout(...)`).
