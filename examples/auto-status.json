@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 11,
     "sema_fail": 2,
-    "emit_fail": 2,
-    "build_ok": 37
+    "emit_fail": 1,
+    "build_ok": 38
   },
   "files": [
     {
@@ -140,8 +140,8 @@
     },
     {
       "path": "examples/interview/vending_machine.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/leetcode/invert_binary_tree.td",

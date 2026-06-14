@@ -469,6 +469,47 @@ multiple `case` arms over a chain of `if`. For an
 `UnreachableIR` leaf, codegen emits
 `panic("unreachable: non-exhaustive match")`.
 
+### Tuple value-switch — boolean decision tree
+
+A `match` whose subject is a tuple `(s_1, ..., s_k)` cannot switch
+on a single tag. It lowers to a Go `switch {}` (a boolean decision
+tree): each component is captured in a temp, and each tuple-pattern
+arm becomes a `case` whose guard is the conjunction of its
+components' tests.
+
+```
+match (s_1, ..., s_k) { (p_1, ..., p_k) => E, ... }
+                                       ⟿
+  __t_1 := <s_1>;  ...;  __t_k := <s_k>
+  switch {
+  case <cond(p_1, __t_1)> && ... && <cond(p_k, __t_k)>:
+    <binds(p_1, __t_1)> ... <binds(p_k, __t_k)>
+    <lowering of E>
+  ...
+  }
+```
+
+A component pattern contributes a `cond` and `binds`:
+
+- `VariantPat V(...)` → `__t.Tag == <tag-for-V>`; payload
+  sub-patterns bind against `__t.<payload-field>` exactly as in the
+  single-subject case.
+- constructor-ident `V` (nullary) → `__t.Tag == <tag-for-V>`; no
+  bind.
+- literal `L` → `__t == <L's Go literal>` (`bool` uses `__t` / `!__t`);
+  no bind.
+- wildcard `_` → no `cond`, no bind.
+- fresh ident `x` → no `cond`; binds `x := __t`.
+
+An arm whose every component is a wildcard or fresh ident has an
+empty conjunction and lowers to `default:`. Arm order is preserved,
+so Go's first-match `switch` semantics coincide with Tide's. The
+trailing `UnreachableIR` guard is emitted unless some arm produced a
+`default:` (which already makes the Go switch terminating — a guard
+after it would be unreachable code). Refining a component *inside* a
+payload (`(Idle, Select(Cola))`) is not lowered in v1: payloads are
+bound, not tested.
+
 ### `match` in value position
 
 A `match` whose result is consumed (LHS of an assignment, RHS of

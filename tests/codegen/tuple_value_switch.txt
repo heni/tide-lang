@@ -1,0 +1,76 @@
+--- TITLE ---
+Tuple value-switch — `match (l, c)` lowers to a boolean decision tree with per-component tag conjuncts, payload binding, a wildcard component, and the trailing unreachable guard
+
+--- INPUT ---
+import fmt
+
+type Light = | Red | Green
+type Cmd = | Go | Stop(reason: int)
+
+func step(l: Light, c: Cmd): int {
+  match (l, c) {
+    (Red, Go)      => 1,
+    (Red, Stop(r)) => r,
+    (Green, _)     => 2,
+  }
+}
+
+func main() {
+  fmt.println(step(Red, Stop(7)))
+  fmt.println(step(Red, Go))
+  fmt.println(step(Green, Go))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Light struct {
+	Tag uint8
+}
+
+var (
+	LightRed   = Light{Tag: 0}
+	LightGreen = Light{Tag: 1}
+)
+
+type Cmd struct {
+	Tag        uint8
+	StopReason int
+}
+
+var (
+	CmdGo = Cmd{Tag: 0}
+)
+
+func CmdStop(reason int) Cmd {
+	return Cmd{Tag: 1, StopReason: reason}
+}
+func step(l Light, c Cmd) int {
+	__tide_match_1 := l
+	__tide_match_2 := c
+	switch {
+	case __tide_match_1.Tag == 0 && __tide_match_2.Tag == 0:
+		return 1
+	case __tide_match_1.Tag == 0 && __tide_match_2.Tag == 1:
+		r := __tide_match_2.StopReason
+		return r
+	case __tide_match_1.Tag == 1:
+		return 2
+	}
+	panic("unreachable: non-exhaustive match")
+}
+func main() {
+	fmt.Println(step(LightRed, CmdStop(7)))
+	fmt.Println(step(LightRed, CmdGo))
+	fmt.Println(step(LightGreen, CmdGo))
+}
+
+--- STDOUT ---
+7
+1
+2
+
+--- EXIT ---
+0
