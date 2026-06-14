@@ -170,7 +170,7 @@ func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm 
 // only when it names a variant of that component's own sum (owner ==
 // compType) — without this scoping a fresh-binding ident that happens to
 // collide with an unrelated sum's variant would be mis-lowered as a tag
-// test (the recurring global-vs-scoped name footgun; AI.md §3.10/§3.13).
+// test (the recurring global-vs-scoped name-resolution footgun).
 func (g *gen) tupleCompTypes(tup *ast.TupleLit) []string {
 	names := make([]string, len(tup.Components))
 	if g.info == nil {
