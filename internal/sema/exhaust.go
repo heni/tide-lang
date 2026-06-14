@@ -119,12 +119,25 @@ func (c *checker) checkTupleExhaustive(m *ast.MatchExpr, comps []Type) {
 		}
 		markRect(covered, dims, rect)
 	}
-	for _, c0 := range covered {
+	for cell, c0 := range covered {
 		if !c0 {
-			c.report("E0303", "Non-exhaustive match — some (state, event) combination is unmatched", m.Span)
+			c.report("E0303", "Non-exhaustive match — missing "+witnessTuple(dims, cell), m.Span)
 			return
 		}
 	}
+}
+
+// witnessTuple reconstructs the source-spelled tuple combination at a
+// row-major cell index, e.g. `(Holding, Refund)` — the witness shown
+// with E0303 so the user sees exactly which combination is unmatched.
+func witnessTuple(dims [][]string, cell int) string {
+	parts := make([]string, len(dims))
+	for j := len(dims) - 1; j >= 0; j-- {
+		n := len(dims[j])
+		parts[j] = dims[j][cell%n]
+		cell /= n
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
 }
 
 // compCoveredCtors returns the dimension indices a tuple-component
