@@ -228,13 +228,20 @@ if __tide_try_N.Tag == <bail> {        // 1 = Err (Result), 0 = None (Option)
 In **expression position** (`f(try e)`, `a + try e`) the preamble
 cannot sit inline, so it is **hoisted** to precede the enclosing
 statement; the `try` node itself lowers to `__tide_try_N.V`.
-Hoisting walks the statement's expressions in source order, so
-the preambles run in evaluation order. It stops at any construct
-introducing a new return frame (closure, value-position
-`match`/`if`/block, `scope`/`spawn`) — a `try` there belongs to
-that frame — and does not descend the right operand of `&&`/`||`
-(conditional evaluation; an unconditional preamble would change
-short-circuit semantics).
+
+Hoisting is only applied when it preserves observable evaluation
+order. Lifting a `try`'s early-return ahead of the surrounding
+expression would defer (or, on bail, skip) any *side-effecting
+expression evaluated before it* — so a `try` is hoisted only when
+every expression preceding it in its frame is pure; otherwise the
+`try` is left in place and rejected (lift it to a `let`/`var`/
+`return` binding). Two adjacent tries are always safe — both move
+out, in order — which is the common shape (`f(try a(), try b())`).
+The walk also stops at any construct introducing a new return
+frame (closure, value-position `match`/`if`/block, `scope`/`spawn`)
+— a `try` there belongs to that frame — and does not descend the
+right operand of `&&`/`||` (conditional evaluation; an
+unconditional preamble would change short-circuit semantics).
 
 `tidert.NewError(msg string) error` is a thin wrapper around
 `errors.New(msg)` from the Go stdlib; signature `func

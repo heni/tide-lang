@@ -1687,7 +1687,7 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 			}
 			// `return f(try g())` / `return a + try b()` — hoist the
 			// nested try preambles before the `return` line.
-			if err := g.hoistExprTries(r.Value); err != nil {
+			if err := g.hoistTriesIfSafe(r.Value); err != nil {
 				return err
 			}
 			g.line(v.Span.StartLine)
@@ -1744,7 +1744,7 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		}
 		// Expression-statement (`stack.push(try …)`) — hoist any
 		// nested `try` to preambles before emitting the call.
-		if err := g.hoistExprTries(v.Expr); err != nil {
+		if err := g.hoistTriesIfSafe(v.Expr); err != nil {
 			return err
 		}
 		g.line(v.Span.StartLine)
@@ -1786,11 +1786,9 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
 	case *ast.AssignStmt:
 		// `total = total + try f()` / `m[try k()] = v` — hoist nested
-		// try preambles before any of the assignment is emitted.
-		if err := g.hoistExprTries(v.LValue); err != nil {
-			return err
-		}
-		if err := g.hoistExprTries(v.Value); err != nil {
+		// try preambles before any of the assignment is emitted. LValue
+		// then Value as one frame, so the order check spans both.
+		if err := g.hoistTriesIfSafe(v.LValue, v.Value); err != nil {
 			return err
 		}
 		g.line(v.Span.StartLine)
@@ -2078,6 +2076,102 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 	return fmt.Errorf("codegen: reflect.%s is not yet supported (methods / variants / variantOf / typeArgs / elementType land later)", name)
 }
 
+// hoistableTries reports whether every `try` reachable by hoistExprTries
+// in exprs (evaluated left-to-right) can be lifted to a statement
+// preamble *without reordering side effects*. A try is unsafe to hoist
+// when an impure non-try expression is evaluated before it in the same
+// frame: hoisting moves the try's early-return ahead of that expression,
+// so the effect would be deferred past the try — or skipped entirely
+// when the try bails. (Two adjacent tries are fine: both move out, in
+// order.) When unsafe the caller leaves the try to tryExprErr — a
+// graceful limitation, never a miscompile. Conservative by construction:
+// any expression form not known-pure counts as impure (lowering-go.md
+// §try lowering).
+func hoistableTries(exprs ...ast.Expr) bool {
+	impure := false
+	ok := true
+	var walk func(e ast.Expr)
+	walk = func(e ast.Expr) {
+		if !ok {
+			return
+		}
+		switch v := e.(type) {
+		case *ast.Ident, *ast.IntLitExpr, *ast.FloatLitExpr,
+			*ast.StringLitExpr, *ast.BoolLitExpr, *ast.RuneLitExpr,
+			*ast.UnitLit:
+			// pure leaves — no effect, no nested try
+		case *ast.TryExpr:
+			if impure {
+				ok = false
+				return
+			}
+			// The inner is its own hoisted unit: its impures precede the
+			// preamble, so they don't reorder against outer siblings.
+			// Analyse it in a fresh impure scope, then restore.
+			saved := impure
+			impure = false
+			walk(v.Inner)
+			impure = saved
+		case *ast.Call:
+			walk(v.Callee)
+			for _, a := range v.Args {
+				walk(a)
+			}
+			impure = true // the call itself is a side effect, in place
+		case *ast.Field:
+			walk(v.Receiver)
+		case *ast.TupleField:
+			walk(v.Receiver)
+		case *ast.Binary:
+			walk(v.Left)
+			if v.Op != "&&" && v.Op != "||" {
+				walk(v.Right)
+			}
+		case *ast.Unary:
+			walk(v.Operand)
+		case *ast.Index:
+			walk(v.Receiver)
+			walk(v.Idx)
+		case *ast.ParenExpr:
+			walk(v.Inner)
+		case *ast.TupleLit:
+			for _, c := range v.Components {
+				walk(c)
+			}
+		case *ast.SliceLit:
+			for _, it := range v.Items {
+				walk(it)
+			}
+		default:
+			// Unknown / frame-introducing / effectful container
+			// (brace literal, value match/if, closure, scope/spawn, …):
+			// treat as impure so a following try is not reordered past it.
+			impure = true
+		}
+	}
+	for _, e := range exprs {
+		walk(e)
+	}
+	return ok
+}
+
+// hoistTriesIfSafe hoists the tries in exprs (in order) only when doing
+// so preserves evaluation order (hoistableTries); otherwise it leaves
+// them in place to reach tryExprErr. The exprs are the statement's
+// sub-expressions in evaluation order (e.g. an assignment's LValue then
+// Value) so the order check spans them as one frame.
+func (g *gen) hoistTriesIfSafe(exprs ...ast.Expr) error {
+	if !hoistableTries(exprs...) {
+		return nil
+	}
+	for _, e := range exprs {
+		if err := g.hoistExprTries(e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // hoistExprTries pre-emits, as statement preambles, every `try`
 // nested inside an expression that is not itself a statement-position
 // `try` (those are handled directly by emitStmt / emitLetOrVar). Each
@@ -2180,8 +2274,8 @@ func (g *gen) emitTryPreamble(t *ast.TryExpr) (string, error) {
 	}
 	// A `try` nested in this try's inner expr (`try f(try g())`) is
 	// hoisted first, so its early-return preamble precedes the
-	// `tmp := <inner>` line below.
-	if err := g.hoistExprTries(t.Inner); err != nil {
+	// `tmp := <inner>` line below — when reordering is safe.
+	if err := g.hoistTriesIfSafe(t.Inner); err != nil {
 		return "", err
 	}
 	g.tryTempCounter++
@@ -2226,7 +2320,7 @@ func (g *gen) emitTryPreamble(t *ast.TryExpr) (string, error) {
 // Statement-position `try` is handled in emitStmt / emitLetOrVar
 // without going through emitExpr.
 func (g *gen) tryExprErr() error {
-	return fmt.Errorf("codegen: `try` in expression position not yet supported — use it at let/var/return position; full expression-position lands with PR-Sema-2 (block expressions)")
+	return fmt.Errorf("codegen: `try` in this expression position is not supported — it sits in a conditionally-evaluated operand (`&&`/`||` right side), a separate return frame (closure / value-position match/if / scope / spawn), or after another side-effecting expression in the same statement; lift it to a `let`/`var`/`return` binding")
 }
 
 // semaSliceElem returns the Go element type for an inferred slice
@@ -2391,7 +2485,7 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 	}
 	// `let x = f(try g())` / `let x = a + try b()` — hoist nested try
 	// preambles before the binding line.
-	if err := g.hoistExprTries(value); err != nil {
+	if err := g.hoistTriesIfSafe(value); err != nil {
 		return err
 	}
 	g.line(span.StartLine)
