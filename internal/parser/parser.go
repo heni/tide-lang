@@ -2012,7 +2012,9 @@ func (p *parser) parsePostfix() (ast.Expr, *Diag) {
 				inner := &ast.TupleField{
 					Span: ast.Span{
 						StartLine: e.NodeSpan().StartLine, StartCol: e.NodeSpan().StartCol,
-						EndLine: ftok.Line, EndCol: ftok.Col + len(strconv.Itoa(lhs)),
+						// Inner `.N` ends at the embedded `.` — use the lexeme
+						// prefix so a leading-zero index sizes exactly.
+						EndLine: ftok.Line, EndCol: ftok.Col + strings.IndexByte(ftok.Lexeme, '.'),
 					},
 					Receiver: e,
 					Position: lhs,
