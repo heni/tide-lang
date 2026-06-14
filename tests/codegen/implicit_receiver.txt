@@ -26,19 +26,19 @@ package main
 import "fmt"
 
 type Point struct {
-	x int
-	y int
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 func (t *Point) sum() int {
-	return t.x + t.y
+	return t.X + t.Y
 }
 func (t *Point) shifted(d int) int {
 	var x = 100
-	return x + t.y
+	return x + t.Y
 }
 func main() {
-	var p = &Point{x: 3, y: 4}
+	var p = &Point{X: 3, Y: 4}
 	fmt.Println("sum", p.sum())
 	fmt.Println("shadowed", p.shifted(0))
 }

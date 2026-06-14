@@ -5,6 +5,7 @@ import (
 	"go/format"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/heni/tide-lang/internal/ast"
 	"github.com/heni/tide-lang/internal/sema"
@@ -1173,10 +1174,10 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		g.b.WriteByte('\n')
 		return nil
 	case *ast.RecordTypeBody:
-		// A nominal record lowers to a named Go struct. All generated
-		// code is package `main`, so Tide field names map directly
-		// (unexported Go fields are visible within the package) — no
-		// capitalisation needed (lowering-go.md §Record lowering).
+		// A nominal record lowers to a named Go struct. Fields are
+		// EXPORTED and carry a `json:"<tideName>"` tag so encoding/json
+		// (reflecting from outside package main) round-trips them
+		// (lowering-go.md §Record lowering).
 		g.line(td.Span.StartLine)
 		g.b.WriteString("type ")
 		g.b.WriteString(goIdent(td.Name))
@@ -1185,11 +1186,12 @@ func (g *gen) emitTypeDecl(td *ast.TypeDecl) error {
 		g.indent++
 		for _, f := range body.Fields {
 			g.writeIndent()
-			g.b.WriteString(goIdent(f.Name))
+			g.b.WriteString(exportFieldName(f.Name))
 			g.b.WriteByte(' ')
 			if err := g.emitTypeExpr(f.DeclType); err != nil {
 				return err
 			}
+			g.writeJSONTag(f.Name)
 			g.b.WriteByte('\n')
 		}
 		g.indent--
@@ -1334,11 +1336,12 @@ func (g *gen) emitClassDecl(cd *ast.ClassDecl) error {
 	g.b.WriteString(" struct {\n")
 	for _, f := range cd.Fields {
 		g.b.WriteByte('\t')
-		g.b.WriteString(goIdent(f.Name))
+		g.b.WriteString(exportFieldName(f.Name))
 		g.b.WriteByte(' ')
 		if err := g.emitTypeExpr(f.DeclType); err != nil {
 			return err
 		}
+		g.writeJSONTag(f.Name)
 		g.b.WriteByte('\n')
 	}
 	g.b.WriteString("}\n")
@@ -1876,7 +1879,7 @@ func (g *gen) emitBraceLit(b *ast.BraceLit) error {
 		if i > 0 {
 			g.b.WriteString(", ")
 		}
-		g.b.WriteString(goIdent(re.Name))
+		g.b.WriteString(exportFieldName(re.Name))
 		g.b.WriteString(": ")
 		if err := g.emitExpr(re.Value); err != nil {
 			return err
@@ -2360,7 +2363,7 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		if g.info != nil {
 			if sym := g.info.Symbol[v]; sym != nil && sym.Kind == sema.SymField {
 				g.b.WriteString("t.")
-				g.b.WriteString(goIdent(v.Name))
+				g.b.WriteString(exportFieldName(v.Name))
 				return nil
 			}
 		}
@@ -2528,15 +2531,35 @@ func (g *gen) emitField(f *ast.Field) error {
 	return nil
 }
 
-// goFieldName maps a Tide field / method name to its Go spelling.
-// Beyond the stdlib-namespace renames (mapFieldName), it applies the
-// D6 binding-name rewrite for the one Go-interface method reachable in
-// v1: `.error()` on a value typed as the predeclared `error` builtin is
-// Go's `error.Error()` (the PascalCase↔lowerCamel boundary convention;
-// D14 footnote). A user class that *implements* `error` is typed
-// nominally — never as the builtin — so its own `error()` method is
-// left untouched.
+// goFieldName maps a Tide *field-value* access `recv.name` to its Go
+// spelling. A genuine user record/class field is EXPORTED
+// (exportFieldName) so encoding/json can reach it; a stdlib-namespace
+// value access (`os.args` → `os.Args`) keeps its binding rename, and
+// `.error()` on the predeclared `error` builtin maps to Go's
+// `error.Error()` (the PascalCase↔lowerCamel boundary; D14 footnote).
+// Method-call selectors do NOT come through here — they use goMethodName
+// (call.go), which stays lowercase, so methods remain unexported.
+//
+// The package-namespace check gates on the receiver's sema *symbol*
+// (SymBuiltinModule), not its spelling — a local value that shadows a
+// package name (`let sort = Sorter{…}`) is a user value whose fields
+// must still export (the recurring name-match footgun, AI.md §3.10/§3.13).
 func (g *gen) goFieldName(receiver ast.Expr, name string) string {
+	if name == "error" && g.isErrorBuiltinReceiver(receiver) {
+		return "Error"
+	}
+	if id, ok := receiver.(*ast.Ident); ok && g.isBuiltinModule(id) {
+		return mapFieldName(receiver, name)
+	}
+	return exportFieldName(name)
+}
+
+// goMethodName maps a Tide method-call selector `recv.name(...)` to its
+// Go spelling — the pre-export behaviour (stdlib renames + the
+// `error`→`Error` boundary, otherwise the verbatim lowercase name).
+// Methods stay unexported (package main reaches them); only data fields
+// are exported (goFieldName), so the two paths must not be conflated.
+func (g *gen) goMethodName(receiver ast.Expr, name string) string {
 	if name == "error" && g.isErrorBuiltinReceiver(receiver) {
 		return "Error"
 	}
@@ -2562,6 +2585,38 @@ func goIdent(name string) string {
 		return "tide_" + name
 	}
 	return name
+}
+
+// exportFieldName spells a Tide record/class field as an EXPORTED Go
+// field name. encoding/json reflects from outside package main, so an
+// unexported Go field is invisible to it; exporting is what makes JSON
+// round-trip work (lowering-go.md §Record lowering). The Tide name is
+// preserved verbatim in the field's `json:"…"` tag (field-name ==
+// JSON-key, binding-surface.md §encoding/json), so the capitalised Go
+// spelling is invisible at the Tide-source and wire levels. Exported
+// names always start uppercase, so they can never be Go-reserved — no
+// goIdent escaping needed.
+func exportFieldName(name string) string {
+	if name == "" {
+		return name
+	}
+	r := []rune(name)
+	if unicode.IsLetter(r[0]) {
+		r[0] = unicode.ToUpper(r[0])
+		return string(r)
+	}
+	// A leading non-letter (e.g. `_x`) can't be exported by
+	// capitalising; force an exported spelling with an `X` prefix.
+	return "X" + name
+}
+
+// writeJSONTag emits the ` `+"`json:\"<tideName>\"`"+` ` struct tag that
+// pins the JSON key to the Tide field name regardless of the exported Go
+// spelling (binding-surface.md §encoding/json: field-name == JSON-key).
+func (g *gen) writeJSONTag(tideName string) {
+	g.b.WriteString(" `json:\"")
+	g.b.WriteString(tideName)
+	g.b.WriteString("\"`")
 }
 
 var goReserved = map[string]bool{

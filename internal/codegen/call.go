@@ -394,7 +394,19 @@ func (g *gen) emitCall(c *ast.Call) error {
 		}
 		return g.emitArgList(c.Args)
 	}
-	if err := g.emitExpr(c.Callee); err != nil {
+	// A method-call selector `recv.method(...)` is spelled by
+	// goMethodName (lowercase — methods stay unexported), NOT by the
+	// field-value path (emitField → goFieldName), which exports its
+	// name. Routing the callee through emitExpr here would wrongly
+	// export the method. Non-Field callees (free functions, closures,
+	// indexes) keep the generic emit.
+	if fld, ok := c.Callee.(*ast.Field); ok {
+		if err := g.emitExpr(fld.Receiver); err != nil {
+			return err
+		}
+		g.b.WriteByte('.')
+		g.b.WriteString(g.goMethodName(fld.Receiver, fld.Name))
+	} else if err := g.emitExpr(c.Callee); err != nil {
 		return err
 	}
 	if err := g.emitTypeArgs(c.TypeArgs); err != nil {

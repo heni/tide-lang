@@ -76,6 +76,46 @@ project), and lower-cases otherwise. Since v1 has single-package
 projects, all decls stay lower-cased; the algorithm is here for
 future expansion.
 
+## Record / struct field lowering
+
+A nominal record (`type X = { f: T }`) and a class lower to a named
+Go `struct`. Each Tide field `f` lowers to an **exported** Go field
+(`exportFieldName`: first letter capitalised; a leading non-letter
+gets an `X` prefix) carrying a `` `json:"f"` `` tag that pins the JSON
+key to the verbatim Tide name:
+
+```
+type Config struct {
+    Host string `json:"host"`
+    Port int    `json:"port"`
+}
+```
+
+This is **independent** of the top-level exported-visibility algorithm
+above (which governs type/func *decl* names and stays lower-cased in
+single-package v1). Struct fields export *unconditionally*: Go's
+`encoding/json` reflects from outside package main, so an unexported
+field is invisible to marshal/unmarshal — exporting is what makes JSON
+round-trip work. The `json` tag keeps field-name == JSON-key
+(binding-surface.md §encoding/json) so the capitalised Go spelling is
+invisible at the Tide-source and wire levels.
+
+Every field *site* follows the same spelling: the struct decl, the
+record/class brace literal (`Config{Host: …}`), value-position field
+access (`cfg.Host`), the implicit-receiver bare field (`this.x` →
+`t.X`), and the reflection field accessors. **Method** selectors are
+*not* exported — they keep their lowercase Go spelling (reachable
+within package main), so field-access and method-call lowering use
+distinct spelling functions (`goFieldName` vs `goMethodName`). The
+package-namespace exemption (`os.args` → `os.Args` keeps its binding
+rename, not the export path) is gated on the receiver's sema symbol
+being a builtin module, not on its spelling — a local value that
+shadows a package name still exports its fields.
+
+Tuple fields keep their positional unexported spelling (`_0`, `_1`):
+they are the anonymous-struct tuple representation, not nominal record
+fields, and no v1 program serialises a tuple to JSON.
+
 ## Primitive type lowering
 
 | Tide | Go |
@@ -502,9 +542,10 @@ explicit `return`s has no trailing and emits nothing extra.
 ## Implicit receiver / Field
 
 `Field { receiver: This{type: C}, name: n }` lowers to the Go
-expression `t.n`, where `t` is the receiver name chosen for the
+expression `t.N` — `t` is the receiver name chosen for the
 generated Go method (codegen uses `t` consistently for clarity;
-not exposed in Tide).
+not exposed in Tide), and the field is exported per §"Record /
+struct field lowering".
 
 Generic class methods carry their type parameters as Go-side
 type params; the receiver is a pointer for any class with

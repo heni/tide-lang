@@ -31,17 +31,17 @@ type Shape interface {
 	area() int
 }
 type Square struct {
-	side int
+	Side int `json:"side"`
 }
 
 func (t *Square) area() int {
-	return t.side * t.side
+	return t.Side * t.Side
 }
 func describe(s Shape) int {
 	return s.area()
 }
 func main() {
-	var sq = &Square{side: 5}
+	var sq = &Square{Side: 5}
 	fmt.Println(describe(sq))
 }
 

@@ -30,8 +30,8 @@ type TypeDescriptor struct {
 }
 
 type FieldInfo struct {
-	name string
-	desc *TypeDescriptor
+	Name string
+	Desc *TypeDescriptor
 }
 
 type Kind struct {
@@ -196,12 +196,12 @@ func tideShowWalk(d Dynamic, seen map[any]bool) string {
 			if i > 0 {
 				out += ", "
 			}
-			fv := tideFieldValue(d, fi.name)
+			fv := tideFieldValue(d, fi.Name)
 			if fv.Tag != 0 {
-				out += fi.name + ": <unreadable>"
+				out += fi.Name + ": <unreadable>"
 				continue
 			}
-			out += fi.name + ": " + tideShowWalk(fv.V, seen)
+			out += fi.Name + ": " + tideShowWalk(fv.V, seen)
 		}
 		return out + "}"
 	case KindPrimitive:
@@ -268,7 +268,8 @@ func tideShowPrimitive(d Dynamic) string {
 	// Per-class field accessor functions — emitted after the
 	// classes themselves are emitted into the package, so the
 	// accessor body can refer to the class struct's field by
-	// its lowercase Go-side name. The accessor takes any so
+	// its exported Go-side name (exportFieldName); the `case`
+	// label stays the Tide name for runtime lookup. The accessor takes any so
 	// the dispatcher in tideFieldValue can call it through the
 	// map without per-class typed indirection.
 	for _, d := range g.descriptors {
@@ -289,7 +290,7 @@ func tideShowPrimitive(d Dynamic) string {
 			g.b.WriteString(":\n")
 			if fi.descRef != "" {
 				g.b.WriteString("\t\treturn Dynamic{Payload: c.")
-				g.b.WriteString(fi.tideName)
+				g.b.WriteString(exportFieldName(fi.tideName))
 				g.b.WriteString(", Desc: ")
 				g.b.WriteString(fi.descRef)
 				g.b.WriteString("}, true\n")
@@ -297,7 +298,7 @@ func tideShowPrimitive(d Dynamic) string {
 				// Unknown-static-type — fall back to tideBoxAny so
 				// the descriptor is at least synthesised at runtime.
 				g.b.WriteString("\t\treturn tideBoxAny(c.")
-				g.b.WriteString(fi.tideName)
+				g.b.WriteString(exportFieldName(fi.tideName))
 				g.b.WriteString("), true\n")
 			}
 		}
@@ -324,9 +325,9 @@ func tideShowPrimitive(d Dynamic) string {
 			g.b.WriteString(d.tideName)
 			g.b.WriteString(".fields = []FieldInfo{\n")
 			for _, fi := range d.fields {
-				g.b.WriteString("\t\t{name: ")
+				g.b.WriteString("\t\t{Name: ")
 				g.b.WriteString(strconv.Quote(fi.tideName))
-				g.b.WriteString(", desc: ")
+				g.b.WriteString(", Desc: ")
 				if fi.descRef != "" {
 					g.b.WriteString(fi.descRef)
 				} else {
