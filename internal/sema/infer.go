@@ -724,6 +724,9 @@ func (c *checker) inferMatch(m *ast.MatchExpr) Type {
 		if vp, ok := arm.Pattern.(*ast.VariantPat); ok {
 			c.typeMatchPayload(subjectType, vp)
 		}
+		if tp, ok := arm.Pattern.(*ast.TuplePat); ok {
+			c.typeMatchTuplePayload(subjectType, tp)
+		}
 		at := c.inferExpr(arm.Body)
 		if isUnknown(result) && concrete(at) {
 			if _, never := at.(*Never); !never {
@@ -801,6 +804,35 @@ func (c *checker) typeMatchPayload(subject Type, vp *ast.VariantPat) {
 				c.bindPayload(vp, i, c.typeFromExpr(fld.DeclType))
 			}
 			return
+		}
+	}
+}
+
+// typeMatchTuplePayload types the bindings of a tuple-pattern arm
+// (`match (s, e) { (Idle, InsertCoin(n)) => … }`) from the subject's
+// tuple component types: each VariantPat component is typed through
+// typeMatchPayload against its component type, and a fresh-ident
+// component takes its whole component type. A component whose ident is
+// itself a variant name (a nullary-variant ref like `Idle`) carries no
+// payload. Arity / shape mismatches are exhaust.go's concern — a
+// non-tuple or mis-arity subject leaves the bindings Unknown.
+func (c *checker) typeMatchTuplePayload(subject Type, tp *ast.TuplePat) {
+	tup, ok := subject.(*Tuple)
+	if !ok || len(tup.Comps) != len(tp.Sub) {
+		return
+	}
+	for j, sub := range tp.Sub {
+		comp := tup.Comps[j]
+		switch p := sub.(type) {
+		case *ast.VariantPat:
+			c.typeMatchPayload(comp, p)
+		case *ast.IdentPat:
+			if p.Name == "" || p.Name == "_" || isVariantName(comp, p.Name) {
+				continue
+			}
+			if sym := c.info.Def[p]; sym != nil {
+				sym.Type = comp
+			}
 		}
 	}
 }

@@ -565,6 +565,30 @@ cover(T, pats) iff
 
 Wildcard / ident patterns trivially cover.
 
+#### T-Match-Tuple-Exhaustive — tuple-of-sums value-switch
+
+A `match` whose subject is a tuple `(T_1, ..., T_n)` switches each arm
+on a **tuple pattern** `(p_1, ..., p_n)`. A tuple-arm component binds
+like a variant arm: a `VariantPat` component binds its payload at the
+corresponding component type `T_j`, and a fresh-ident component binds at
+the whole `T_j`. A component ident that names a (nullary) constructor of
+`T_j` is a constructor reference, not a binding.
+
+Exhaustiveness over a tuple of finite-constructor components (sum types,
+or `bool`) is the cartesian-product specialisation of the algorithm
+above: the arms' coverage rectangles — one admitted-constructor set per
+component (a `VariantPat` / constructor-ident → that constructor; a
+wildcard / fresh-ident → all of them) — must tile the full product of
+the component constructor sets. Failure → **E0303**.
+
+The v1 checker **over-approximates coverage** to keep the standing
+invariant *never reject a genuinely-exhaustive match*: a refining
+component the cartesian model cannot represent — an integer/string
+literal, a nested tuple, or a component whose type is not a
+finite-constructor sum/`bool` — makes the whole check abstain (no
+diagnostic) rather than risk a false E0303. So the tuple check may
+under-report (miss a non-exhaustive match), never over-report.
+
 ### Try, return, break, continue, panic
 
 ```
