@@ -452,3 +452,27 @@ func TestSplitChainedTupleIndex(t *testing.T) {
 		}
 	}
 }
+
+// The arrow func-type `(A) => R` shares the `(` prefix with a TupleType; the
+// trailing `=>` is what disambiguates. A one-element paren-list is a
+// func-type with `=>` but a rejected 1-tuple without it.
+func TestArrowFuncType(t *testing.T) {
+	f := parseString(t, "func apply(g: (int) => bool): int { return 0 }\n")
+	fn := f.Decls[0].(*ast.FuncDecl)
+	ft, ok := fn.Params[0].DeclType.(*ast.FuncType)
+	if !ok {
+		t.Fatalf("param type not FuncType: %T", fn.Params[0].DeclType)
+	}
+	if len(ft.Params) != 1 {
+		t.Fatalf("arrow func-type param count = %d, want 1", len(ft.Params))
+	}
+	if ft.ReturnType == nil {
+		t.Fatalf("arrow func-type missing return type")
+	}
+
+	// Without `=>`, a one-element paren-list stays a rejected 1-tuple.
+	toks, _ := lexer.Lex("func f(x: (int)): int { return 0 }\n")
+	if _, perr := Parse(toks); perr == nil {
+		t.Fatalf("expected 1-tuple type error, got nil")
+	}
+}

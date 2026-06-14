@@ -953,6 +953,28 @@ func (p *parser) parseTypeExpr() (ast.TypeExpr, *Diag) {
 		if err != nil {
 			return nil, err
 		}
+		// Arrow FuncType: `(A, B) => R` — the trailing `=>` disambiguates
+		// the paren-list from a TupleType. The list is the parameter list
+		// at any arity (incl. `()` and a single `(string)`), so the
+		// arity-≥2 tuple check below applies only when there is no `=>`.
+		// (grammar.ebnf §FuncType.) Type position only — no clash with the
+		// expression-level short closure `(a, b) => expr`.
+		if p.at(lexer.KindOp, "=>") {
+			p.advance()
+			p.skipNewlines() // return type may wrap (grammar §SyntaxNewlineSuppression)
+			rt, rerr := p.parseTypeExpr()
+			if rerr != nil {
+				return nil, rerr
+			}
+			return &ast.FuncType{
+				Span: ast.Span{
+					StartLine: open.Line, StartCol: open.Col,
+					EndLine: rt.NodeSpan().EndLine, EndCol: rt.NodeSpan().EndCol,
+				},
+				Params:     comps,
+				ReturnType: rt,
+			}, nil
+		}
 		if len(comps) < 2 {
 			return nil, p.diag("E0112", "tuple type needs at least two components", open.Line, open.Col)
 		}

@@ -353,7 +353,14 @@ QualifiedIdent = Ident ( "." Ident )* ;
 TypeArgs     = "<" TypeExpr ( "," TypeExpr )* ">" ;
 TupleType    = "(" TypeExpr ( "," TypeExpr )+ ")" ;
 SliceType    = "[" "]" TypeExpr ;
-FuncType     = "func" "(" ( TypeExpr ( "," TypeExpr )* )? ")" ReturnAnnot? ;
+FuncType     = "func" "(" ( TypeExpr ( "," TypeExpr )* )? ")" ReturnAnnot?
+             | "(" ( TypeExpr ( "," TypeExpr )* )? ")" "=>" Newline? TypeExpr ;
+// Two spellings of a function type. The `func(...)` form mirrors Go. The
+// arrow form `(A, B) => R` mirrors the short-closure expression syntax; the
+// trailing `=>` disambiguates the paren-list from a TupleType, so a
+// one-element `(int) => R` is a func-type (not a rejected 1-tuple). Arrow
+// func-types appear only in type position — no clash with the expression
+// short closure `(a, b) => expr`.
 InlineInterface = "interface" "{" Newline? InterfaceMember* "}" ;
 
 // =============================================================

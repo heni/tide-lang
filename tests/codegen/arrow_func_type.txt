@@ -1,0 +1,39 @@
+--- TITLE ---
+Arrow func-type `(int) => int` — parameter of function type; lowers to Go
+`func(int) int`; a named func passed as a first-class value
+
+--- INPUT ---
+import fmt
+
+func apply(f: (int) => int, x: int): int {
+  return f(x)
+}
+
+func double(n: int): int {
+  return n * 2
+}
+
+func main() {
+  fmt.println(apply(double, 21))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func apply(f func(int) int, x int) int {
+	return f(x)
+}
+func double(n int) int {
+	return n * 2
+}
+func main() {
+	fmt.Println(apply(double, 21))
+}
+
+--- STDOUT ---
+42
+
+--- EXIT ---
+0
