@@ -204,6 +204,17 @@ codegen pass calls them by Go-qualified name; e.g.,
 `m.set(k, v)` in Tide IR lowers to `m.Set(k, v)` in Go (note
 the capital — runtime methods are exported).
 
+**Option ⇄ JSON.** When a program uses both `Option` and an
+`encoding/json` binding, the generated `Option[T]` carries
+`MarshalJSON`/`UnmarshalJSON`: `None` ⇄ JSON `null`, `Some(v)` ⇄ the
+JSON of `v` directly. So an Option-typed record field round-trips with
+*bare* JSON (`"file": "app.log"` / `"file": null` ⇄ `Some` / `None`)
+rather than exposing the internal `{Tag, V}` struct shape. The methods
+are emitted only under that combined condition — a program with Option
+but no json needs neither them nor the `encoding/json` import. (`Result`
+has no JSON methods yet — no v1 program serialises a `Result` field;
+added by analogy when one does.)
+
 Empty-state semantics (per `builtins.md`):
 
 - `Option.None`: `Option[T]{Tag: 0}` (no `V` — left at Go's zero
