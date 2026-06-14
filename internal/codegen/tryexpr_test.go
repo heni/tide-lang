@@ -67,6 +67,22 @@ func TestTryExprRefusesReorder(t *testing.T) {
 	}
 }
 
+// TestTryExprRefusesAfterPanicPoint — a panic-point (index out-of-range,
+// division by zero) before a `try` is an *ordered observable effect*:
+// hoisting the try ahead of it would let the try bail before the panic.
+// Codegen refuses, keeping the conservative-by-construction property
+// honest. `n + try b()` (pure left operand) stays hoistable.
+func TestTryExprRefusesAfterPanicPoint(t *testing.T) {
+	err := emitErr(t, tryExprPrelude+`func f(xs: []int): Result<int, string> {
+  let s = xs[0] + try mk()
+  return Ok<int, string>(s)
+}
+`)
+	if err == nil {
+		t.Fatal("expected refusal: an index panic-point precedes the try (ordering); got nil")
+	}
+}
+
 // TestTryExprSafeAfterTryBeforeEffect — the mirror case: a `try`
 // *before* a side-effecting sibling is safe (the try's preamble runs
 // first, the sibling stays in place after it — original order), so it

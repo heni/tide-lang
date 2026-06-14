@@ -2085,7 +2085,9 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 // when the try bails. (Two adjacent tries are fine: both move out, in
 // order.) When unsafe the caller leaves the try to tryExprErr — a
 // graceful limitation, never a miscompile. Conservative by construction:
-// any expression form not known-pure counts as impure (lowering-go.md
+// any expression form not known-pure counts as impure — including
+// panic-points (index out-of-range, division by zero), since a panic is
+// an observable effect whose order must be preserved (lowering-go.md
 // §try lowering).
 func hoistableTries(exprs ...ast.Expr) bool {
 	impure := false
@@ -2127,11 +2129,15 @@ func hoistableTries(exprs ...ast.Expr) bool {
 			if v.Op != "&&" && v.Op != "||" {
 				walk(v.Right)
 			}
+			if v.Op == "/" || v.Op == "%" {
+				impure = true // division by zero panics — an ordered effect
+			}
 		case *ast.Unary:
 			walk(v.Operand)
 		case *ast.Index:
 			walk(v.Receiver)
 			walk(v.Idx)
+			impure = true // out-of-range index panics — an ordered effect
 		case *ast.ParenExpr:
 			walk(v.Inner)
 		case *ast.TupleLit:
