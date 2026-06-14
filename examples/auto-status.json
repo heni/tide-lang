@@ -4,8 +4,8 @@
     "total": 52,
     "parse_fail": 11,
     "sema_fail": 4,
-    "emit_fail": 3,
-    "build_ok": 34
+    "emit_fail": 1,
+    "build_ok": 36
   },
   "files": [
     {
@@ -55,8 +55,8 @@
     },
     {
       "path": "examples/aoc/2025/d11.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/borgo/concurrency.td",
@@ -135,8 +135,8 @@
     },
     {
       "path": "examples/interview/rpn_calculator.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/interview/vending_machine.td",

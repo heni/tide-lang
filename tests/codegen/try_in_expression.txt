@@ -1,0 +1,102 @@
+--- TITLE ---
+try in expression position — call arguments and a binary operand hoist to early-return preambles in evaluation order
+
+--- INPUT ---
+import fmt
+
+func half(n: int): Result<int, string> {
+  if n == 7 {
+    return Err<int, string>("odd seven")
+  }
+  return Ok<int, string>(n / 2)
+}
+
+func combine(a: int, b: int): int {
+  return a + b
+}
+
+func compute(n: int): Result<int, string> {
+  let s = combine(try half(n), try half(n + 2))
+  return Ok<int, string>(s + try half(n))
+}
+
+func main() {
+  match compute(20) {
+    Ok(v)  => fmt.println("ok", v),
+    Err(e) => fmt.println("err", e),
+  }
+  match compute(7) {
+    Ok(v)  => fmt.println("ok", v),
+    Err(e) => fmt.println("err", e),
+  }
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func half(n int) Result[int, string] {
+	if n == 7 {
+		return ResultErr[int, string]("odd seven")
+	}
+	return ResultOk[int, string](n / 2)
+}
+func combine(a int, b int) int {
+	return a + b
+}
+func compute(n int) Result[int, string] {
+	__tide_try_1 := half(n)
+	if __tide_try_1.Tag == 1 {
+		return Result[int, string]{Tag: 1, E: __tide_try_1.E}
+	}
+	__tide_try_2 := half(n + 2)
+	if __tide_try_2.Tag == 1 {
+		return Result[int, string]{Tag: 1, E: __tide_try_2.E}
+	}
+	var s = combine(__tide_try_1.V, __tide_try_2.V)
+	__tide_try_3 := half(n)
+	if __tide_try_3.Tag == 1 {
+		return Result[int, string]{Tag: 1, E: __tide_try_3.E}
+	}
+	return ResultOk[int, string](s + __tide_try_3.V)
+}
+func main() {
+	__tide_match_1 := compute(20)
+	switch __tide_match_1.Tag {
+	case 0:
+		v := __tide_match_1.V
+		fmt.Println("ok", v)
+	case 1:
+		e := __tide_match_1.E
+		fmt.Println("err", e)
+	}
+	__tide_match_2 := compute(7)
+	switch __tide_match_2.Tag {
+	case 0:
+		v := __tide_match_2.V
+		fmt.Println("ok", v)
+	case 1:
+		e := __tide_match_2.E
+		fmt.Println("err", e)
+	}
+}
+
+--- STDOUT ---
+ok 31
+err odd seven
+
+--- EXIT ---
+0

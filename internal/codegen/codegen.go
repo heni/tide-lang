@@ -319,6 +319,11 @@ type gen struct {
 	// tryTempCounter generates unique temp names for `try`
 	// emission. Same hygiene as matchTempCounter.
 	tryTempCounter int
+	// tryHoist maps a `try` expression that has been pre-emitted as a
+	// statement preamble (by hoistExprTries) to its temp identifier.
+	// emitExpr substitutes `<tmp>.V` for the node, enabling `try` in
+	// expression position (call args, operands) — desugaring.md §T-Try.
+	tryHoist map[*ast.TryExpr]string
 	// destructureTempCounter generates unique temp names for the
 	// `let (a, b) = e` tuple-destructuring binding.
 	destructureTempCounter int
@@ -1674,12 +1679,19 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 				g.b.WriteString(".V\n")
 				return nil
 			}
-			g.line(v.Span.StartLine)
-			g.writeIndent()
 			if r.Value == nil {
+				g.line(v.Span.StartLine)
+				g.writeIndent()
 				g.b.WriteString("return\n")
 				return nil
 			}
+			// `return f(try g())` / `return a + try b()` — hoist the
+			// nested try preambles before the `return` line.
+			if err := g.hoistExprTries(r.Value); err != nil {
+				return err
+			}
+			g.line(v.Span.StartLine)
+			g.writeIndent()
 			g.b.WriteString("return ")
 			// The returned value is expected to be the function's
 			// declared return type; thread it so a predeclared
@@ -1730,6 +1742,11 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 		if sp, ok := v.Expr.(*ast.SpawnExpr); ok {
 			return g.emitSpawnStmt(sp)
 		}
+		// Expression-statement (`stack.push(try …)`) — hoist any
+		// nested `try` to preambles before emitting the call.
+		if err := g.hoistExprTries(v.Expr); err != nil {
+			return err
+		}
 		g.line(v.Span.StartLine)
 		g.writeIndent()
 		if err := g.emitExpr(v.Expr); err != nil {
@@ -1768,6 +1785,14 @@ func (g *gen) emitStmt(s ast.Stmt) error {
 	case *ast.VarStmt:
 		return g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value)
 	case *ast.AssignStmt:
+		// `total = total + try f()` / `m[try k()] = v` — hoist nested
+		// try preambles before any of the assignment is emitted.
+		if err := g.hoistExprTries(v.LValue); err != nil {
+			return err
+		}
+		if err := g.hoistExprTries(v.Value); err != nil {
+			return err
+		}
 		g.line(v.Span.StartLine)
 		g.writeIndent()
 		// `m[k] = val` where m is a Map<K, V> lowers to
@@ -2053,6 +2078,80 @@ func (g *gen) emitReflectCall(name string, typeArgs []ast.TypeExpr, args []ast.E
 	return fmt.Errorf("codegen: reflect.%s is not yet supported (methods / variants / variantOf / typeArgs / elementType land later)", name)
 }
 
+// hoistExprTries pre-emits, as statement preambles, every `try`
+// nested inside an expression that is not itself a statement-position
+// `try` (those are handled directly by emitStmt / emitLetOrVar). Each
+// hoisted try's temp name is recorded in g.tryHoist; emitExpr then
+// substitutes `<tmp>.V` at the node's original position. This realises
+// `try` in expression position — `f(try g())`, `a + try b()` — via the
+// block-expr lowering (desugaring.md §T-Try): the early-return preamble
+// runs before the surrounding expression, in source order.
+//
+// The walk stops at any construct that introduces a *new return frame*
+// (closures, value-position match/if/block, scope/spawn) — a `try`
+// there belongs to that frame and is emitted when its body is, so
+// descending would attach the early-return to the wrong function. The
+// right operand of `&&` / `||` is also not descended: it evaluates
+// conditionally, so hoisting its preamble unconditionally would change
+// short-circuit semantics (a `try` there still reaches tryExprErr).
+func (g *gen) hoistExprTries(e ast.Expr) error {
+	switch v := e.(type) {
+	case *ast.TryExpr:
+		// emitTryPreamble hoists this try's own inner tries (innermost
+		// first), so nested `try f(try g())` works for every caller.
+		tmp, err := g.emitTryPreamble(v)
+		if err != nil {
+			return err
+		}
+		if g.tryHoist == nil {
+			g.tryHoist = map[*ast.TryExpr]string{}
+		}
+		g.tryHoist[v] = tmp
+	case *ast.Call:
+		if err := g.hoistExprTries(v.Callee); err != nil {
+			return err
+		}
+		for _, a := range v.Args {
+			if err := g.hoistExprTries(a); err != nil {
+				return err
+			}
+		}
+	case *ast.Field:
+		return g.hoistExprTries(v.Receiver)
+	case *ast.TupleField:
+		return g.hoistExprTries(v.Receiver)
+	case *ast.Binary:
+		if err := g.hoistExprTries(v.Left); err != nil {
+			return err
+		}
+		if v.Op != "&&" && v.Op != "||" {
+			return g.hoistExprTries(v.Right)
+		}
+	case *ast.Unary:
+		return g.hoistExprTries(v.Operand)
+	case *ast.Index:
+		if err := g.hoistExprTries(v.Receiver); err != nil {
+			return err
+		}
+		return g.hoistExprTries(v.Idx)
+	case *ast.ParenExpr:
+		return g.hoistExprTries(v.Inner)
+	case *ast.TupleLit:
+		for _, c := range v.Components {
+			if err := g.hoistExprTries(c); err != nil {
+				return err
+			}
+		}
+	case *ast.SliceLit:
+		for _, it := range v.Items {
+			if err := g.hoistExprTries(it); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // emitTryPreamble lowers a `try e` at statement position per
 // `lang-spec/desugaring.md` §T-Try-Result / §T-Try-Option:
 // evaluates the inner expression into a fresh temp, then emits
@@ -2078,6 +2177,12 @@ func (g *gen) emitTryPreamble(t *ast.TryExpr) (string, error) {
 		bailTag = 0 // None
 	default:
 		return "", fmt.Errorf("codegen: `try` requires the enclosing function's return type to be Result/Option, got %s", ret.QName[0])
+	}
+	// A `try` nested in this try's inner expr (`try f(try g())`) is
+	// hoisted first, so its early-return preamble precedes the
+	// `tmp := <inner>` line below.
+	if err := g.hoistExprTries(t.Inner); err != nil {
+		return "", err
 	}
 	g.tryTempCounter++
 	tmp := fmt.Sprintf("__tide_try_%d", g.tryTempCounter)
@@ -2283,6 +2388,11 @@ func (g *gen) emitLetOrVar(span ast.Span, name string, declType ast.TypeExpr, va
 		g.b.WriteString(tmp)
 		g.b.WriteString(".V\n")
 		return nil
+	}
+	// `let x = f(try g())` / `let x = a + try b()` — hoist nested try
+	// preambles before the binding line.
+	if err := g.hoistExprTries(value); err != nil {
+		return err
 	}
 	g.line(span.StartLine)
 	g.writeIndent()
@@ -2546,13 +2656,17 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		// non-statement context) — emit clearly.
 		return fmt.Errorf("codegen: return-expression used outside statement position")
 	case *ast.TryExpr:
-		// `try` is only supported at statement-position sites
-		// today (let / var / return value); the supporting paths
-		// in emitStmt / emitLetOrVar intercept before reaching
-		// emitExpr. Anything else (e.g., `try e + 1` inside an
-		// arithmetic expression, or `f(try e)` as a call argument)
-		// requires expression-position match-or-block lowering,
-		// deferred until sema PR.
+		// Expression-position `try` (call arg, operand, …) is lowered
+		// by hoistExprTries, which pre-emits the early-return preamble
+		// as a statement and records the unwrap temp here. The node's
+		// value is the temp's payload `<tmp>.V`. A `try` that wasn't
+		// hoisted sits in an unsupported frame (value-position
+		// match/if/closure arm — a different return frame): error.
+		if tmp, ok := g.tryHoist[v]; ok {
+			g.b.WriteString(tmp)
+			g.b.WriteString(".V")
+			return nil
+		}
 		return g.tryExprErr()
 	}
 	return fmt.Errorf("codegen: unhandled expression %T", e)
