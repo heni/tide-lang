@@ -54,17 +54,17 @@ func tideResultOf[T any](v T, err error) Result[T, error] {
 }
 
 type MyErr struct {
-	msg string
+	Msg string `json:"msg"`
 }
 
 func (t *MyErr) error() string {
-	return t.msg
+	return t.Msg
 }
 func render(e error) string {
 	return e.Error()
 }
 func main() {
-	var m = &MyErr{msg: "custom"}
+	var m = &MyErr{Msg: "custom"}
 	fmt.Println(m.error())
 	__tide_match_1 := tideResultOf(strconv.Atoi("xx"))
 	switch __tide_match_1.Tag {

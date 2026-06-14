@@ -27,14 +27,14 @@ package main
 import "fmt"
 
 type Box[T any] struct {
-	v T
+	V T `json:"v"`
 }
 
 func boxMake[T any](x T) *Box[T] {
 	return &Box[T]{x}
 }
 func (t *Box[T]) get() T {
-	return t.v
+	return t.V
 }
 func main() {
 	var b = boxMake[int](99)

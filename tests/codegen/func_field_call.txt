@@ -1,0 +1,40 @@
+--- TITLE ---
+A func-typed data field called as `recv.cb(x)` takes the EXPORTED field spelling (`t.Cb`), matching the exported Go struct field — not the lowercase method spelling. The sibling method `run` stays lowercase. Guards the field-vs-method split in the call path (REC-JSON keystone).
+
+--- INPUT ---
+import fmt
+
+class Box {
+  let cb: func(int): int
+  run(x: int): int { return this.cb(x) }
+}
+
+func main() {
+  let b = Box{ cb: (x: int) => x * 2 }
+  fmt.println(b.run(21))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Box struct {
+	Cb func(int) int `json:"cb"`
+}
+
+func (t *Box) run(x int) int {
+	return t.Cb(x)
+}
+func main() {
+	var b = &Box{Cb: func(x int) int {
+		return x * 2
+	}}
+	fmt.Println(b.run(21))
+}
+
+--- STDOUT ---
+42
+
+--- EXIT ---
+0

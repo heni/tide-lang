@@ -65,8 +65,8 @@ type TypeDescriptor struct {
 }
 
 type FieldInfo struct {
-	name string
-	desc *TypeDescriptor
+	Name string
+	Desc *TypeDescriptor
 }
 
 type Kind struct {
@@ -231,12 +231,12 @@ func tideShowWalk(d Dynamic, seen map[any]bool) string {
 			if i > 0 {
 				out += ", "
 			}
-			fv := tideFieldValue(d, fi.name)
+			fv := tideFieldValue(d, fi.Name)
 			if fv.Tag != 0 {
-				out += fi.name + ": <unreadable>"
+				out += fi.Name + ": <unreadable>"
 				continue
 			}
-			out += fi.name + ": " + tideShowWalk(fv.V, seen)
+			out += fi.Name + ": " + tideShowWalk(fv.V, seen)
 		}
 		return out + "}"
 	case KindPrimitive:
@@ -295,20 +295,20 @@ func tideFieldOf_Counter(v any, name string) (Dynamic, bool) {
 	}
 	switch name {
 	case "n":
-		return Dynamic{Payload: c.n, Desc: tideDesc_int}, true
+		return Dynamic{Payload: c.N, Desc: tideDesc_int}, true
 	}
 	return Dynamic{}, false
 }
 func init() {
 	tideDescRegistry["*main.Counter"] = tideDesc_Counter
 	tideDesc_Counter.fields = []FieldInfo{
-		{name: "n", desc: tideDesc_int},
+		{Name: "n", Desc: tideDesc_int},
 	}
 	tideFieldAccessors["Counter"] = tideFieldOf_Counter
 }
 
 type Counter struct {
-	n int
+	N int `json:"n"`
 }
 
 func main() {

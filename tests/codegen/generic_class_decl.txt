@@ -21,11 +21,11 @@ package main
 import "fmt"
 
 type Box[T any] struct {
-	v T
+	V T `json:"v"`
 }
 
 func (t *Box[T]) get() T {
-	return t.v
+	return t.V
 }
 func main() {
 	fmt.Println("declared")

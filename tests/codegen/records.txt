@@ -19,14 +19,14 @@ package main
 import "fmt"
 
 type Point struct {
-	x int
-	y int
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 func main() {
-	var p = Point{x: 3, y: 4}
-	if p.x > 0 {
-		fmt.Println(p.x, p.y)
+	var p = Point{X: 3, Y: 4}
+	if p.X > 0 {
+		fmt.Println(p.X, p.Y)
 	}
 }
 

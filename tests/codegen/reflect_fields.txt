@@ -72,8 +72,8 @@ type TypeDescriptor struct {
 }
 
 type FieldInfo struct {
-	name string
-	desc *TypeDescriptor
+	Name string
+	Desc *TypeDescriptor
 }
 
 type Kind struct {
@@ -238,12 +238,12 @@ func tideShowWalk(d Dynamic, seen map[any]bool) string {
 			if i > 0 {
 				out += ", "
 			}
-			fv := tideFieldValue(d, fi.name)
+			fv := tideFieldValue(d, fi.Name)
 			if fv.Tag != 0 {
-				out += fi.name + ": <unreadable>"
+				out += fi.Name + ": <unreadable>"
 				continue
 			}
-			out += fi.name + ": " + tideShowWalk(fv.V, seen)
+			out += fi.Name + ": " + tideShowWalk(fv.V, seen)
 		}
 		return out + "}"
 	case KindPrimitive:
@@ -302,31 +302,31 @@ func tideFieldOf_Point(v any, name string) (Dynamic, bool) {
 	}
 	switch name {
 	case "x":
-		return Dynamic{Payload: c.x, Desc: tideDesc_int}, true
+		return Dynamic{Payload: c.X, Desc: tideDesc_int}, true
 	case "y":
-		return Dynamic{Payload: c.y, Desc: tideDesc_int}, true
+		return Dynamic{Payload: c.Y, Desc: tideDesc_int}, true
 	}
 	return Dynamic{}, false
 }
 func init() {
 	tideDescRegistry["*main.Point"] = tideDesc_Point
 	tideDesc_Point.fields = []FieldInfo{
-		{name: "x", desc: tideDesc_int},
-		{name: "y", desc: tideDesc_int},
+		{Name: "x", Desc: tideDesc_int},
+		{Name: "y", Desc: tideDesc_int},
 	}
 	tideFieldAccessors["Point"] = tideFieldOf_Point
 }
 
 type Point struct {
-	x int
-	y int
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 func main() {
 	var p = &Point{3, 4}
 	var d = tideBox(p)
 	for _, fi := range tideFields(tideTypeOf(d)) {
-		fmt.Println(fi.name, tideTypeName(fi.desc))
+		fmt.Println(fi.Name, tideTypeName(fi.Desc))
 	}
 	__tide_match_1 := tideFieldValue(d, "x")
 	switch __tide_match_1.Tag {

@@ -34,17 +34,17 @@ package main
 import "fmt"
 
 type Counter struct {
-	n int
+	N int `json:"n"`
 }
 
 func counterMake(start int) *Counter {
 	return &Counter{start}
 }
 func (t *Counter) bump() {
-	t.n = t.n + 1
+	t.N = t.N + 1
 }
 func (t *Counter) get() int {
-	return t.n
+	return t.N
 }
 func main() {
 	var c = counterMake(10)
