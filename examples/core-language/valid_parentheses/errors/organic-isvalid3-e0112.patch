@@ -1,0 +1,42 @@
+--- valid_parentheses.td
++++ valid_parentheses.td
+@@ -24,21 +24,27 @@
+ }
+ 
+ func isValid(s: string): bool {
+-  var stack = Stack<rune>{}
+-  for c in s {
+-    if isOpener(c) {
+-      stack.push(c)
+-    } else {
+-      match opener(c) {
+-        Some(want) => match stack.pop() {
+-          Ok(got)  => if got != want { return false },
+-          Err(_)   => return false,           // empty stack — closer with no opener
+-        },
+-        None => {},                            // not a bracket char; ignore
++var stack = Stack<rune>{}
++for c in s {
++  if isOpener(c) {
++    stack.push(c)
++  } else {
++    match opener(c) {
++      Some(expected) => {
++        match stack.pop() {
++          Some(actual) => {
++            if actual != expected {
++              return false
++            }
++          }
++          None => return false
++        }
+       }
++      None => {}
+     }
+   }
+-  return stack.len() == 0
++}
++stack.len() == 0
+ }
+ 
+ func main() {

@@ -1,0 +1,1 @@
+error[E0201]: Type mismatch — string concatenation require equal types, got string and int

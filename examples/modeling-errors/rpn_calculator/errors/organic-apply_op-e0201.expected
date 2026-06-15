@@ -1,0 +1,1 @@
+error[E0201]: Type mismatch — comparison require equal types, got float64 and int

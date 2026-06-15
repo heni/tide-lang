@@ -28,3 +28,17 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/missing-comma-args.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/organic-twosum2-e0201.patch"   # Two-pass hash-map approach: store seen numbers by value, check if complement exi
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/organic-twosum2-e0201.expected"
+origin  = "organic:holefill-2"
+
+[[error]]
+patch   = "errors/organic-twosum2-e0203.patch"   # Use a hash map to track indices of seen values; for each number, check if its co
+expect  = ["E0203"]
+stage   = "sema"
+matches = "errors/organic-twosum2-e0203.expected"
+origin  = "organic:holefill-2"

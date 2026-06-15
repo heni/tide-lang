@@ -21,3 +21,10 @@ expect  = ["E0402"]
 stage   = "sema"
 matches = "errors/try-in-bool-fn.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/organic-isvalid3-e0112.patch"   # Classic stack-based bracket matching: push openers, pop and verify closers match
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/organic-isvalid3-e0112.expected"
+origin  = "organic:holefill-3"

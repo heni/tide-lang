@@ -28,3 +28,10 @@ expect  = ["E0105"]
 stage   = "sema"
 matches = "errors/interval-dup-end.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/organic-merge3-e0112.patch"   # Merge overlapping intervals by sorting by start, then sweeping to extend or star
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/organic-merge3-e0112.expected"
+origin  = "organic:holefill-3"

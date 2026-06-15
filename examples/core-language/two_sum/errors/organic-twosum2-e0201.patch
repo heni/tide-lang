@@ -1,0 +1,26 @@
+--- two_sum.td
++++ two_sum.td
+@@ -7,15 +7,15 @@
+ import fmt
+ 
+ func twoSum(nums: []int, target: int): Option<(int, int)> {
+-  var seen = Map<int, int>{}      // value -> its index in `nums`
+-  for (i, n) in nums {
+-    let want = target - n
+-    match seen.get(want) {
+-      Some(j) => return Some((j, i)),
+-      None    => seen.set(n, i),
+-    }
++var seen: Map<int, int> = {}
++for (i, num) in nums {
++  let complement = target - num
++  match seen.get(complement) {
++    Some(j) => return Some((j, i)),
++    None => seen.set(num, i),
+   }
+-  return None
++}
++None
+ }
+ 
+ func main() {

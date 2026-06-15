@@ -1,0 +1,25 @@
+--- rpn_calculator.td
++++ rpn_calculator.td
+@@ -19,15 +19,16 @@
+ }
+ 
+ func apply(op: Op, a: float64, b: float64): Result<float64, error> {
+-  match op {
++match op {
+     Add => Ok(a + b),
+     Sub => Ok(a - b),
+     Mul => Ok(a * b),
+-    Div => if b == 0.0 {
+-             Err(error("division by zero"))
+-           } else {
+-             Ok(a / b)
+-           },
++    Div => {
++      if b == 0 {
++        return Err(error("division by zero"))
++      }
++      Ok(a / b)
++    },
+   }
+ }
+ 

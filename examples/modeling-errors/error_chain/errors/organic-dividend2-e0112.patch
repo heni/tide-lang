@@ -1,0 +1,18 @@
+--- error_chain.td
++++ error_chain.td
+@@ -44,11 +44,12 @@
+ }
+ 
+ func dividend(n: int): Result<int, ParseError> {
+-  // Pretend stage two: take n, return n/2 if n is even, else fail.
++
+   if n % 2 != 0 {
+-    return Err(ParseError{ stage: "dividend", detail: "odd: " + strconv.itoa(n) })
++    return .err(ParseError{stage: "dividend", detail: "odd value " + n.to_string()})
+   }
+-  return Ok(n / 2)
++  return .ok(n / 2)
++
+ }
+ 
+ func finalCheck(n: int): Result<int, ParseError> {

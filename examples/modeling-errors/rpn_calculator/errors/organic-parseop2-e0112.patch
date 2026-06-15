@@ -1,0 +1,19 @@
+--- rpn_calculator.td
++++ rpn_calculator.td
+@@ -10,11 +10,11 @@
+ 
+ func parseOp(token: string): Option<Op> {
+   match token {
+-    "+" => Some(Add),
+-    "-" => Some(Sub),
+-    "*" => Some(Mul),
+-    "/" => Some(Div),
+-    _   => None,
++    "+" => Option<Op>.Add,
++    "-" => Option<Op>.Sub,
++    "*" => Option<Op>.Mul,
++    "/" => Option<Op>.Div,
++    _ => Option<Op>.None,
+   }
+ }
+ 

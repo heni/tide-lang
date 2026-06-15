@@ -1,0 +1,1 @@
+error[E0203]: Wrong return type — function returns Option<(int, int)>, got (int, int)

@@ -1,0 +1,37 @@
+--- reverse_linked_list.td
++++ reverse_linked_list.td
+@@ -13,20 +13,23 @@
+ }
+ 
+ func reverse(head: Option<Node>): Option<Node> {
+-  var prev: Option<Node> = None
+-  var curr = head
+-  while true {
+-    match curr {
+-      None    => return prev,
+-      Some(n) => {
+-        let nxt = n.next
+-        n.next = prev
+-        prev = Some(n)
+-        curr = nxt
+-      },
++var prev: Option<Node> = None
++var current = head
++
++while true {
++  match current {
++    None => {
++      return prev
++    }
++    Some(node) => {
++      let next = node.next
++      node.next = prev
++      prev = Some(node)
++      current = next
+     }
+   }
+ }
++}
+ 
+ // 1 -> 2 -> 3 -> None
+ func build(values: []int): Option<Node> {

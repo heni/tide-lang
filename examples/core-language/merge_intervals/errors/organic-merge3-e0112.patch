@@ -1,0 +1,46 @@
+--- merge_intervals.td
++++ merge_intervals.td
+@@ -14,27 +14,26 @@
+ }
+ 
+ func merge(intervals: []Interval): []Interval {
+-  if intervals.len() == 0 {
+-    return []Interval{}
+-  }
+-
+-  // Sort by start. The wrapper takes a "less" comparator and returns a new
+-  // slice — Tide preserves immutability of the input.
+   let sorted = sort.sorted(intervals, (a, b) => a.start < b.start)
+-
+-  var out: []Interval = []Interval{}
+-  var cur = sorted[0]
+-  for i in 1..sorted.len() {
+-    let nxt = sorted[i]
+-    if nxt.start <= cur.end {
+-      cur = Interval{ start: cur.start, end: max(cur.end, nxt.end) }
++  if sorted.len() == 0 {
++    return []
++  }
++  
++  var result = []
++  var current = sorted[0]
++  
++  for i in 1..=sorted.len() {
++    let interval = sorted[i]
++    if interval.start <= current.end {
++      current.end = max(current.end, interval.end)
+     } else {
+-      out = out.push(cur)
+-      cur = nxt
++      result.append(current)
++      current = interval
+     }
+   }
+-  out = out.push(cur)
+-  return out
++  
++  result.append(current)
++  result
+ }
+ 
+ func max(a: int, b: int): int {

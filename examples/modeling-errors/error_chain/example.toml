@@ -21,3 +21,17 @@ expect  = ["E0404"]
 stage   = "sema"
 matches = "errors/break-in-pipeline.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/organic-dividend2-e0112.patch"   # Check if n is odd; return ParseError if so, otherwise return n/2 as success.
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/organic-dividend2-e0112.expected"
+origin  = "organic:holefill-2"
+
+[[error]]
+patch   = "errors/organic-dividend2-e0201.patch"   # Check evenness with modulo; construct Ok/Err variants; interpolate n into error 
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/organic-dividend2-e0201.expected"
+origin  = "organic:holefill-2"

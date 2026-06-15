@@ -1,0 +1,63 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -31,30 +31,36 @@
+   | OutOfStock
+ 
+ func step(s: State, e: Event): State {
+-  match (s, e) {
+-    // Idle: accepts coins or restock; ignores selection/refund.
+-    (Idle, InsertCoin(n))       => Holding(n),
+-    (Idle, Select(_))           => Idle,
+-    (Idle, Refund)              => Idle,
+-    (Idle, Restock)             => Idle,
+-
+-    // Holding: accepts more coins, a selection, or a refund.
+-    (Holding(b), InsertCoin(n)) => Holding(b + n),
+-    (Holding(b), Select(i))     => if b >= price(i) {
+-                                     Dispensing(i, b - price(i))
+-                                   } else {
+-                                     Holding(b)
+-                                   },
+-    (Holding(_), Refund)        => Idle,
+-    (Holding(_), Restock)       => Idle,
+-
+-    // Dispensing: returns to Idle after one tick (modelled by any event).
+-    (Dispensing(_, _), _)       => Idle,
+-
+-    // OutOfStock: only Restock leaves this state.
+-    (OutOfStock, Restock)       => Idle,
+-    (OutOfStock, _)             => OutOfStock,
+-  }
++match (s, e) {
++  (Idle, InsertCoin(amount)) => Holding(balance: amount),
++  (Idle, Select(_)) => Idle,
++  (Idle, Refund) => Idle,
++  (Idle, Restock) => Idle,
++  
++  (Holding(balance), InsertCoin(amount)) => Holding(balance: balance + amount),
++  (Holding(balance), Select(item)) => {
++    let itemPrice = price(item);
++    if balance >= itemPrice {
++      let change = balance - itemPrice;
++      Dispensing(item: item, change: change)
++    } else {
++      Holding(balance: balance)
++    }
++  },
++  (Holding(balance), Refund) => Idle,
++  (Holding(balance), Restock) => Holding(balance: balance),
++  
++  (Dispensing(item, change), _) => {
++    if change > 0 {
++      Holding(balance: change)
++    } else {
++      Idle
++    }
++  },
++  
++  (OutOfStock, Restock) => Idle,
++  (OutOfStock, _) => OutOfStock,
++}
+ }
+ 
+ func render(s: State): string {
