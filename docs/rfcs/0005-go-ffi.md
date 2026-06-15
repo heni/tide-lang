@@ -6,7 +6,7 @@
 | Status | draft |
 | Created | 2026-06-15 |
 | Supersedes | — |
-| Target | new `lang-spec/ffi.md`; `lang-spec/grammar.ebnf` (extern decls); `lang-spec/ast.md` (extern nodes); `lang-spec/type-system.md` (T-Extern, boundary translation); `lang-spec/diagnostics.md` (E06xx FFI codes); `lang-spec/lowering-go.md` (§ForeignCall); `docs/binding-surface.md` (recast as curated output of this interface) |
+| Target | new `lang-spec/ffi.md`; `lang-spec/grammar.ebnf` (extern decls); `lang-spec/keywords.md` (`extern`/`EXT`); `lang-spec/ast.md` (extern nodes); `lang-spec/type-system.md` (T-Extern, boundary translation); `lang-spec/builtins.md` (`refEq` widened to opaque handles); `lang-spec/diagnostics.md` (E10xx FFI codes); `lang-spec/lowering-go.md` (§ForeignCall); `docs/binding-surface.md` (recast as curated output of this interface) |
 
 ## Summary
 
@@ -136,13 +136,28 @@ Elements:
 - **`@go("import/path")`** — the package header. Maps the module's
   namespace (`exec`) to the Go import path. Replaces Borgo's
   hardcoded `REWRITE_MODULES`; the mapping lives in data (see
-  *Dependency plumbing*).
+  *Dependency plumbing*). `@go` is a **binding-only foreign
+  attribute**, not a user-facing decorator — decorators are on the
+  language's cut list, and `@` is a token no ordinary v1 production
+  accepts (the parser rejects it). This RFC cashes that reservation
+  for the FFI surface alone — the same binding-boundary carve-out
+  that lets `Any` exist only at binding edges. Its exact spelling
+  (a header attribute vs a per-item form) is Open question 1.
 - **`extern type T`** — an **opaque foreign handle**. Empty body: Tide
   knows the name, never the layout. Cannot be constructed by a Tide
   literal (only returned from an `extern fn`), cannot be pattern-
-  destructured. Reference identity via `refEq` (D-class semantics).
-  Models `*exec.Cmd`, `*regexp.Regexp`, `os.File`, `*sql.Rows`, … —
-  the 90 % case, since Go library types are used *through methods*.
+  destructured. It is a **reference type**; admitting opaque handles
+  into `refEq` (today class-only, per `builtins.md`) is a paired edit
+  listed below. A raw handle **may carry Go's `nil` unchecked** — Go
+  has no static nilability, so the generator cannot prove non-nil, and
+  calling a method on a nil handle panics in Go (which, per *panics
+  never cross the boundary*, the adapter must prevent). The invariant:
+  the **raw layer never auto-lifts a `*T` to `Option<T>`** — it cannot
+  know nilability — so guarding nil is an **adapter** responsibility;
+  the *only* automatic nil→`Option`/`Result` conversions are the
+  comma-ok and `error` boundary lifts below. Models `*exec.Cmd`,
+  `*regexp.Regexp`, `os.File`, `*sql.Rows`, … — the 90 % case, since
+  Go library types are used *through methods*.
 - **`extern struct T { f: U, … }`** — a **transparent foreign struct**:
   a Go struct whose *exported fields* Tide reads/writes directly
   (translated as a record). Used when a binding needs field access,
@@ -188,7 +203,7 @@ The generator maps each Go type to a Tide type. The total rule:
 | `error` | `error` | predeclared |
 | **`(T, error)`** | **`Result<T, error>`** | boundary lift, below |
 | **`(T, bool)`** (comma-ok) | **`Option<T>`** | boundary lift, below |
-| `*T` (named) | opaque handle `T` (or `Option<T>` if nilable) | below |
+| `*T` (named) | opaque handle `T` | raw stays a handle; nil→`Option` is an adapter lift, never automatic (below) |
 | exported `struct{…}` | `extern struct` (record) **or** opaque `extern type` | human chooses (field-access vs method-only) |
 | `interface{ … }` | Tide `interface` | exported methods translated |
 | Go type param `[T any]` | Tide generic `<T>` | unbounded only (D11) |
@@ -201,7 +216,12 @@ The generator maps each Go type to a Tide type. The total rule:
 - `(T, bool)` comma-ok → `Option<T>` — but a Go function legitimately
   returning a `bool` is **ambiguous** with comma-ok. The generator's
   guess (2nd-return-is-`bool` ⇒ Option) is a *default the human can
-  override* in curation; the curated file is the source of truth.
+  override* in curation; the curated file is the source of truth. The
+  lift fires **only** for an exactly-2-return signature; a bool that is
+  meaningful when `false` (a `T` that is not the zero value on `false`)
+  is data-lossy under the lift and is therefore a curation-override
+  case, not an automatic one. Arity-≥3 returns are never lifted (they
+  bail; see the bindable subset).
 - A nil-able `*T` → the adapter lifts to `Option<T>`; the raw layer may
   keep it as a handle that is never compared to nil in Tide.
 
@@ -306,7 +326,10 @@ diff. No regenerate-on-every-build.
 Per the project's atomic-coverage rule, the constructs this RFC adds
 (`extern type` / `extern fn` / `extern impl` / `@go` header, the
 boundary-lift lowering, the new diagnostics) each owe ≥ 1 atomic
-fixture in `tests/{grammar,sema,codegen}/` on `implemented`. Live
+fixture in `tests/{lexer,grammar,sema,codegen}/` on `implemented` —
+including a **`tests/lexer/`** fixture for the new `extern`/`EXT`
+tokens and the `@go` attribute (a new keyword owes lexer coverage per
+D17). Live
 coverage is the corpus analyzer itself (soft until it lands). The Go
 type-checker re-verification is itself a testable invariant (a binding
 whose Go symbol is removed must fail with the `.td`-coord drift
@@ -348,19 +371,28 @@ On acceptance / implementation, these `lang-spec/` edits land:
   verify-don't-trust principle, the manifest + dependency model.
 - **`lang-spec/grammar.ebnf`** — `ExternDecl`, `ExternType`,
   `ExternImpl`, the `@go` header, the `= "GoName"` override.
+- **`lang-spec/keywords.md`** — reserve `extern` (a new keyword) and
+  `EXT` (the foreign-body marker; contextual if it is not a hard
+  keyword). A new keyword owes a `tests/lexer/` fixture (below).
 - **`lang-spec/ast.md`** — extern AST nodes.
 - **`lang-spec/type-system.md`** — `T-Extern` (typing an `EXT` call),
-  the boundary-translation judgement, opaque-handle rules.
-- **`lang-spec/diagnostics.md`** — new FFI diagnostics (suggested
-  E06xx range): unbindable-symbol-referenced, binding-drift
-  (`.td`-coord wrapper over the Go type error), foreign-panic-uncaught,
-  third-party-module-unresolved.
+  the boundary-translation judgement, opaque-handle rules (including
+  that the `RecvChan<T>` / `SendChan<T>` close-restriction from
+  `builtins.md` is preserved across the translation).
+- **`lang-spec/builtins.md`** — widen `refEq<C>`'s domain from
+  class-only to also admit an opaque `extern type` handle (C2 above);
+  state reference-identity for foreign handles.
+- **`lang-spec/diagnostics.md`** — new FFI diagnostics in a **free
+  category** (suggested **E10xx** — E06xx is already the "special
+  names" category, so FFI must not reuse it): unbindable-symbol-
+  referenced, binding-drift (`.td`-coord wrapper over the Go type
+  error), foreign-panic-uncaught, third-party-module-unresolved.
 - **`lang-spec/lowering-go.md`** — §ForeignCall: `EXT` → `pkg.GoName`,
   the `(T,error)`/`(T,bool)` lift lowering, the `go.mod`
   `require`/`replace` emission.
 - **`docs/binding-surface.md`** — recast from a hand-authored target
-  list into the *curated output* of this interface; the "not in v1"
-  section becomes "not yet generated."
+  list into the *curated output* of this interface; its
+  `What is **not** in v1` section is reframed as "not yet generated."
 
 ## Transition / compatibility
 
@@ -403,3 +435,24 @@ accepted with them open, resolved before `implemented`.
 7. **Foreign-handle lifecycle.** Go is GC'd, so no manual free — but
    resources needing `Close()` (files, processes) want a `defer`-shaped
    discipline. Whether the FFI models this or leaves it to adapters.
+8. **Generic instantiation of bound generics.** The table maps Go
+   `[T any]` → Tide `<T>`, but Tide's type-arg *inference* for generics
+   is incomplete and lives partly in codegen. A bound generic
+   (`toml.parse<T>`, a generic Go container fn) raises the same
+   "where do the type args come from at the call site" problem the
+   corpus already hits. `toml.parse<T>` is safe (explicit type arg,
+   like `json.parse<T>`); fully-inferred bound generics are not yet
+   specified. In scope for the FFI v1, or deferred to the generics
+   work?
+9. **Bindable subset vs the supported-Go-version range (D15).** The
+   bail-list is static, but D15 says the Go surface bindgen must
+   understand grows across Go releases — a third-party lib may use
+   generics constraints / type aliases / embedding outside today's
+   subset. Which Go version's surface must `tide import` understand,
+   and how is the bail-list pinned to the D15 supported range?
+10. **Runtime trust boundary for third-party code.** Build hermeticity
+    (vendored `replace`) is handled, but a bound third-party package
+    executes with full Go privileges at *runtime* — the first time the
+    interface admits non-stdlib code. No sandboxing is proposed
+    (correct for a pre-alpha solo project); flagged so the trust
+    assumption is explicit rather than silent.
