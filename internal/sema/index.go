@@ -85,6 +85,27 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
 			}
 			c.info.Def[v] = sym
+		case *ast.ExternTypeDecl:
+			// Opaque foreign handle (ffi.md §ExternType). Its Type is
+			// the nominal Named carrying the decl, so member access can
+			// recognise the handle and refEq can admit it.
+			c.checkReservedName(v.Name, v.Span)
+			sym := &Symbol{Name: v.Name, Kind: SymExternType, Decl: v, Type: &Named{N: v.Name, Decl: v}}
+			if prev := file.declare(sym); prev != nil {
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
+			}
+		case *ast.ExternFuncDecl:
+			// Package-level foreign function. Signature frozen in the
+			// resolve pass (Barrier B), like an ordinary FuncDecl.
+			c.checkReservedName(v.Name, v.Span)
+			sym := &Symbol{Name: v.Name, Kind: SymExternFunc, Decl: v, Type: &Unknown{}}
+			if prev := file.declare(sym); prev != nil {
+				c.report("E0113", "Duplicate top-level declaration "+v.Name, v.Span)
+			}
+		case *ast.ExternImplDecl:
+			// Not a name binding — it attaches members to an existing
+			// handle. Index by handle name for member-access lookup.
+			c.externImpls[v.Type] = v
 		}
 	}
 	return file

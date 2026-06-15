@@ -314,10 +314,10 @@ either way).
 (T-Neg-Num)    Γ ⊢ a : T   T ∈ numeric primitives    ⊢ -a : T
 ```
 
-"Comparable" excludes class types under `==`/`!=` (use `refEq`)
-and excludes function values, channels, maps, sets, stacks, and
-slices in general; tuples and records are comparable iff each
-component is.
+"Comparable" excludes class types and opaque foreign handles
+(`extern type`) under `==`/`!=` (use `refEq`) and excludes function
+values, channels, maps, sets, stacks, and slices in general; tuples
+and records are comparable iff each component is.
 
 ### Bindings and assignment
 
@@ -963,15 +963,55 @@ mapping; user-side conformance is by-the-letter.
 
 ```
 (T-RefEq)      Γ ⊢ a : C_a    Γ ⊢ b : C_b
-               C_a, C_b are class types
-               C_a = C_b                                  (same class)
+               C_a, C_b are reference-identity types
+               C_a = C_b                                  (same type)
                ──────────────────────────────────────────────────
                        Γ ⊢ refEq(a, b) : bool
 ```
 
-Calling `refEq` on non-class arguments, or with operands of
-**different** class types, fires **E0206 refEq requires class
-operands of the same class**.
+A **reference-identity type** is a class type *or* an opaque foreign
+handle (`extern type`, `ffi.md` §ExternType / T-Extern below) — both
+are reference types compared by identity, not structure. Calling
+`refEq` on any other type, or with operands of **different**
+reference-identity types, fires **E0206 refEq requires two operands of
+the same class or opaque foreign handle**.
+
+## Foreign handles — T-Extern
+
+An `extern type T` (`ffi.md`) introduces an **opaque foreign handle**:
+a nominal reference type whose layout Tide never sees.
+
+```
+(T-Extern-Fn)   Γ(f) = extern func (P̄) : R          Γ ⊢ ā : P̄
+                ──────────────────────────────────────────────
+                            Γ ⊢ f(ā) : R
+
+(T-Extern-Meth) Γ ⊢ r : T   (extern impl T) declares  m(P̄) : R
+                Γ ⊢ ā : P̄
+                ──────────────────────────────────────────────
+                          Γ ⊢ r.m(ā) : R
+
+(T-Extern-Fld)  Γ ⊢ r : T   (extern impl T) declares  (let|var) x : U
+                ──────────────────────────────────────────────
+                          Γ ⊢ r.x : U
+```
+
+An extern function/method is typed by its declared (curated) signature
+exactly like an ordinary call — the curated `.td` writes any boundary-
+lifted return type (`Result<·,error>`, `Option<·>`) directly, so there
+is no separate lift judgement at the type level (the lift is a lowering
+rule, `lowering-go.md` §ForeignCall).
+
+Opaque-handle restrictions (each backed by a diagnostic):
+
+- **Not constructible.** A handle has no literal/constructor form — it
+  is only produced by an extern function/method. A `T(...)` call or
+  `T { … }` literal fires **E1001**.
+- **Not destructurable.** A handle has no visible components — a tuple
+  / record pattern over it fires **E1002**.
+- **Not `==`-comparable.** A handle is excluded from structural
+  `==`/`!=` (T-Cmp) and routed to `refEq`, like a class.
+- **refEq-eligible.** A handle is a reference-identity type (T-RefEq).
 
 ## Type errors — quick index
 
@@ -988,7 +1028,8 @@ touched by this file:
   narrow numeric type.
 - **E0205** — Illegal type conversion (source/target pair not
   in `ConvOK`).
-- **E0206** — `refEq` requires class operands of the same class.
+- **E0206** — `refEq` requires two operands of the same class or
+  opaque foreign handle (T-RefEq).
 - **E0207** — Wrong type arity on a generic instantiation.
 - **E0208** — Cannot infer literal type for a bare-`{}` `BraceLit`
   with no contextual expected type.

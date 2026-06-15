@@ -26,6 +26,8 @@ E05xx — class scope / shadowing
 E06xx — special names (`scope`, `this`, `_`)
 E07xx — desugaring (internal)
 E08xx — codegen / lowering (internal)
+E09xx — REPL input
+E10xx — foreign bindings (Go FFI)
 ```
 
 Warnings use the same number space but are flagged in the
@@ -71,7 +73,7 @@ severity column.
 | E0203 | E | Wrong return type | `type-system.md` T-Func-Decl | Match the function's declared return type or change the annotation. |
 | E0204 | E | Integer literal out of range | `type-system.md` §Literals (narrowing) | Use a wider integer type or a literal within range. |
 | E0205 | E | Illegal type conversion | `type-system.md` T-Conv (`ConvOK`) / `builtins.md` §Conversion functions | The pair isn't in `ConvOK`; for string ↔ int parse with `strconv.atoi` / format with `strconv.itoa`. |
-| E0206 | E | `refEq` requires class operands of the same class | `type-system.md` T-RefEq / `builtins.md` §Free functions | Compare two values of the same class type; for cross-class comparison there is no v1 equivalent (rewrite the logic). |
+| E0206 | E | `refEq` requires two operands of the same class or opaque foreign handle | `type-system.md` T-RefEq / `builtins.md` §Free functions / `ffi.md` §ExternType | Compare two values of the same class type or the same opaque handle; for cross-type comparison there is no v1 equivalent (rewrite the logic). |
 | E0207 | E | Wrong type arity on generic instantiation | `type-system.md` WF-Named | Provide the expected number of type arguments. |
 | E0208 | E | Cannot infer literal type | `type-system.md` §Slices, maps, sets, stacks (BraceKind=Unknown) | Add an explicit type annotation at the use site. |
 | E0209 | E | `Dynamic` widening requires `reflect.box` | `type-system.md` T-Dyn-NoWiden / `builtins.md` §reflect | Wrap the value in `reflect.box(v)`. The only site that widens implicitly is a `reflect.*` parameter of formal type `Dynamic`. |
@@ -140,6 +142,17 @@ admissible at the prompt. Coordinates use the synthetic file
 | E0903 | E | Unknown meta-command | RFC-0003 §Meta-commands | The set is `:help :quit :reset :imports :show :write[!] :type :inspect :load`. Type `:help` for the full list. |
 | E0904 | E | **reserved** (`:write` target file already exists — `:write` not yet implemented) | RFC-0003 §Meta-commands | Use `:write! <file.td>` to overwrite, or pick a different name. |
 | E0905 | E | **reserved** (Last-value binding is unbound — `_` / `_error` not yet implemented) | RFC-0003 §Auto-printing (`_` / `_error`) + §Open questions #2 (unbound-on-fresh-session) | Evaluate an expression first — `_` is bound to the last result; `_error` to the last runtime error. A fresh session has neither. |
+
+### E10xx — Foreign bindings (Go FFI)
+
+Codes raised by the `extern` foreign-binding surface (`ffi.md`). The
+E06xx "special names" category is already taken, so FFI uses a fresh
+E10xx range.
+
+| Code | Sev | Message | Authoritative rule | Fix |
+|---|---|---|---|---|
+| E1001 | E | Cannot construct opaque foreign handle | `ffi.md` §ExternType / `type-system.md` T-Extern | An `extern type` has no visible layout — obtain the handle from an `extern func` (or an `extern impl` method) instead of a literal / constructor call. |
+| E1002 | E | Cannot destructure opaque foreign handle | `ffi.md` §ExternType / `type-system.md` T-Extern | A handle has no fields/components to bind; use its `extern impl` methods/fields via member access instead of a tuple / record pattern. |
 
 ## Diagnostic formatting
 

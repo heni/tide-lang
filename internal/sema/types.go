@@ -38,6 +38,17 @@ type Named struct {
 func (*Named) typeMarker()      {}
 func (n *Named) String() string { return n.N }
 
+// isOpaqueHandle reports whether t is an opaque foreign handle — a
+// Named backed by an *ast.ExternTypeDecl (ffi.md §ExternType).
+func isOpaqueHandle(t Type) bool {
+	n, ok := t.(*Named)
+	if !ok {
+		return false
+	}
+	_, ok = n.Decl.(*ast.ExternTypeDecl)
+	return ok
+}
+
 // Func — a function / method signature. TypeParams lists generic
 // parameter names (empty for monomorphic functions).
 type Func struct {
@@ -289,9 +300,13 @@ func comparable(t Type) bool {
 		// Generic is a wildcard, so it does not trip E0401 either.
 		return true
 	case *Named:
-		// Class types are excluded (use refEq); sum / record
-		// nominal types are comparable by tag / field-wise.
+		// Class types and opaque foreign handles are excluded (use
+		// refEq); sum / record nominal types are comparable by tag /
+		// field-wise.
 		if _, isClass := x.Decl.(*ast.ClassDecl); isClass {
+			return false
+		}
+		if _, isHandle := x.Decl.(*ast.ExternTypeDecl); isHandle {
 			return false
 		}
 		return true

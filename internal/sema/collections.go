@@ -217,7 +217,7 @@ func (c *checker) inferBuiltinFuncCall(name string, call *ast.Call, args []Type)
 		// Only judge when both operands are concretely known; an
 		// Unknown operand stays silent (conservative).
 		if len(args) == 2 && concrete(args[0]) && concrete(args[1]) && !sameClass(args[0], args[1]) {
-			c.report("E0206", "`refEq` requires class operands of the same class", call.Span)
+			c.report("E0206", "`refEq` requires two operands of the same class or opaque foreign handle", call.Span)
 		}
 		return &Builtin{N: "bool"}
 	case "makeSlice":
@@ -364,8 +364,10 @@ func channelMethodType(recv Type, name string) *Func {
 	return nil
 }
 
-// sameClass reports whether a and b are the same class type
-// (both *Named backed by a *ast.ClassDecl with equal names).
+// sameClass reports whether a and b are the same reference type for
+// the purpose of `refEq` (T-RefEq): both *Named, equal names, and each
+// backed by a reference-identity decl — a class or an opaque foreign
+// handle (ffi.md §ExternType admits handles into refEq).
 func sameClass(a, b Type) bool {
 	na, ok := a.(*Named)
 	if !ok {
@@ -375,9 +377,18 @@ func sameClass(a, b Type) bool {
 	if !ok {
 		return false
 	}
-	_, aClass := na.Decl.(*ast.ClassDecl)
-	_, bClass := nb.Decl.(*ast.ClassDecl)
-	return aClass && bClass && na.N == nb.N
+	return refEqDecl(na.Decl) && refEqDecl(nb.Decl) && na.N == nb.N
+}
+
+// refEqDecl reports whether a Named's decl is a reference-identity type
+// eligible for refEq: a class or an opaque foreign handle.
+func refEqDecl(decl any) bool {
+	switch decl.(type) {
+	case *ast.ClassDecl, *ast.ExternTypeDecl:
+		return true
+	default:
+		return false
+	}
 }
 
 // isConvertibleTarget reports whether name is a primitive type
