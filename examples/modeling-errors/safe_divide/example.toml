@@ -1,0 +1,16 @@
+description = "Result-typed integer division with a typed error value"
+source   = "organic hole-fill"
+category = "modeling-errors"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "safe_divide.td"
+
+[[error]]
+patch   = "errors/bare-record-literal.patch"   # JS-habit bare `{…}` instead of DivError{…}
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/bare-record-literal.expected"
+origin  = "organic:hole-fill"

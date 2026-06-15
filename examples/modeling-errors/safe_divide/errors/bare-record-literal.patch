@@ -1,0 +1,11 @@
+--- safe_divide.td
++++ safe_divide.td
+@@ -5,7 +5,7 @@
+ 
+ func safeDivide(a: int, b: int): Result<int, DivError> {
+   if b == 0 {
+-    return Err(DivError{ msg: "division by zero" })
++    return Err({ msg: "division by zero" })
+   }
+   return Ok(a / b)
+ }
