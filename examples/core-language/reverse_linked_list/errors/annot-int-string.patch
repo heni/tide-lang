@@ -1,0 +1,11 @@
+--- reverse_linked_list.td
++++ reverse_linked_list.td
+@@ -32,7 +32,7 @@
+ func build(values: []int): Option<Node> {
+   var head: Option<Node> = None
+   // Build back-to-front so `head` ends up at values[0].
+-  var i = values.len() - 1
++  var i: int = "x"
+   while i >= 0 {
+     head = Some(Node{ value: values[i], next: head })
+     i = i - 1

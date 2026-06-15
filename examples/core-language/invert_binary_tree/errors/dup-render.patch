@@ -1,0 +1,11 @@
+--- invert_binary_tree.td
++++ invert_binary_tree.td
+@@ -23,6 +23,8 @@
+   }
+ }
+ 
++func render(t: Tree<int>): string { return "x" }
++
+ func main() {
+   //       4
+   //      / \

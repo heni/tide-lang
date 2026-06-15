@@ -1,0 +1,11 @@
+--- invert_binary_tree.td
++++ invert_binary_tree.td
+@@ -19,7 +19,7 @@
+ func render(t: Tree<int>): string {
+   match t {
+     Leaf          => ".",
+-    Node(v, l, r) => "(" + render(l) + " " + strconv.itoa(v) + " " + render(r) + ")",
++    Node(v, l, r) => try render(l) + " " + strconv.itoa(v) + " " + render(r) + ")",
+   }
+ }
+ 

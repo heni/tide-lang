@@ -1,0 +1,11 @@
+--- reverse_linked_list.td
++++ reverse_linked_list.td
+@@ -45,7 +45,7 @@
+   var cur = head
+   while true {
+     match cur {
+-      None    => return out + "None",
++      None    => return 0,
+       Some(n) => {
+         out = out + strconv.itoa(n.value) + " -> "
+         cur = n.next

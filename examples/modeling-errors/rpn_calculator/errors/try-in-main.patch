@@ -1,0 +1,10 @@
+--- rpn_calculator.td
++++ rpn_calculator.td
+@@ -54,6 +54,7 @@
+     fmt.println("usage: rpn '<expression>'")
+     os.exit(2)
+   }
++  let _x = try evalRPN(os.args[1])
+   match evalRPN(os.args[1]) {
+     Ok(v)  => fmt.println(v),
+     Err(e) => {

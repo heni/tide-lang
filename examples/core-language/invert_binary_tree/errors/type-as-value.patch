@@ -1,0 +1,9 @@
+--- invert_binary_tree.td
++++ invert_binary_tree.td
+@@ -34,5 +34,5 @@
+     Node(7, Node(6, Leaf, Leaf), Node(9, Leaf, Leaf)))
+ 
+   fmt.println("before:", render(t))
+-  fmt.println("after: ", render(invert(t)))
++  fmt.println("after: ", render(invert(Tree)))
+ }

@@ -1,0 +1,11 @@
+--- error_chain.td
++++ error_chain.td
+@@ -28,7 +28,7 @@
+ 
+ func parsePositive(s: string): Result<int, ParseError> {
+   let trimmed = strings.trimSpace(s)
+-  if trimmed.len() == 0 {
++  if trimed.len() == 0 {
+     return Err(ParseError{ stage: "parsePositive", detail: "empty input" })
+   }
+   match strconv.atoi(trimmed) {

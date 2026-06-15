@@ -1,0 +1,8 @@
+--- hello.td
++++ hello.td
+@@ -6,4 +6,5 @@
+ 
+ func main() {
+   fmt.println("Tide is rising.")
++  `
+ }

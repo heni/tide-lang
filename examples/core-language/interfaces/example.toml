@@ -7,3 +7,17 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "interfaces.td"
+
+[[error]]
+patch   = "errors/extra-arg-baz.patch"   # baz takes one argument, given two
+expect  = ["E0202"]
+stage   = "sema"
+matches = "errors/extra-arg-baz.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/class-equality.patch"   # == on a class type; use refEq for identity
+expect  = ["E0401"]
+stage   = "sema"
+matches = "errors/class-equality.expected"
+origin  = "synthetic"

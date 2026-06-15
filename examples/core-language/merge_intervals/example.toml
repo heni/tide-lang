@@ -7,3 +7,24 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "merge_intervals.td"
+
+[[error]]
+patch   = "errors/dup-field-interval.patch"   # Interval has two fields named start
+expect  = ["E0105"]
+stage   = "sema"
+matches = "errors/dup-field-interval.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/typo-intervals.patch"   # typo: interval instead of intervals
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/typo-intervals.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/interval-dup-end.patch"   # Interval declares end twice
+expect  = ["E0105"]
+stage   = "sema"
+matches = "errors/interval-dup-end.expected"
+origin  = "synthetic"

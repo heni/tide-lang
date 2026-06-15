@@ -1,0 +1,10 @@
+--- valid_parentheses.td
++++ valid_parentheses.td
+@@ -25,6 +25,7 @@
+ 
+ func isValid(s: string): bool {
+   var stack = Stack<rune>{}
++  let _ = try opener(s)
+   for c in s {
+     if isOpener(c) {
+       stack.push(c)

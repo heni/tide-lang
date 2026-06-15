@@ -1,0 +1,1 @@
+error[E0108]: Type used as value — `Tree` is a type, not a value

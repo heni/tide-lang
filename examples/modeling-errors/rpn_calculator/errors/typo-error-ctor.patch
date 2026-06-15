@@ -1,0 +1,11 @@
+--- rpn_calculator.td
++++ rpn_calculator.td
+@@ -24,7 +24,7 @@
+     Sub => Ok(a - b),
+     Mul => Ok(a * b),
+     Div => if b == 0.0 {
+-             Err(error("division by zero"))
++             Err(eror("division by zero"))
+            } else {
+              Ok(a / b)
+            },

@@ -7,3 +7,17 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "pipeline.td"
+
+[[error]]
+patch   = "errors/scope-string-error.patch"   # scope error parameter must be error in v1
+expect  = ["E0407"]
+stage   = "sema"
+matches = "errors/scope-string-error.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/spawn-outside-scope.patch"   # spawn used outside a scope block
+expect  = ["E0405"]
+stage   = "sema"
+matches = "errors/spawn-outside-scope.expected"
+origin  = "synthetic"

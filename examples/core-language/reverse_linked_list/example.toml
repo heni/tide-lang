@@ -7,3 +7,31 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "reverse_linked_list.td"
+
+[[error]]
+patch   = "errors/typo-node.patch"   # typo: node is not in scope
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/typo-node.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/this-outside-method.patch"   # this used in a free function
+expect  = ["E0501"]
+stage   = "sema"
+matches = "errors/this-outside-method.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/annot-int-string.patch"   # let annotated int but assigned a string
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/annot-int-string.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/return-int-string-fn.patch"   # render returns string but this return yields int
+expect  = ["E0203"]
+stage   = "sema"
+matches = "errors/return-int-string-fn.expected"
+origin  = "synthetic"

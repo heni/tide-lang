@@ -1,0 +1,11 @@
+--- two_sum.td
++++ two_sum.td
+@@ -23,7 +23,7 @@
+   let target = 9
+ 
+   match twoSum(nums, target) {
+-    Some((i, j)) => fmt.println("indices:", i, j),
++    Some((i, j)) => fmt.println("indices:" i, j),
+     None         => fmt.println("no pair"),
+   }
+ }

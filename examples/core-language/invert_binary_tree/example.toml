@@ -7,3 +7,45 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "invert_binary_tree.td"
+
+[[error]]
+patch   = "errors/drop-leaf-arm.patch"   # drop the Leaf arm from invert's match
+expect  = ["E0303"]
+stage   = "sema"
+matches = "errors/drop-leaf-arm.expected"
+origin  = "organic:pilot"
+
+[[error]]
+patch   = "errors/unknown-name-rr.patch"   # typo: rr is not in scope
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/unknown-name-rr.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/dup-render.patch"   # two top-level render declarations
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-render.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/try-in-string-fn.patch"   # try in render, which returns string not Result
+expect  = ["E0402"]
+stage   = "sema"
+matches = "errors/try-in-string-fn.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/break-in-main.patch"   # break outside any loop
+expect  = ["E0404"]
+stage   = "sema"
+matches = "errors/break-in-main.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/type-as-value.patch"   # Tree (a type) used in value position
+expect  = ["E0108"]
+stage   = "sema"
+matches = "errors/type-as-value.expected"
+origin  = "synthetic"

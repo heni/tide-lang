@@ -7,3 +7,24 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "two_sum.td"
+
+[[error]]
+patch   = "errors/typo-want.patch"   # typo: wnat is not in scope
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/typo-want.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/missing-in-for.patch"   # for-header missing the in keyword
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-in-for.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/missing-comma-args.patch"   # missing comma between call arguments
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-comma-args.expected"
+origin  = "synthetic"

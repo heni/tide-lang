@@ -1,0 +1,1 @@
+error[E0305]: Float-literal patterns are not allowed — use a wildcard with an `if` guard

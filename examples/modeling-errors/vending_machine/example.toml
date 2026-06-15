@@ -7,3 +7,38 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "vending_machine.td"
+
+[[error]]
+patch   = "errors/drop-outofstock-arm.patch"   # step's tuple match drops the OutOfStock fallthrough
+expect  = ["E0303"]
+stage   = "sema"
+matches = "errors/drop-outofstock-arm.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/dup-variant-cola.patch"   # Cola declared twice in the Item sum
+expect  = ["E0106"]
+stage   = "sema"
+matches = "errors/dup-variant-cola.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/dup-field-dispensing.patch"   # Dispensing has two fields named item
+expect  = ["E0105"]
+stage   = "sema"
+matches = "errors/dup-field-dispensing.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/float-pattern.patch"   # a float literal used as a match pattern
+expect  = ["E0305"]
+stage   = "sema"
+matches = "errors/float-pattern.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/ambiguous-variant.patch"   # Cola is declared by both Item and Snack; used unqualified
+expect  = ["E0104"]
+stage   = "sema"
+matches = "errors/ambiguous-variant.expected"
+origin  = "synthetic"

@@ -1,0 +1,11 @@
+--- merge_intervals.td
++++ merge_intervals.td
+@@ -14,7 +14,7 @@
+ }
+ 
+ func merge(intervals: []Interval): []Interval {
+-  if intervals.len() == 0 {
++  if interval.len() == 0 {
+     return []Interval{}
+   }
+ 

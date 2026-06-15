@@ -1,0 +1,10 @@
+--- rpn_calculator.td
++++ rpn_calculator.td
+@@ -22,7 +22,6 @@
+   match op {
+     Add => Ok(a + b),
+     Sub => Ok(a - b),
+-    Mul => Ok(a * b),
+     Div => if b == 0.0 {
+              Err(error("division by zero"))
+            } else {

@@ -1,0 +1,10 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -53,7 +53,6 @@
+ 
+     // OutOfStock: only Restock leaves this state.
+     (OutOfStock, Restock)       => Idle,
+-    (OutOfStock, _)             => OutOfStock,
+   }
+ }
+ 

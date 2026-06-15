@@ -14,3 +14,17 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/missing-in.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/bad-octal.patch"   # 0o9 is not a valid octal literal
+expect  = ["E0109"]
+stage   = "parse"
+matches = "errors/bad-octal.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/missing-brace.patch"   # for body opening brace omitted
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-brace.expected"
+origin  = "synthetic"

@@ -1,0 +1,1 @@
+error[E0104]: Ambiguous variant name Cola — declared by both Item and Snack

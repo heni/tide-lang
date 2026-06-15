@@ -1,0 +1,12 @@
+--- hello.td
++++ hello.td
+@@ -4,6 +4,9 @@
+ 
+ import fmt
+ 
++type A = B
++type B = A
++
+ func main() {
+   fmt.println("Tide is rising.")
+ }

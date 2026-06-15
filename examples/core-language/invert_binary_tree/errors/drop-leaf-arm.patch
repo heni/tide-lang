@@ -1,0 +1,11 @@
+--- invert_binary_tree.td
++++ invert_binary_tree.td
+@@ -10,7 +10,7 @@
+ 
+ func invert<T>(t: Tree<T>): Tree<T> {
+   match t {
+-    Leaf          => Leaf,
++
+     Node(v, l, r) => Node(v, invert(r), invert(l)),
+   }
+ }

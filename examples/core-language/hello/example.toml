@@ -14,3 +14,38 @@ expect  = ["E0103"]
 stage   = "sema"
 matches = "errors/unknown-name.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/unterminated-string.patch"   # drop the closing quote on the string literal
+expect  = ["E0102"]
+stage   = "parse"
+matches = "errors/unterminated-string.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/bad-escape.patch"   # invalid escape sequence \q
+expect  = ["E0110"]
+stage   = "parse"
+matches = "errors/bad-escape.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/reserved-prefix.patch"   # _tide_ is a reserved codegen prefix
+expect  = ["E0107"]
+stage   = "sema"
+matches = "errors/reserved-prefix.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/stray-backtick.patch"   # a stray backtick is not a valid token start
+expect  = ["E0101"]
+stage   = "parse"
+matches = "errors/stray-backtick.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/cyclic-alias.patch"   # type aliases A and B form a cycle
+expect  = ["E0114"]
+stage   = "sema"
+matches = "errors/cyclic-alias.expected"
+origin  = "synthetic"

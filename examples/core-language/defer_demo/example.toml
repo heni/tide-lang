@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "defer_demo.td"
+
+[[error]]
+patch   = "errors/defer-noncall.patch"   # defer argument is not a call
+expect  = ["E0406"]
+stage   = "sema"
+matches = "errors/defer-noncall.expected"
+origin  = "synthetic"

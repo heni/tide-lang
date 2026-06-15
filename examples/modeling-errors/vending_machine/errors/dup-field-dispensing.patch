@@ -1,0 +1,11 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -27,7 +27,7 @@
+ type State =
+   | Idle
+   | Holding(balance: int)
+-  | Dispensing(item: Item, change: int)
++  | Dispensing(item: Item, item: Item)
+   | OutOfStock
+ 
+ func step(s: State, e: Event): State {

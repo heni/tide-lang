@@ -1,0 +1,1 @@
+error[E0501]: `this` outside an instance-method body

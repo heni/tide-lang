@@ -1,0 +1,9 @@
+--- interfaces.td
++++ interfaces.td
+@@ -37,5 +37,6 @@
+ 
+ func main() {
+   let b = Bar{ x: 6 }
++  let _q = b == b
+   fmt.println(baz(b))                                 // 10
+ }

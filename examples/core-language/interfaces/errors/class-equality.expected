@@ -1,0 +1,1 @@
+error[E0401]: `==` on non-comparable type — compare field-wise, or use `refEq` for class identity

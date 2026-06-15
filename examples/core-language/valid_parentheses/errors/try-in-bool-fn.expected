@@ -1,0 +1,1 @@
+error[E0402]: `try` outside a Result/Option-returning function

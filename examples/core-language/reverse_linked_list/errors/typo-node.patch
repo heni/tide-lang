@@ -1,0 +1,11 @@
+--- reverse_linked_list.td
++++ reverse_linked_list.td
+@@ -21,7 +21,7 @@
+       Some(n) => {
+         let nxt = n.next
+         n.next = prev
+-        prev = Some(n)
++        prev = Some(node)
+         curr = nxt
+       },
+     }

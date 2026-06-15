@@ -1,0 +1,11 @@
+--- merge_intervals.td
++++ merge_intervals.td
+@@ -10,7 +10,7 @@
+ 
+ type Interval = {
+   start: int
+-  end:   int
++  start: int
+ }
+ 
+ func merge(intervals: []Interval): []Interval {

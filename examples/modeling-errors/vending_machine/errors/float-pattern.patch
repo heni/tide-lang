@@ -1,0 +1,11 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -10,7 +10,7 @@
+ 
+ func price(i: Item): int {
+   match i {
+-    Cola  => 150,
++    3.14  => 150,
+     Chips => 100,
+     Candy =>  50,
+   }

@@ -7,3 +7,24 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "rpn_calculator.td"
+
+[[error]]
+patch   = "errors/drop-mul-arm.patch"   # apply's match over Op drops the Mul arm
+expect  = ["E0303"]
+stage   = "sema"
+matches = "errors/drop-mul-arm.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/try-in-main.patch"   # try in main, which returns unit
+expect  = ["E0402"]
+stage   = "sema"
+matches = "errors/try-in-main.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/typo-error-ctor.patch"   # typo: eror instead of error
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/typo-error-ctor.expected"
+origin  = "synthetic"

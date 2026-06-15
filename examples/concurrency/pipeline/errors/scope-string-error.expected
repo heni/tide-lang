@@ -1,0 +1,1 @@
+error[E0407]: `scope` error parameter must be `error` in v1

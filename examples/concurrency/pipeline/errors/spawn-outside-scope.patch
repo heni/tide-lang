@@ -1,0 +1,10 @@
+--- pipeline.td
++++ pipeline.td
+@@ -44,6 +44,7 @@
+   // out through `result`. The scope joins when every stage's spawn
+   // returns (which happens once each stage's input is closed and
+   // drained).
++  spawn { produce(10, nums); return Ok(()) }
+   match scope<unit, error> {
+     spawn { produce(10, nums); return Ok(()) }
+     spawn { square(nums, squares); return Ok(()) }

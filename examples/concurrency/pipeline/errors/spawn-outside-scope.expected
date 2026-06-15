@@ -1,0 +1,1 @@
+error[E0405]: `spawn` outside a `scope` block

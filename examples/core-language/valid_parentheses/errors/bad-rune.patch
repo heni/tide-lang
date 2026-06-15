@@ -1,0 +1,11 @@
+--- valid_parentheses.td
++++ valid_parentheses.td
+@@ -9,7 +9,7 @@
+ 
+ func opener(c: rune): Option<rune> {
+   match c {
+-    ')' => Some('('),
++    ')' => Some('ab'),
+     ']' => Some('['),
+     '}' => Some('{'),
+     _   => None,

@@ -1,0 +1,11 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -6,7 +6,7 @@
+ import fmt
+ import strconv
+ 
+-type Item = | Cola | Chips | Candy
++type Item = | Cola | Chips | Cola
+ 
+ func price(i: Item): int {
+   match i {

@@ -7,3 +7,17 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "error_chain.td"
+
+[[error]]
+patch   = "errors/typo-trimmed.patch"   # typo: trimed instead of trimmed
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/typo-trimmed.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/break-in-pipeline.patch"   # break outside any loop
+expect  = ["E0404"]
+stage   = "sema"
+matches = "errors/break-in-pipeline.expected"
+origin  = "synthetic"

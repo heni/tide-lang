@@ -7,3 +7,17 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "valid_parentheses.td"
+
+[[error]]
+patch   = "errors/bad-rune.patch"   # two-character rune literal
+expect  = ["E0111"]
+stage   = "parse"
+matches = "errors/bad-rune.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/try-in-bool-fn.patch"   # try in isValid, which returns bool
+expect  = ["E0402"]
+stage   = "sema"
+matches = "errors/try-in-bool-fn.expected"
+origin  = "synthetic"

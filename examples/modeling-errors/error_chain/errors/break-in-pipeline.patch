@@ -1,0 +1,11 @@
+--- error_chain.td
++++ error_chain.td
+@@ -59,7 +59,7 @@
+ }
+ 
+ func pipeline(raw: string): Result<int, ParseError> {
+-  let a = try parsePositive(raw)
++  break
+   let b = try dividend(a)
+   let c = try finalCheck(b)
+   return Ok(c)
