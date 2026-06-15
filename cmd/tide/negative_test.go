@@ -65,6 +65,9 @@ func tomlScalar(line string) string {
 
 func tomlArray(line string) []string {
 	_, v, _ := strings.Cut(line, "=")
+	if i := strings.Index(v, "]"); i >= 0 {
+		v = v[:i+1] // drop any trailing comment after the array
+	}
 	var out []string
 	for _, m := range regexp.MustCompile(`"([^"]*)"`).FindAllStringSubmatch(v, -1) {
 		out = append(out, m[1])
@@ -95,12 +98,12 @@ func parseNegCases(t *testing.T, manifest string) []negCase {
 		case line == "[[error]]":
 			flush()
 			cur = &negCase{dir: dir, name: filepath.Base(dir)}
+		case strings.HasPrefix(line, "entry"):
+			entry = tomlScalar(line) // top-level key; captured position-independently
 		case strings.HasPrefix(line, "["):
 			flush()
 		case cur == nil:
-			if strings.HasPrefix(line, "entry") {
-				entry = tomlScalar(line)
-			}
+			// other top-level keys are not needed by the harness
 		case strings.HasPrefix(line, "patch"):
 			cur.patch = tomlScalar(line)
 		case strings.HasPrefix(line, "expect"):
@@ -203,6 +206,9 @@ func TestNegCaseTOMLLite(t *testing.T) {
 	}
 	if got := tomlArray(`expect = ["E0112", "E0201"]`); len(got) != 2 || got[0] != "E0112" || got[1] != "E0201" {
 		t.Errorf("tomlArray = %v", got)
+	}
+	if got := tomlArray(`expect = ["E0112"]   # not "E0201"`); len(got) != 1 || got[0] != "E0112" {
+		t.Errorf("tomlArray must ignore commented quotes, got %v", got)
 	}
 	for code, want := range map[string]string{"E0112": "parse", "E0801": "emit", "E0203": "sema"} {
 		if got := stageOf(code); got != want {
