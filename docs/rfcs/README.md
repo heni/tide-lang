@@ -27,6 +27,7 @@ This directory holds:
 | 0002 | accepted | Multi-file Tide programs |
 | 0003 | accepted | `tide repl` and reflection API |
 | 0004 | accepted | Example corpus charter |
+| 0005 | draft | Go FFI: the foreign-binding interface |
 
 ## How to write an RFC
 
