@@ -366,7 +366,7 @@ Pattern =
   | IdentPat     { name: string }                    // binding
   | TuplePat     { components: []Pattern }
   | VariantPat   { qname: []string, payload: []Pattern }
-  | RecordPat    { type_name: NamedType, fields: []RecordPatField }
+  | RecordPat    { qname: []string, fields: []RecordPatField }   // qname: the record type name (mirrors VariantPat); v1 omits type-args and punning
   | AltPat       { atoms: []Pattern }                // atoms.len() >= 2; each atom is a literal-pattern variant or a VariantPat
 ```
 
