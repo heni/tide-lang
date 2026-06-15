@@ -26,6 +26,7 @@ This directory holds:
 | 0001 | accepted | v0.1 baseline |
 | 0002 | accepted | Multi-file Tide programs |
 | 0003 | accepted | `tide repl` and reflection API |
+| 0004 | accepted | Example corpus charter |
 
 ## How to write an RFC
 

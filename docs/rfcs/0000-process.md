@@ -140,6 +140,29 @@ Transitions are recorded by editing the `Status:` field in the
 RFC and noting the date and superseding RFC (if any) in a
 trailing "## History" subsection.
 
+## Feature acceptance
+
+A language feature's path from proposal to landed is the
+lifecycle above (`draft → accepted → implemented`) plus a
+**coverage obligation** that binds acceptance to the example
+corpus. On `accepted` the design and the paired `lang-spec/`
+edits are settled; on `implemented`, beyond those edits, the
+feature owes coverage in both dimensions:
+
+- **Atomic (hard — blocks the PR):** ≥ 1 fixture in
+  `tests/{lexer,grammar,sema,codegen}/` for each new construct,
+  and ≥ 1 error fixture for each new diagnostic code.
+- **Live (soft — a backlog item if absent, not a blocker):** a
+  realistic `examples/` program that forces the construct, and —
+  for a new diagnostic — a corpus negative case that provokes it
+  on real code.
+
+RFC-0004 ("Example corpus charter") is the authoritative
+definition of the corpus, its acceptance criteria, the
+`example.toml` metadata, and the negative-case mechanism. This
+process cites it directly rather than restating it, so the two
+stay in step.
+
 ## Review
 
 Each RFC PR runs the standard review-subagent pass. The
