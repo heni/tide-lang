@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/heni/tide-lang/internal/bindgen"
 	"github.com/heni/tide-lang/internal/codegen"
 	"github.com/heni/tide-lang/internal/lexer"
 	"github.com/heni/tide-lang/internal/parser"
@@ -43,9 +44,8 @@ func main() {
 		os.Exit(cmdRun(os.Args[2:]))
 	case "repl":
 		os.Exit(cmdRepl(os.Args[2:]))
-	case "bindgen":
-		fmt.Fprintln(os.Stderr, "tide bindgen: not implemented yet")
-		os.Exit(1)
+	case "import":
+		os.Exit(cmdImport(os.Args[2:]))
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 	default:
@@ -76,6 +76,32 @@ func cmdEmit(args []string) int {
 		return 1
 	}
 	fmt.Print(goSrc)
+	return 0
+}
+
+// cmdImport generates a Tide foreign-binding file from a Go package's
+// type info and prints it to stdout (ffi.md). The output is a curated
+// starting point — unbindable symbols and guessed lifts are marked.
+func cmdImport(args []string) int {
+	fs := flag.NewFlagSet("tide import", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: tide import <go/import/path>")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "tide import: expected exactly one <go/import/path>")
+		return 2
+	}
+	src, err := bindgen.Generate(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(src)
 	return 0
 }
 
@@ -280,7 +306,7 @@ Commands:
   build  [-o out] <file.td>    compile to a native binary (default: ./<basename>)
   run    <file.td>             compile and execute (stdio passed through)
   repl                         interactive prompt (RFC-0003 skeleton)
-  bindgen                      generate Tide bindings from a Go package (not implemented)
+  import <go/import/path>      generate Tide foreign bindings from a Go package
   version                      print the compiler version
   help                         print this message
 

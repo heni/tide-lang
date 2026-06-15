@@ -52,8 +52,9 @@ Mandatory from Phase 1 (decision D8).
 
 Tide commits to a defined, stable subset of Go as its IR (decision D15). Codegen
 emits only that conservative subset and never depends on experimental Go
-features. Bindgen depends only on the stable `go/packages` / `go/types` API,
-never on compiler internals. The exact subset and supported Go version range
+features. Bindgen depends only on the stable `go/importer` / `go/types` API
+(source-mode importing, keeping the toolchain dependency-free), never on
+compiler internals. The exact subset and supported Go version range
 are a backlog item to be pinned before codegen settles.
 
 ## 3. The binding subsystem — `internal/bindgen`
@@ -62,7 +63,7 @@ are a backlog item to be pinned before codegen settles.
 Go package
     │
     ▼
-go/packages introspection    — load real types and signatures
+go/importer introspection    — load real types and signatures (source mode)
     │
     ▼
 raw binding declarations     — mechanical, signature-faithful (D6)
@@ -135,7 +136,7 @@ packages do not resolve this way — they enter only through bindings (D4).
 
 Cheapest checks first; do not spend expensive checks where cheap ones suffice.
 
-- **L0 — impossible by construction.** Bindings generated from `go/packages`
+- **L0 — impossible by construction.** Bindings generated from `go/importer`
   type info (D6): signature bugs eliminated, not tested.
 - **L1 — round-trip compilation (free).** Every binding plus a use site is
   compiled Tide -> Go -> `go build`. Bad symbols are rejected by the Go

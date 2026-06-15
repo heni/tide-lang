@@ -134,16 +134,40 @@ are specified in `../docs/rfcs/0005-go-ffi.md` §"Type translation". The
 invariant: the only automatic `Option`/`Result`-producing lifts are
 those two; a nil-able `*T` is an **adapter** lift, never automatic.
 
+## The generator — `tide import`
+
+`tide import <go/import/path>` introspects a Go package's type
+information and prints a deterministic (name-sorted) `.td` binding file
+of `extern` items — a *starting point a human owns*, not an always-on
+translation. The output is reviewed source; the Go type checker catches
+any residual error at build (verify-don't-trust).
+
+Introspection uses the **stdlib `go/importer` in "source" mode**, not
+`golang.org/x/tools/go/packages` — source-mode importing gives the same
+full `go/types` information for the stdlib targets this epoch needs while
+keeping the compiler dependency-free (the project's stdlib-only ethos).
+The third-party / module-aware loading `go/packages` provides lands with
+the third-party plumbing, if needed.
+
+Each symbol is rendered with its translated signature and the boundary
+lifts; the generator marks what the curator must review inline:
+`// UNBINDABLE <name>: <reason>` for a symbol it cannot translate, and a
+`// GUESS` note on a `(T, bool) → Option<T>` lift (which it cannot prove
+is comma-ok rather than a meaningful bool). Names colliding with a Tide
+keyword are escaped (`Match → match_`), the `@go` attribute pinning the
+real Go symbol.
+
 ## Bindable subset and bail-out
 
 A symbol whose signature uses only translatable types is bindable; one
 that uses an untranslatable type (`unsafe.Pointer`, `uintptr`,
-`complex*`, arity-≥3 non-error returns, embedded/anonymous fields,
-bounded generics) is emitted as a **poison declaration**: it compiles,
-but *referencing* it raises a binding diagnostic in `.td` coordinates,
-naming the real reason at the use site. One untranslatable symbol does
-not sterilise the rest of the package. Detail and the diagnostic codes
-land with the generator and sema PRs.
+`complex*`, arity-≥3 non-error returns, interfaces, cross-package named
+types, variadics — until Tide grows them) is **not** emitted as a
+binding: the generator currently renders it as a `// UNBINDABLE` comment
+naming the real reason, so one untranslatable symbol does not sterilise
+the rest of the package. The RFC's stronger **poison declaration** (a
+binding that compiles but raises a `.td`-coordinate diagnostic on *use*)
+is a follow-up; the comment form already prevents silent mistranslation.
 
 ## Dependency model
 
