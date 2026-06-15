@@ -1,1 +1,1 @@
-error[E0112]: expected expression, got Punct "."
+error[E0112]: expected an expression

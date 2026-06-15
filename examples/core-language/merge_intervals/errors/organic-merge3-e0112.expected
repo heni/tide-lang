@@ -1,1 +1,1 @@
-error[E0112]: expected type expression, got Newline ""
+error[E0112]: expected a type
