@@ -154,8 +154,8 @@ Elements:
   never cross the boundary*, the adapter must prevent). The invariant:
   the **raw layer never auto-lifts a `*T` to `Option<T>`** — it cannot
   know nilability — so guarding nil is an **adapter** responsibility;
-  the *only* automatic nil→`Option`/`Result` conversions are the
-  comma-ok and `error` boundary lifts below. Models `*exec.Cmd`,
+  the *only* automatic `Option`/`Result`-producing boundary lifts are
+  the comma-ok and `error` conversions below. Models `*exec.Cmd`,
   `*regexp.Regexp`, `os.File`, `*sql.Rows`, … — the 90 % case, since
   Go library types are used *through methods*.
 - **`extern struct T { f: U, … }`** — a **transparent foreign struct**:
@@ -321,6 +321,45 @@ diff. No regenerate-on-every-build.
   (transitive-closure tracking, as the concurrency prelude already
   does for indirect deps), not from a static list.
 
+### Relationship to D19 — third-party dependencies (a proposed amendment)
+
+D19 ("Third-party Go dependencies are reserved for UX-only surfaces")
+currently states a blanket rule: *"Generated user code (Tide → Go
+output) must never depend on a third-party Go module. The runtime in
+`tidert/` and the stdlib bindings are the only Go-side surface a Tide
+program is allowed to reach."* The third-party half of this RFC (binding
+a non-stdlib package such as TOML, and emitting a `go.mod` `require` for
+it) **directly conflicts with that rule** — so this RFC cannot be
+accepted without amending D19.
+
+The amendment this RFC proposes (the user's call, since D19 is `firm`):
+
+> Generated user code may depend on a third-party Go module **only**
+> through an *explicit, pinned, hermetic binding* declared by this FFI
+> interface — i.e. a package named in the binding manifest, version-
+> pinned, and resolved via a vendored `replace` so the build never
+> touches the network. *Accidental* or *transitive* third-party deps in
+> generated code remain forbidden; the carve-out is exactly the
+> deliberately-bound surface, not a general licence.
+
+This keeps D19's intent — the compiler core stays stdlib-only and
+audit-friendly; generated programs do not pull arbitrary modules — while
+admitting the one thing an FFI exists to do: reach a Go library the
+stdlib lacks. D19's *rationale* (no silent supply-chain drift, the spec
+is auditable) is preserved by the pinning + vendoring guardrails; what
+changes is only the blanket "never," which predates the FFI design and
+was written in the REPL/UX-shell context.
+
+If the amendment is declined, the fallback is a **stdlib-only FFI**:
+everything in this RFC stands except third-party binding, the TOML
+proving case is dropped, and the corpus analyzer must hand-roll its
+TOML-lite parsing in Tide (as the Python analog already does) instead
+of binding a real library. The third-party capability would then need
+its own later RFC + D19 amendment. The recommendation is to amend now —
+"bind libraries written in Go" is the stated goal, and a binding
+interface that cannot reach a non-stdlib library is only half the
+feature.
+
 ### Coverage obligation
 
 Per the project's atomic-coverage rule, the constructs this RFC adds
@@ -378,7 +417,9 @@ On acceptance / implementation, these `lang-spec/` edits land:
 - **`lang-spec/type-system.md`** — `T-Extern` (typing an `EXT` call),
   the boundary-translation judgement, opaque-handle rules (including
   that the `RecvChan<T>` / `SendChan<T>` close-restriction from
-  `builtins.md` is preserved across the translation).
+  `builtins.md` is preserved across the translation); and **relax the
+  `T-RefEq` premise** (today "C is a class type") to admit opaque
+  handles.
 - **`lang-spec/builtins.md`** — widen `refEq<C>`'s domain from
   class-only to also admit an opaque `extern type` handle (C2 above);
   state reference-identity for foreign handles.
@@ -386,23 +427,35 @@ On acceptance / implementation, these `lang-spec/` edits land:
   category** (suggested **E10xx** — E06xx is already the "special
   names" category, so FFI must not reuse it): unbindable-symbol-
   referenced, binding-drift (`.td`-coord wrapper over the Go type
-  error), foreign-panic-uncaught, third-party-module-unresolved.
+  error), foreign-panic-uncaught, third-party-module-unresolved. Also
+  **amend `E0206`** ("`refEq` on non-class operands") so an opaque
+  handle is no longer rejected, in step with the `T-RefEq` relaxation.
 - **`lang-spec/lowering-go.md`** — §ForeignCall: `EXT` → `pkg.GoName`,
   the `(T,error)`/`(T,bool)` lift lowering, the `go.mod`
   `require`/`replace` emission.
 - **`docs/binding-surface.md`** — recast from a hand-authored target
   list into the *curated output* of this interface; its
   `What is **not** in v1` section is reframed as "not yet generated."
+- **`docs/design-decisions.md`** — **amend D19**: relax "generated user
+  code must never depend on a third-party Go module" to admit an
+  *explicit, pinned, hermetic* FFI binding (above); add a public mirror
+  entry for the FFI decision. (Also surfaces the AI.md/design-decisions
+  divergence — AI.md lacks D19/D20 — to reconcile separately.)
 
 ## Transition / compatibility
 
-Strictly additive at the language level: `extern` / `@go` / `EXT` are
-new surface; no existing program changes. The existing hand-written
-binding table is **superseded incrementally** — each package it covers
-is replaced by a generated+curated binding module, behaviour-preserving
+Additive at the *language* level: `extern` / `@go` / `EXT` are new
+surface; no existing program changes. The existing hand-written binding
+table is **superseded incrementally** — each package it covers is
+replaced by a generated+curated binding module, behaviour-preserving
 (the `build_ok` ratchet guards this), until the table is empty. No user
-migration. The one genuinely new infra capability (third-party `go.mod`
-plumbing) is opt-in: stdlib-only programs are unaffected.
+migration.
+
+It is **not** additive at the *decision* level: the third-party binding
+capability **amends D19** (see Design §"Relationship to D19"). That
+amendment is the one item requiring sign-off before acceptance.
+Stdlib-only programs and the stdlib half of the FFI are unaffected
+either way.
 
 ## Open questions
 
@@ -456,3 +509,18 @@ accepted with them open, resolved before `implemented`.
     interface admits non-stdlib code. No sandboxing is proposed
     (correct for a pre-alpha solo project); flagged so the trust
     assumption is explicit rather than silent.
+
+## History
+
+- 2026-06-15 — drafted and stabilised. Three prior-art passes (Borgo
+  internals; the `external`-keyword lineage; the auto+hand generator
+  split) and a review-fix-loop (two CRITICALs closed: the E0601
+  diagnostic-range collision and the `refEq`/opaque-handle contract;
+  plus paired-edit, nil-semantics and lift-ambiguity gaps). A
+  late finding surfaced the **D19 conflict** (third-party deps in
+  generated code) — added as a proposed amendment in Design
+  §"Relationship to D19". **Stays `draft`** pending the user's
+  sign-off on that amendment; on sign-off it moves to `accepted` with
+  the ten open questions flagged (not blockers), and implementation —
+  the `tide import` tool, the `extern` surface, third-party plumbing,
+  and the corpus-analyzer port — is the next epoch's work.
