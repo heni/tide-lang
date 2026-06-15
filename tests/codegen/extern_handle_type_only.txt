@@ -1,0 +1,40 @@
+--- TITLE ---
+Go-FFI: a handle named only in a signature (no constructor call) still imports its package
+
+--- INPUT ---
+import fmt
+
+extern type Regexp @go("regexp")
+
+extern impl Regexp {
+  matchString(s: string): bool @go("MatchString")
+}
+
+func useIt(re: Regexp): bool {
+  return re.matchString("x")
+}
+
+func main() {
+  fmt.println("hi")
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"regexp"
+)
+
+func useIt(re *regexp.Regexp) bool {
+	return re.MatchString("x")
+}
+func main() {
+	fmt.Println("hi")
+}
+
+--- STDOUT ---
+hi
+
+--- EXIT ---
+0

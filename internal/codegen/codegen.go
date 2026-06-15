@@ -910,6 +910,15 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				case "Stack":
 					g.usesStack = true
 				}
+				// A handle named in a type position (a param / return /
+				// field annotation) lowers to `*pkg.Sym` and so needs the
+				// package imported, even when no constructor from that
+				// package is called in this file (ffi.md §ForeignCall).
+				if etd, isHandle := g.externType[v.QName[0]]; isHandle {
+					if pkg, _ := goRefPkgSym(etd.Go, etd.Name); pkg != "" {
+						g.externPkgs[pkg] = true
+					}
+				}
 			}
 			for _, a := range v.Args {
 				walk(a)

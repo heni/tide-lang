@@ -44,6 +44,11 @@ func (g *gen) scanExterns(f *ast.File) {
 // `.` after the last `/`; a bare path (or absent attribute) defaults
 // the symbol to the exported Tide name. pkg is "" when no attribute is
 // present (an error at the call/type site — a package is required).
+//
+// The heuristic assumes a **dot-free final path segment** — true for
+// the stdlib (v1 scope). A non-stdlib path with a dotted directory
+// segment (`gopkg.in/yaml.v3.Marshal`) would mis-split; that case is
+// the binding manifest's job (ffi.md §Dependency model), not here.
 func goRefPkgSym(ref *ast.GoRef, tideName string) (pkg, sym string) {
 	if ref == nil || ref.Raw == "" {
 		return "", exportFieldName(tideName)
