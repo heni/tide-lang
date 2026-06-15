@@ -877,6 +877,41 @@ The full binding-surface spec is in
 `../docs/binding-surface.md`; this lowering chapter only
 concerns the **codegen pass that consumes** those bindings.
 
+## ForeignCall — `extern` bindings (Go FFI)
+
+The `extern` surface (`ffi.md`) lowers at each **use** site; the
+declarations themselves emit no Go (they are signature metadata).
+
+- **Opaque handle type.** `extern type T @go("pkg")` lowers, wherever
+  `T` appears as a type, to the Go pointer type `*<ref>.Sym`, where
+  `<ref>` is the import-path base name (`os/exec` → `exec`) and `Sym`
+  is the `@go` symbol (default = exported Tide name). This is the
+  `*regexp.Regexp` / `*exec.Cmd` shape Go libraries are used through.
+- **Function call.** `f(ā)` for an `extern func f … @go("pkg.Sym")`
+  lowers to `<ref>.Sym(ā)`.
+- **Method call.** `r.m(ā)` on a handle `r : T` lowers to
+  `r.GoName(ā)`, `GoName` from the member's `@go` (default = exported
+  Tide name). Field access `r.x` lowers to `r.GoField`; a `var` field
+  is assignable (`r.GoField = v`).
+- **Boundary lift.** A binding whose curated return is `Result<U,
+  error>` wraps its Go `(U, error)` referent in the shared
+  `tideResultOf` helper — `tideResultOf(<ref>.Sym(ā))` — identical to
+  the stdlib `resultWrap` shape above. (Comma-ok `(U, bool) →
+  Option<U>` is a generator-side lift; its codegen wrapper is a later
+  slice.)
+- **Imports.** The Go import path each used binding names via `@go` is
+  added to the import block directly (it comes from `@go`, not the
+  `.td` imports). References use the path's base name; a Go package is
+  imported only when one of its bindings is actually emitted.
+
+The emitted call is **re-checked by the Go type checker** against the
+real package — a binding that has drifted from its referent fails the
+Go build (the "verify, don't trust" property; `ffi.md`).
+
+The current lowering maps an opaque handle to a **pointer** Go type
+(the 90 % case). Value-typed Go handles (e.g. `time.Time`) and import
+aliasing for colliding base names are later slices.
+
 ## Source maps (`//line` directives)
 
 Every emitted Go statement that originates from a `.td` source

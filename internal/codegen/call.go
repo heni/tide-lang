@@ -247,6 +247,20 @@ func (g *gen) emitCall(c *ast.Call) error {
 			return nil
 		}
 	}
+	// Foreign-binding call (ffi.md §ForeignCall): an extern function
+	// `f(args)` → `pkg.Sym(args)`; an extern method `recv.m(args)` on
+	// an opaque handle → `recv.GoName(args)`. Both wrap in tideResultOf
+	// when their curated return is `Result<…>`.
+	if id, ok := c.Callee.(*ast.Ident); ok {
+		if efd, isExtern := g.externFunc[id.Name]; isExtern {
+			return g.emitExternFuncCall(efd, c)
+		}
+	}
+	if f, ok := c.Callee.(*ast.Field); ok {
+		if m, isExtern := g.externMethodOf(f); isExtern {
+			return g.emitExternMethodCall(m, f, c)
+		}
+	}
 	// Class constructor shim — `ClassName(args)` in source lowers
 	// to `&ClassName{args...}` (positional fields). Per
 	// lowering-go.md §Implicit receiver, class instances are

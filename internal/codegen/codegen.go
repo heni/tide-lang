@@ -27,13 +27,21 @@ func Emit(f *ast.File, file string) (string, error) {
 // EmitWithInfo is Emit with a pre-computed sema side-table.
 func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 	g := &gen{
-		file:       file,
-		info:       info,
-		variant:    map[string]variantInfo{},
-		class:      map[string]classInfo{},
-		fieldTypes: map[string]map[string]ast.TypeExpr{},
-		usedGoPkgs: map[string]bool{},
+		file:          file,
+		info:          info,
+		variant:       map[string]variantInfo{},
+		class:         map[string]classInfo{},
+		fieldTypes:    map[string]map[string]ast.TypeExpr{},
+		usedGoPkgs:    map[string]bool{},
+		externFunc:    map[string]*ast.ExternFuncDecl{},
+		externType:    map[string]*ast.ExternTypeDecl{},
+		externMethods: map[string]map[string]*ast.ExternMethod{},
+		externFields:  map[string]map[string]*ast.ExternField{},
+		externPkgs:    map[string]bool{},
 	}
+	// Pre-scan foreign-binding decls (ffi.md) so call / type / member
+	// lowering and the import pre-walk can resolve them.
+	g.scanExterns(f)
 	// Predeclared sum-type variants per `lang-spec/builtins.md`
 	// §Option / §Result / §Variant constructors. Registered up
 	// front so identifier resolution and match-arm payload
@@ -219,6 +227,11 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 			if err := g.emitLetOrVar(v.Span, v.Name, v.DeclType, v.Value); err != nil {
 				return "", err
 			}
+		case *ast.ExternTypeDecl, *ast.ExternFuncDecl, *ast.ExternImplDecl:
+			// Foreign bindings emit no Go of their own — the binding is
+			// lowered at each call / type / member use site (ffi.md,
+			// lowering-go.md §ForeignCall). The declarations are pure
+			// signature metadata, pre-scanned by scanExterns.
 		default:
 			return "", fmt.Errorf("codegen: unhandled top-level decl %T", d)
 		}
@@ -316,6 +329,17 @@ type gen struct {
 	// lowers to a Go conversion (strings.fromBytes → string(...))
 	// does not drag in an unused import.
 	usedGoPkgs map[string]bool
+	// Foreign bindings (ffi.md), pre-scanned from the file's extern
+	// decls before the import pre-walk. externFunc/externType key on
+	// the Tide name; externMethods/externFields key handle→member.
+	// externPkgs collects the Go import paths the emitted bindings
+	// reference, added to the import block by writeHeader (these come
+	// from `@go`, not the .td imports).
+	externFunc    map[string]*ast.ExternFuncDecl
+	externType    map[string]*ast.ExternTypeDecl
+	externMethods map[string]map[string]*ast.ExternMethod
+	externFields  map[string]map[string]*ast.ExternField
+	externPkgs    map[string]bool
 	// descriptors collected during emit — for each user-declared
 	// type that has a Tide-side descriptor, we emit a
 	// `tideDesc_<Name>` package-level var plus an init()
@@ -456,6 +480,12 @@ func (g *gen) writeHeader(f *ast.File) {
 	if g.usesSortSorted {
 		// sort.sorted lowers onto the tideSorted helper (sort.SliceStable).
 		add("sort")
+	}
+	// Foreign-binding packages (ffi.md) — the Go import paths named by
+	// `@go` attributes of the extern funcs/handles actually used. These
+	// come from `@go`, not the .td imports, so they are added directly.
+	for p := range g.externPkgs {
+		add(p)
 	}
 	// Sort for determinism.
 	for i := 1; i < len(paths); i++ {
@@ -1122,6 +1152,26 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 				g.usesTryRecv = true
 				g.usesOption = true
 			}
+			// Foreign bindings (ffi.md): an extern func call pulls its
+			// `@go` package into the import block, and a `Result<…>`
+			// return (func or handle method) pulls the tideResultOf helper.
+			if id, ok := v.Callee.(*ast.Ident); ok {
+				if efd, isExtern := g.externFunc[id.Name]; isExtern {
+					if pkg, _ := goRefPkgSym(efd.Go, efd.Name); pkg != "" {
+						g.externPkgs[pkg] = true
+					}
+					if externReturnsResult(efd.ReturnType) {
+						g.usesResultOf = true
+						g.usesResult = true
+					}
+				}
+			}
+			if f, ok := v.Callee.(*ast.Field); ok {
+				if m, isExtern := g.externMethodOf(f); isExtern && externReturnsResult(m.ReturnType) {
+					g.usesResultOf = true
+					g.usesResult = true
+				}
+			}
 			walk(v.Callee)
 			for _, ta := range v.TypeArgs {
 				walk(ta)
@@ -1627,6 +1677,21 @@ func (g *gen) emitTypeExpr(t ast.TypeExpr) error {
 			if prefix != "" {
 				g.b.WriteString(prefix)
 				return g.emitTypeExpr(v.Args[0])
+			}
+		}
+		// An opaque foreign handle (ffi.md §ExternType) lowers to the
+		// Go pointer type `*pkg.Sym` — the `*regexp.Regexp` / `*exec.Cmd`
+		// shape Go libraries are used through.
+		if len(v.QName) == 1 {
+			if etd, isHandle := g.externType[v.QName[0]]; isHandle {
+				pkg, sym := goRefPkgSym(etd.Go, etd.Name)
+				g.b.WriteByte('*')
+				if pkg != "" {
+					g.b.WriteString(goPkgRef(pkg))
+					g.b.WriteByte('.')
+				}
+				g.b.WriteString(sym)
+				return nil
 			}
 		}
 		// Per G16 / lowering-go.md §Implicit receiver, classes
@@ -2586,6 +2651,12 @@ func (g *gen) emitField(f *ast.Field) error {
 		return err
 	}
 	g.b.WriteByte('.')
+	// Foreign-handle field access (ffi.md §ExternImpl) takes the Go
+	// field name from its `@go` attribute, not the exported-Tide form.
+	if fld, ok := g.externFieldOf(f); ok {
+		g.b.WriteString(goRefMember(fld.Go, fld.Name))
+		return nil
+	}
 	g.b.WriteString(g.goFieldName(f.Receiver, f.Name))
 	return nil
 }

@@ -37,11 +37,11 @@ extern impl Cmd {
 `extern type T @go("pkg")` declares an **opaque foreign handle**: Tide
 knows the name `T`, never the layout. A handle cannot be constructed by
 a Tide literal (only returned from an extern function/method) and cannot
-be pattern-destructured. It is a **reference type**; a handle is
-admitted into `refEq` (the relaxation of the class-only `T-RefEq`
-premise lands with the sema PR). It models `*exec.Cmd`,
+be pattern-destructured. It is a **reference type** admitted into
+`refEq` (the relaxed `T-RefEq`). It models `*exec.Cmd`,
 `*regexp.Regexp`, `os.File`, `*sql.Rows` — Go library types used
-*through methods*.
+*through methods* — and lowers to the Go pointer type `*pkg.Sym`
+(`lowering-go.md` §ForeignCall).
 
 A raw handle **may carry Go's `nil` unchecked**: Go has no static
 nilability, so the generator cannot prove non-nil. Guarding nil and
@@ -104,9 +104,12 @@ re-verifies every binding** against the real package:
   arity / types are impossible by construction.
 - At **build** time, the emitted call (`pkg.GoName(args)`) is
   type-checked by Go; a binding that has drifted from its package fails
-  the build. Such a failure is surfaced in **`.td` coordinates and Tide
-  terminology**, never as a raw `go/types` diagnostic (a binding-drift
-  diagnostic; lands with the codegen/diagnostics PR).
+  the build. The *contract* is that such a failure is surfaced in
+  **`.td` coordinates and Tide terminology**, never as a raw `go/types`
+  diagnostic. The current lowering achieves the build-time *rejection*
+  (a drifted binding cannot miscompile); the `.td`-coordinate
+  binding-drift **diagnostic** that translates the Go error back to
+  Tide source is a later slice (until then the Go error leaks).
 
 This is the property the `external`-keyword lineage (OCaml, ReScript,
 Gleam, PureScript) lacks — there a wrong declaration miscompiles

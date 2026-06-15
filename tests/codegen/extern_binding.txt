@@ -1,0 +1,74 @@
+--- TITLE ---
+Go-FFI bindings: extern func → pkg.Sym, handle method → recv.Method, Result lift
+
+--- INPUT ---
+import fmt
+
+extern type Regexp @go("regexp")
+
+extern func mustCompile(expr: string): Regexp @go("regexp.MustCompile")
+
+extern impl Regexp {
+  matchString(s: string): bool @go("MatchString")
+}
+
+extern func atoi(s: string): Result<int, error> @go("strconv.Atoi")
+
+func main() {
+  let re = mustCompile("a+")
+  fmt.println(re.matchString("aaa"))
+  fmt.println(re.matchString("bbb"))
+  match atoi("42") {
+    Ok(n)  => fmt.println(n),
+    Err(_) => fmt.println(-1),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideResultOf[T any](v T, err error) Result[T, error] {
+	if err != nil {
+		return ResultErr[T, error](err)
+	}
+	return ResultOk[T, error](v)
+}
+func main() {
+	var re = regexp.MustCompile("a+")
+	fmt.Println(re.MatchString("aaa"))
+	fmt.Println(re.MatchString("bbb"))
+	__tide_match_1 := tideResultOf(strconv.Atoi("42"))
+	switch __tide_match_1.Tag {
+	case 0:
+		n := __tide_match_1.V
+		fmt.Println(n)
+	case 1:
+		fmt.Println(-1)
+	}
+}
+
+--- STDOUT ---
+true
+false
+42
+
+--- EXIT ---
+0

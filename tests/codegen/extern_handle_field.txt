@@ -1,0 +1,39 @@
+--- TITLE ---
+Go-FFI: opaque handle lowers to *pkg.Sym; an extern var field reads/writes recv.GoField
+
+--- INPUT ---
+import fmt
+
+extern type Cmd @go("os/exec")
+
+extern func command(name: string): Cmd @go("os/exec.Command")
+
+extern impl Cmd {
+  var dir: string @go("Dir")
+}
+
+func main() {
+  let c = command("ls")
+  c.dir = "/tmp"
+  fmt.println(c.dir)
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"os/exec"
+)
+
+func main() {
+	var c = exec.Command("ls")
+	c.Dir = "/tmp"
+	fmt.Println(c.Dir)
+}
+
+--- STDOUT ---
+/tmp
+
+--- EXIT ---
+0
