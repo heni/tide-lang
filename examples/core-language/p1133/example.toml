@@ -1,0 +1,9 @@
+description = "p1133"
+source   = "timus p1133"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "run-pass"
+entry    = "p1133.td"

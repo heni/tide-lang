@@ -218,7 +218,7 @@ output is order-unspecified, use the variants:
 ## Normalization rules — shared
 
 - File paths in any position are **relative** to the repo root
-  (e.g. `examples/hello.td`, not `/home/.../hello.td`).
+  (e.g. `examples/core-language/hello/hello.td`, not `/home/.../hello.td`).
 - Position / span format is always `line:col` or `line:col-line:col`,
   1-indexed, character-counted not byte-counted (UTF-8 aware) —
   applies uniformly to TOKENS, AST spans, TYPES rows, ERRORS lines.

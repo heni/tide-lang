@@ -1,0 +1,9 @@
+description = "Graceful HTTP shutdown via signal + context + select"
+source   = "services graceful_server"
+category = "concurrency"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "no-run"
+entry    = "graceful_server.td"

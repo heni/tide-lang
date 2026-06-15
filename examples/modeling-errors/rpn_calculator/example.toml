@@ -1,0 +1,9 @@
+description = "RPN evaluator with Result/try over sum-typed tokens"
+source   = "interview rpn_calculator"
+category = "modeling-errors"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "rpn_calculator.td"

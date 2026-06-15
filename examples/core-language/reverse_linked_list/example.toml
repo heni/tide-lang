@@ -1,0 +1,9 @@
+description = "Reverse an Option-linked list"
+source   = "leetcode reverse_linked_list"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "reverse_linked_list.td"

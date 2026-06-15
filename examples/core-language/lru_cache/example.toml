@@ -1,0 +1,9 @@
+description = "Generic LRU cache class"
+source   = "interview lru_cache"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "run-pass"
+entry    = "lru_cache.td"

@@ -153,7 +153,7 @@ func emitGoFromText(src, file string) (string, error) {
 	// Pass the path verbatim into diagnostics and //line
 	// directives. test-contract.md §File paths requires
 	// repo-relative paths so two files with the same basename
-	// (e.g., examples/aoc/2025/d01.td vs examples/aoc/2026/d01.td)
+	// (e.g. a shared entry filename under different example dirs)
 	// remain distinguishable in panic traces and diagnostics.
 	toks, lerr := lexer.LexFile(src, file)
 	if lerr != nil {
@@ -260,7 +260,7 @@ func writeTempModule(goSrc string) (*compiledSource, error) {
 	return &compiledSource{dir: dir}, nil
 }
 
-// outputBinaryName turns "examples/hello.td" → "./hello".
+// outputBinaryName turns "examples/core-language/hello/hello.td" → "./hello".
 func outputBinaryName(path string) string {
 	base := filepath.Base(path)
 	if i := strings.LastIndexByte(base, '.'); i > 0 {

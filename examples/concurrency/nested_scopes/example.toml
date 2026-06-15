@@ -1,0 +1,9 @@
+description = "Nested structured concurrency with cancellation"
+source   = "concurrency nested_scopes"
+category = "concurrency"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "run-pass"
+entry    = "nested_scopes.td"

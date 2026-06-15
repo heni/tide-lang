@@ -1,0 +1,9 @@
+description = "Invert a binary tree over a generic sum type"
+source   = "leetcode invert_binary_tree"
+category = "core-language"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "invert_binary_tree.td"

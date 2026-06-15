@@ -9,257 +9,257 @@
   },
   "files": [
     {
-      "path": "examples/agents/counterstack/pentix_agent.td",
-      "stage": "emit",
-      "blocker": "unknown failure"
-    },
-    {
-      "path": "examples/aoc/2025/d01.td",
+      "path": "examples/concurrency/concurrency/concurrency.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/aoc/2025/d02.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d03.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d04.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d05.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d07.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d08.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d09.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/aoc/2025/d11.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/borgo/concurrency.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/borgo/defer_demo.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/borgo/errors_as_types.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/borgo/interfaces.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/borgo/match_on_tuples.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/concurrency/nested_scopes.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \"{\", got Punct \".\""
-    },
-    {
-      "path": "examples/concurrency/pipeline.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/concurrency/pubsub.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: mixed brace-literal entry kinds"
-    },
-    {
-      "path": "examples/concurrency/rate_limited.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/concurrency/select_showcase.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/concurrency/worker_pool.td",
-      "stage": "sema",
-      "blocker": "error[E0207]: Wrong type arity on generic instantiation: Result expects 2 type arguments, got 0"
-    },
-    {
-      "path": "examples/hello.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/interview/config_loader.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/interview/fizzbuzz.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/interview/lru_cache.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected expression, got Punct \",\""
-    },
-    {
-      "path": "examples/interview/rpn_calculator.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/interview/vending_machine.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/leetcode/invert_binary_tree.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/leetcode/merge_intervals.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/leetcode/reverse_linked_list.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/leetcode/two_sum.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/leetcode/valid_parentheses.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/raku/deep_destructure.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/raku/error_chain.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/raku/set_algebra.td",
-      "stage": "build",
-      "blocker": ""
-    },
-    {
-      "path": "examples/services/graceful_server.td",
+      "path": "examples/concurrency/graceful_server/graceful_server.td",
       "stage": "parse",
       "blocker": "error[E0112]: expected expression, got Punct \":\""
     },
     {
-      "path": "examples/services/healthcheck_server.td",
-      "stage": "sema",
-      "blocker": "error[E0103]: Unknown name http"
-    },
-    {
-      "path": "examples/services/parallel_fetcher.td",
+      "path": "examples/concurrency/nested_scopes/nested_scopes.td",
       "stage": "parse",
       "blocker": "error[E0112]: expected Punct \"{\", got Punct \".\""
     },
     {
-      "path": "examples/services/todo_api.td",
+      "path": "examples/concurrency/parallel_fetcher/parallel_fetcher.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected Punct \"{\", got Punct \".\""
+    },
+    {
+      "path": "examples/concurrency/pipeline/pipeline.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/concurrency/pubsub/pubsub.td",
       "stage": "parse",
       "blocker": "error[E0112]: mixed brace-literal entry kinds"
     },
     {
-      "path": "examples/services/wc.td",
+      "path": "examples/concurrency/rate_limited/rate_limited.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1033.td",
+      "path": "examples/concurrency/select_showcase/select_showcase.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1133.td",
+      "path": "examples/concurrency/worker_pool/worker_pool.td",
+      "stage": "sema",
+      "blocker": "error[E0207]: Wrong type arity on generic instantiation: Result expects 2 type arguments, got 0"
+    },
+    {
+      "path": "examples/core-language/d01/d01.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d02/d02.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d03/d03.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d04/d04.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d05/d05.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d07/d07.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d08/d08.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d09/d09.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/d11/d11.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/deep_destructure/deep_destructure.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/defer_demo/defer_demo.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/fizzbuzz/fizzbuzz.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/hello/hello.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/interfaces/interfaces.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/invert_binary_tree/invert_binary_tree.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/lru_cache/lru_cache.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: expected expression, got Punct \",\""
+    },
+    {
+      "path": "examples/core-language/match_on_tuples/match_on_tuples.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/merge_intervals/merge_intervals.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/p1033/p1033.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/p1133/p1133.td",
       "stage": "parse",
       "blocker": "error[E0112]: expected parameter name"
     },
     {
-      "path": "examples/timus/p1242.td",
+      "path": "examples/core-language/p1242/p1242.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1335.td",
+      "path": "examples/core-language/p1335/p1335.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1349.td",
+      "path": "examples/core-language/p1349/p1349.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1404.td",
+      "path": "examples/core-language/p1404/p1404.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1423.td",
+      "path": "examples/core-language/p1423/p1423.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1605.td",
+      "path": "examples/core-language/p1605/p1605.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1683.td",
+      "path": "examples/core-language/p1683/p1683.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1786.td",
+      "path": "examples/core-language/p1786/p1786.td",
       "stage": "build",
       "blocker": ""
     },
     {
-      "path": "examples/timus/p1820.td",
+      "path": "examples/core-language/p1820/p1820.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/reverse_linked_list/reverse_linked_list.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/set_algebra/set_algebra.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/two_sum/two_sum.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/core-language/valid_parentheses/valid_parentheses.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/modeling-errors/error_chain/error_chain.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/modeling-errors/errors_as_types/errors_as_types.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/modeling-errors/rpn_calculator/rpn_calculator.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/modeling-errors/vending_machine/vending_machine.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/stdlib-binding/config_loader/config_loader.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/stdlib-binding/counterstack/pentix_agent.td",
+      "stage": "emit",
+      "blocker": "unknown failure"
+    },
+    {
+      "path": "examples/stdlib-binding/healthcheck_server/healthcheck_server.td",
+      "stage": "sema",
+      "blocker": "error[E0103]: Unknown name http"
+    },
+    {
+      "path": "examples/stdlib-binding/todo_api/todo_api.td",
+      "stage": "parse",
+      "blocker": "error[E0112]: mixed brace-literal entry kinds"
+    },
+    {
+      "path": "examples/stdlib-binding/wc/wc.td",
       "stage": "build",
       "blocker": ""
     },

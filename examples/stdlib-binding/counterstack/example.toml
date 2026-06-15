@@ -1,0 +1,9 @@
+description = "counterstack"
+source   = "agents counterstack"
+category = "stdlib-binding"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "compiling"
+expects  = "run-pass"
+entry    = "pentix_agent.td"

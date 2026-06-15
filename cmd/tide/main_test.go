@@ -81,7 +81,7 @@ func runTide(t *testing.T, args ...string) (string, string, int) {
 }
 
 func TestHelloEndToEnd(t *testing.T) {
-	stdout, stderr, exit := runTide(t, "run", "examples/hello.td")
+	stdout, stderr, exit := runTide(t, "run", "examples/core-language/hello/hello.td")
 	if exit != 0 {
 		t.Fatalf("hello.td exited %d (stderr: %s)", exit, stderr)
 	}
@@ -91,7 +91,7 @@ func TestHelloEndToEnd(t *testing.T) {
 }
 
 func TestFizzBuzzEndToEnd(t *testing.T) {
-	stdout, _, exit := runTide(t, "run", "examples/interview/fizzbuzz.td")
+	stdout, _, exit := runTide(t, "run", "examples/core-language/fizzbuzz/fizzbuzz.td")
 	if exit != 0 {
 		t.Fatalf("fizzbuzz.td exited %d", exit)
 	}
@@ -149,7 +149,7 @@ func TestRunMissingArg(t *testing.T) {
 }
 
 func TestEmitHello(t *testing.T) {
-	stdout, _, exit := runTide(t, "emit", "examples/hello.td")
+	stdout, _, exit := runTide(t, "emit", "examples/core-language/hello/hello.td")
 	if exit != 0 {
 		t.Fatalf("tide emit hello.td exit = %d", exit)
 	}
@@ -160,7 +160,7 @@ func TestEmitHello(t *testing.T) {
 		"package main",
 		`import "fmt"`,
 		`fmt.Println("Tide is rising.")`,
-		"//line examples/hello.td:",
+		"//line examples/core-language/hello/hello.td:",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("emit output missing %q. Full output:\n%s", want, stdout)
@@ -629,7 +629,7 @@ func TestReplOpenDepthTracksBraces(t *testing.T) {
 
 func TestBuildOutputFlag(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "hello-bin")
-	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/hello.td")
+	_, stderr, exit := runTide(t, "build", "-o", outPath, "examples/core-language/hello/hello.td")
 	if exit != 0 {
 		t.Fatalf("tide build -o failed: %d (stderr: %s)", exit, stderr)
 	}

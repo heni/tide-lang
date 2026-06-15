@@ -1,0 +1,9 @@
+description = "p1404"
+source   = "timus p1404"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "p1404.td"

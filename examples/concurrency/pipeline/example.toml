@@ -1,0 +1,9 @@
+description = "Three-stage channel pipeline"
+source   = "concurrency pipeline"
+category = "concurrency"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "pipeline.td"

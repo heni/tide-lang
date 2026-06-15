@@ -1,0 +1,9 @@
+description = "Per-subscriber channels with drop-on-overflow"
+source   = "concurrency pubsub"
+category = "concurrency"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "run-pass"
+entry    = "pubsub.td"

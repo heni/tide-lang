@@ -1,0 +1,9 @@
+description = "Vending-machine state machine via exhaustive match"
+source   = "interview vending_machine"
+category = "modeling-errors"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "vending_machine.td"

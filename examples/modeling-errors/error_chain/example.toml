@@ -1,0 +1,9 @@
+description = "Error chaining with Result"
+source   = "raku error_chain"
+category = "modeling-errors"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "error_chain.td"

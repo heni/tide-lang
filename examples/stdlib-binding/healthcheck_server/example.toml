@@ -1,0 +1,9 @@
+description = "net/http server; a Tide type as http.Handler"
+source   = "services healthcheck_server"
+category = "stdlib-binding"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "compiling"
+expects  = "no-run"
+entry    = "healthcheck_server.td"

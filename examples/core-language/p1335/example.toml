@@ -1,0 +1,9 @@
+description = "p1335"
+source   = "timus p1335"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "p1335.td"

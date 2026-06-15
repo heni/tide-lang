@@ -1,0 +1,9 @@
+description = "Fan-out/fan-in bounded worker pool"
+source   = "concurrency worker_pool"
+category = "concurrency"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "compiling"
+expects  = "run-pass"
+entry    = "worker_pool.td"

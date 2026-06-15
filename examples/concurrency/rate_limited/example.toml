@@ -1,0 +1,9 @@
+description = "Rate limiting with time.tick/after and select"
+source   = "concurrency rate_limited"
+category = "concurrency"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "rate_limited.td"

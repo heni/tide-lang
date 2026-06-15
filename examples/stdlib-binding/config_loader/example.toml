@@ -1,0 +1,9 @@
+description = "Typed config via the encoding/json binding"
+source   = "interview config_loader"
+category = "stdlib-binding"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "config_loader.td"

@@ -1,0 +1,9 @@
+description = "Errors modelled as sum-typed values"
+source   = "borgo errors_as_types"
+category = "modeling-errors"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "errors_as_types.td"

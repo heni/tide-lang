@@ -1,0 +1,9 @@
+description = "Structured-concurrent fetch with context cancellation"
+source   = "services parallel_fetcher"
+category = "concurrency"
+showcase = true
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "target-sketch"
+expects  = "no-run"
+entry    = "parallel_fetcher.td"

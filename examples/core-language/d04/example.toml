@@ -1,0 +1,9 @@
+description = "d04"
+source   = "advent-of-code 2025 d04"
+category = "core-language"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "d04.td"

@@ -263,8 +263,8 @@ LIFO. Brace literal `Stack<T>{ e1, e2, ..., en }` (`T-Stack-Lit`)
 pushes in left-to-right order, so `e_n` is on top after construction.
 
 `pop()` returns `Result<T, error>` because corpus usage (e.g.
-`examples/interview/rpn_calculator.td`,
-`examples/leetcode/valid_parentheses.td`) consumes it with
+`examples/modeling-errors/rpn_calculator/rpn_calculator.td`,
+`examples/core-language/valid_parentheses/valid_parentheses.td`) consumes it with
 `try` inside `Result`-returning functions and with `match Ok/Err`
 arms. The asymmetric `peek(): Option<T>` choice reflects intent:
 `peek` is "look without committing", `pop` is "consume; propagate
