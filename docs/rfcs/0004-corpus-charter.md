@@ -90,7 +90,7 @@ carry an `errors/` subdirectory of negative cases.
 ```
 examples/<category>/<name>/
   example.toml          # required manifest
-  <name>.td             # the program (one or more .td files)
+  main.td               # the program (one or more .td files; entry by default)
   expected.out          # expected stdout (when expects = output-check)
   errors/               # optional: negative cases
     <case>.patch        # unified diff vs. the base program
@@ -116,7 +116,7 @@ patch      = "errors/missing-arrow.patch"   # unified diff vs. the base, marker-
 expect     = ["E0201"]           # diagnostic code(s) — matched as an unordered set
 stage      = "parse"            # pipeline stage that MUST reject it: parse | sema | emit
 matches    = "errors/missing-arrow.expected" # paired sidecar; substring match, lenient coords
-origin     = "synthetic"        # provenance: synthetic | <issue/bug ref> (see note below)
+origin     = "synthetic"        # provenance: synthetic | organic:<run> | <issue/bug ref>
 # exhaustive = false             # default subset-match (extra diagnostics tolerated); true = exact set
 # count      = "1"               # cardinality per code; "1-2" allows a range (Clang-style)
 ```
@@ -359,8 +359,9 @@ rather than ad-hoc strings.
 ### Contribution process
 
 Adding an example is a normal PR: it creates the example directory with
-`example.toml` (declaring `source`, `category`, `showcase`, `forces`,
-`since`, `status`, `entry`), optionally `errors/` negative cases, keeps
+`example.toml` (declaring the required `description` and `expects` gate
+plus `source`, `category`, `showcase`, `forces`, `since`, `status`,
+`entry`), optionally `errors/` negative cases, keeps
 the corpus-status ratchet green (`build_ok` never drops), and runs the
 standard review pass. Adding an example that needs no spec change does
 **not** itself require an RFC (per RFC-0000's table); this charter only
