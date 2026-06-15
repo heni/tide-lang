@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "totals": {
-    "total": 52,
+    "total": 54,
     "parse_fail": 7,
     "sema_fail": 2,
     "emit_fail": 1,
-    "build_ok": 42
+    "build_ok": 44
   },
   "files": [
     {
@@ -229,7 +229,17 @@
       "blocker": ""
     },
     {
+      "path": "examples/modeling-errors/parse_int/parse_int.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
       "path": "examples/modeling-errors/rpn_calculator/rpn_calculator.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/modeling-errors/safe_divide/safe_divide.td",
       "stage": "build",
       "blocker": ""
     },

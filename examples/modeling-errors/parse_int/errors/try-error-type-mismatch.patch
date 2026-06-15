@@ -1,0 +1,11 @@
+--- parse_int.td
++++ parse_int.td
+@@ -2,7 +2,7 @@
+ import fmt
+ import strconv
+ 
+-func parseInt(s: string): Result<int, error> {
++func parseInt(s: string): Result<int, string> {
+   let n = try strconv.atoi(s)
+   return Ok(n)
+ }

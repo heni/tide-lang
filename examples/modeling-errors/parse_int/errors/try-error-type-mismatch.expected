@@ -1,0 +1,1 @@
+error[E0403]: `try` propagates error type error but the function's error type is string

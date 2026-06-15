@@ -1,0 +1,16 @@
+description = "Parsing via the strconv.atoi binding and `try` error propagation"
+source   = "organic hole-fill"
+category = "modeling-errors"
+showcase = false
+forces   = []   # TODO backfill against lang-spec artefact IDs
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "parse_int.td"
+
+[[error]]
+patch   = "errors/try-error-type-mismatch.patch"   # declared error type string ≠ propagated error
+expect  = ["E0403"]
+stage   = "sema"
+matches = "errors/try-error-type-mismatch.expected"
+origin  = "organic:hole-fill"
