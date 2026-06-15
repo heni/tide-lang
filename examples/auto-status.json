@@ -86,7 +86,7 @@
     {
       "path": "examples/concurrency/nested_scopes.td",
       "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \"{\", got Keyword \"return\""
+      "blocker": "error[E0112]: expected Punct \"{\", got Punct \".\""
     },
     {
       "path": "examples/concurrency/pipeline.td",

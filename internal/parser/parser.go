@@ -1585,10 +1585,7 @@ func (p *parser) parseSelectStmt() (*ast.SelectStmt, *Diag) {
 func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 	if p.at(lexer.KindIdent, "default") {
 		kw := p.advance()
-		if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
-			return nil, err
-		}
-		body, err := p.parseBlock()
+		body, err := p.parseSelectArrowBody()
 		if err != nil {
 			return nil, err
 		}
@@ -1615,7 +1612,7 @@ func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 		if err != nil {
 			return nil, err
 		}
-		body, err := p.parseSelectArrowBlock()
+		body, err := p.parseSelectArrowBody()
 		if err != nil {
 			return nil, err
 		}
@@ -1650,7 +1647,7 @@ func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 		if err != nil {
 			return nil, err
 		}
-		body, err := p.parseSelectArrowBlock()
+		body, err := p.parseSelectArrowBody()
 		if err != nil {
 			return nil, err
 		}
@@ -1669,7 +1666,7 @@ func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 	call, ok := head.(*ast.Call)
 	if ok {
 		if f, isField := call.Callee.(*ast.Field); isField && f.Name == "send" && len(call.Args) == 1 {
-			body, err := p.parseSelectArrowBlock()
+			body, err := p.parseSelectArrowBody()
 			if err != nil {
 				return nil, err
 			}
@@ -1690,13 +1687,24 @@ func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 		t.Line, t.Col)
 }
 
-// parseSelectArrowBlock consumes `=> Block`, the tail shared by every
-// select case.
-func (p *parser) parseSelectArrowBlock() (*ast.Block, *Diag) {
+// parseSelectArrowBody consumes `=> Body`, the tail shared by every
+// select case. Body is either a `{…}` block or — mirroring the braceless
+// MatchArm body — a single statement (`=> return …`, `=> x = y`,
+// `=> ch.send(v)`), wrapped in an implicit Block so the existing
+// block-body lowering applies unchanged (grammar.ebnf §SelectCase).
+func (p *parser) parseSelectArrowBody() (*ast.Block, *Diag) {
 	if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
 		return nil, err
 	}
-	return p.parseBlock()
+	p.skipNewlines() // body may wrap to the next line (like MatchArm)
+	if p.at(lexer.KindPunct, "{") {
+		return p.parseBlock()
+	}
+	stmt, err := p.parseStmt()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.Block{Span: stmt.NodeSpan(), Stmts: []ast.Stmt{stmt}}, nil
 }
 
 // parseDeferStmt parses `defer <Expr>` (grammar production

@@ -590,15 +590,20 @@ AltAtom      = LiteralPat | VariantPat ;
 // =============================================================
 
 SelectCase   = SelectRecv | SelectSend | SelectDefault ;
-SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" Block ;
+SelectRecv   = "case" ( Ident "=" )? "<-" Expr "=>" SelectCaseBody ;
 // `send` is recognised as a method-call shape (PostfixExpr ending in
 // CallSuffix). The parser parses the case head as a PostfixExpr and
 // enforces that it is exactly `Expr "." "send" "(" Expr ")"` — a
 // single-argument method call on a channel — rejecting any other
 // shape with E0112 at parse time (the head is also where `Ident "="
 // "<-"` recv-binds are disambiguated, so one site owns the check).
-SelectSend   = "case" PostfixExpr "=>" Block ;
-SelectDefault = "default" "=>" Block ;
+SelectSend   = "case" PostfixExpr "=>" SelectCaseBody ;
+SelectDefault = "default" "=>" SelectCaseBody ;
+// A select-case body is either a brace block or a single braceless
+// statement (`=> return …`, `=> x = y`), mirroring the braceless
+// MatchArm body. The braceless statement is wrapped in an implicit Block
+// so downstream sees a uniform `Block`.
+SelectCaseBody = Newline? ( Block | Stmt ) ;
 
 // =============================================================
 // Generic-argument disambiguation (resolves `<` from comparison)

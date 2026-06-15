@@ -480,3 +480,40 @@ func TestArrowFuncType(t *testing.T) {
 		t.Fatalf("expected E0112 1-tuple error, got %s", perr.Code)
 	}
 }
+
+// TestSelectBracelessBody — a select case admits a braceless single-stmt
+// body (`=> return …`, `=> x = y`) as well as a brace block, parsing it
+// into the same `*ast.Block` shape (grammar.ebnf §SelectCaseBody).
+func TestSelectBracelessBody(t *testing.T) {
+	cases := []string{
+		`func f(ch: Channel<int>): int { select { case v = <-ch => return v, default => return 0, } }`,
+		`func f(ch: Channel<int>): unit { select { case <-ch => sum = sum + 1, default => { }, } }`,
+		`func f(ch: Channel<int>): unit { select { case ch.send(1) => done = true, default => { }, } }`,
+	}
+	for _, src := range cases {
+		toks, lerr := lexer.Lex(src)
+		if lerr != nil {
+			t.Fatalf("lex %q: %v", src, lerr)
+		}
+		f, err := Parse(toks)
+		if err != nil {
+			t.Errorf("unexpected error on %q: %v", src, err)
+			continue
+		}
+		sel := f.Decls[0].(*ast.FuncDecl).Body.Stmts[0].(*ast.SelectStmt)
+		for _, c := range sel.Cases {
+			var body *ast.Block
+			switch sc := c.(type) {
+			case *ast.SelectRecv:
+				body = sc.Body
+			case *ast.SelectSend:
+				body = sc.Body
+			case *ast.SelectDefault:
+				body = sc.Body
+			}
+			if body == nil {
+				t.Errorf("%q: select case has nil body", src)
+			}
+		}
+	}
+}
