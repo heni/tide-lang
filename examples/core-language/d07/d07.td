@@ -8,7 +8,7 @@
 // the total splits and the surviving total timeline.
 //
 // Forces: `Set<int>` for the live beam positions, slice
-// index-assignment `s[i] = v` (extension), rune iteration with
+// index-assignment `s[i] = v`, rune iteration with
 // byte index `for (pos, c) in row`, `.copy()` on slices.
 
 import fmt

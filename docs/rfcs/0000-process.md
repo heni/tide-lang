@@ -193,7 +193,7 @@ prose restatements. Four families are in use, each with a single
 |---|---|---|
 | **`Dn`** — architectural decision | `D6`, `D19` | `docs/design-decisions.md` (the decision **index** at the head of §Decisions) |
 | **`Exxxx`** — diagnostic code | `E0103`, `E0303` | `lang-spec/diagnostics.md` (the code catalog) |
-| **`T-Foo`** — type-system rule | `T-RefEq`, `T-Extern` | `lang-spec/type-system.md` |
+| **`T-Foo`** — type-system rule | `T-RefEq`, `T-Try-Result` | `lang-spec/type-system.md` |
 | **`§Foo`** — spec-section anchor | `§ScopeIR`, `§ForeignCall` | the named `lang-spec/` file |
 
 Two rules keep these honest:
