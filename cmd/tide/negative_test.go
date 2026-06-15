@@ -31,7 +31,7 @@ var codeRe = regexp.MustCompile(`error\[(E\d+)\]`)
 
 // stageOf mirrors the classification in scripts/corpus_status.py.
 var parseCodes = map[string]bool{
-	"E0101": true, "E0102": true, "E0109": true, "E0110": true, "E0111": true, "E0112": true,
+	"E0101": true, "E0102": true, "E0107": true, "E0109": true, "E0110": true, "E0111": true, "E0112": true,
 }
 var emitCodes = map[string]bool{"E0801": true, "E0802": true, "E0803": true}
 

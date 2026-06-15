@@ -13,7 +13,7 @@ patch   = "errors/drop-leaf-arm.patch"   # drop the Leaf arm from invert's match
 expect  = ["E0303"]
 stage   = "sema"
 matches = "errors/drop-leaf-arm.expected"
-origin  = "organic:pilot"
+origin  = "synthetic"
 
 [[error]]
 patch   = "errors/unknown-name-rr.patch"   # typo: rr is not in scope

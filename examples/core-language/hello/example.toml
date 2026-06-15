@@ -32,7 +32,7 @@ origin  = "synthetic"
 [[error]]
 patch   = "errors/reserved-prefix.patch"   # _tide_ is a reserved codegen prefix
 expect  = ["E0107"]
-stage   = "sema"
+stage   = "parse"
 matches = "errors/reserved-prefix.expected"
 origin  = "synthetic"
 

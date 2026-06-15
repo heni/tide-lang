@@ -36,7 +36,7 @@ MD_PATH = "examples/STATUS.md"
 
 # Diagnostics emitted before a file parses; any other error code means
 # the file parsed and a later stage rejected it.
-PARSE_CODES = {"E0101", "E0102", "E0109", "E0110", "E0111", "E0112"}
+PARSE_CODES = {"E0101", "E0102", "E0107", "E0109", "E0110", "E0111", "E0112"}
 EMIT_CODES = {"E0801", "E0802", "E0803"}
 STAGE_ORDER = {"build": 0, "emit": 1, "sema": 2, "parse": 3}
 
