@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Number | 0005 |
-| Status | draft |
+| Status | accepted |
 | Created | 2026-06-15 |
 | Supersedes | — |
 | Target | new `lang-spec/ffi.md`; `lang-spec/grammar.ebnf` (extern decls); `lang-spec/keywords.md` (`extern`/`EXT`); `lang-spec/ast.md` (extern nodes); `lang-spec/type-system.md` (T-Extern, boundary translation); `lang-spec/builtins.md` (`refEq` widened to opaque handles); `lang-spec/diagnostics.md` (E10xx FFI codes); `lang-spec/lowering-go.md` (§ForeignCall); `docs/binding-surface.md` (recast as curated output of this interface) |
@@ -436,11 +436,11 @@ On acceptance / implementation, these `lang-spec/` edits land:
 - **`docs/binding-surface.md`** — recast from a hand-authored target
   list into the *curated output* of this interface; its
   `What is **not** in v1` section is reframed as "not yet generated."
-- **`docs/design-decisions.md`** — **amend D19**: relax "generated user
-  code must never depend on a third-party Go module" to admit an
+- **`docs/design-decisions.md`** — **amend D19** ("Third-party Go
+  dependencies are reserved for UX-only surfaces"): relax "generated
+  user code must never depend on a third-party Go module" to admit an
   *explicit, pinned, hermetic* FFI binding (above); add a public mirror
-  entry for the FFI decision. (Also surfaces the AI.md/design-decisions
-  divergence — AI.md lacks D19/D20 — to reconcile separately.)
+  entry for the FFI decision.
 
 ## Transition / compatibility
 
@@ -519,8 +519,12 @@ accepted with them open, resolved before `implemented`.
   plus paired-edit, nil-semantics and lift-ambiguity gaps). A
   late finding surfaced the **D19 conflict** (third-party deps in
   generated code) — added as a proposed amendment in Design
-  §"Relationship to D19". **Stays `draft`** pending the user's
-  sign-off on that amendment; on sign-off it moves to `accepted` with
-  the ten open questions flagged (not blockers), and implementation —
-  the `tide import` tool, the `extern` surface, third-party plumbing,
-  and the corpus-analyzer port — is the next epoch's work.
+  §"Relationship to D19".
+- 2026-06-15 — `draft → accepted`. The D19 amendment was signed off
+  (third-party deps admitted in generated code only via an explicit,
+  pinned, hermetic binding); `design-decisions.md` D19 amended and a
+  public D21 entry added. The ten open questions are flagged, not
+  blockers (they resolve before `implemented`). Implementation — the
+  `tide import` tool, the `extern` surface, third-party plumbing, and
+  the corpus-analyzer port that motivated this RFC — is the next
+  epoch's work, with this RFC as its contract.

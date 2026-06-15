@@ -433,15 +433,22 @@ question.
 - UX-shell PRs may introduce deps if the alternative is non-trivial
   re-implementation. Prefer libraries with stable APIs and a small
   transitive footprint.
-- Generated user code (Tide → Go output) must never depend on a
-  third-party Go module. The runtime in `tidert/` and the stdlib
-  bindings are the only Go-side surface a Tide program is allowed
-  to reach.
+- Generated user code (Tide → Go output) may depend on a third-party
+  Go module **only** through an explicit, version-pinned, hermetic
+  binding declared by the foreign-binding interface (see D21 /
+  RFC-0005) — a package named in the binding manifest, resolved via a
+  vendored `replace` so the build never touches the network.
+  *Accidental* and *transitive* third-party deps in generated code
+  remain forbidden. Absent such a binding, the runtime in `tidert/`
+  and the stdlib bindings are the only Go-side surface a Tide program
+  reaches.
 
 **What it does not change.** D6 (bind, don't port the Go stdlib) and
 D15 (Go IR contract) still hold for the compiler and the generated
-code. D19 only carves out the *toolchain UX shell* as a place where
-external libraries are not architecturally forbidden.
+code. D19 carves out the *toolchain UX shell* as a place where
+external libraries are not architecturally forbidden, and (as amended)
+the *deliberately-bound, pinned, hermetic* third-party surface of the
+FFI — never an arbitrary or transitive dependency.
 
 ### D20 — Module import graph is acyclic
 
@@ -486,6 +493,49 @@ functions, recursive types, recursive class methods, sum
 variants pointing to their own type, etc. The acyclic constraint
 applies to **module** imports only, never to definitions within
 a module.
+
+### D21 — Binding Go libraries: a semi-automatic FFI
+
+**Claim.** Tide binds Go libraries through a semi-automatic
+foreign-function interface, specified in
+[RFC-0005](rfcs/0005-go-ffi.md). A generator reads a Go package's
+*type* information and emits **declaration files** — Tide source whose
+function bodies are the marker `EXT` ("implemented by this Go symbol").
+A human curates those declarations and writes thin **adapter**
+functions on top. Automation does the mechanical routine; humans build
+the ergonomic interface. The surface covers any Go package — standard
+library and, through the D19-amended pinned-and-hermetic path,
+third-party.
+
+**Why.** Hand-writing a binding table per call does not scale to real
+library surface area (a process or regexp type has a dozen methods);
+fully-automatic translation is brittle at exactly the edges that
+matter (nullability, ownership, multiple returns, untranslatable
+types). The generate-then-curate split keeps the machine on the
+routine and the human where judgement is required. This is the
+concrete realisation of D6 ("binding signatures derived mechanically;
+humans write only the idiomatic wrapper").
+
+**The key advantage.** Because Tide compiles to Go and then
+type-checks the result, the **Go type checker re-verifies every
+binding against the real package**. A binding that has drifted from
+its library fails to build — surfaced in Tide source coordinates
+(D10). This turns the classic foreign-binding footgun — a wrong
+declaration that silently miscompiles, which afflicts every
+`external`-keyword language — into a build-time error.
+
+**Guarantees.** Foreign types Tide cannot model structurally become
+**opaque handles** (used through their methods); a symbol that uses an
+untranslatable type is emitted as a *poison declaration* that errors
+only when referenced — so one untranslatable corner never sterilises a
+whole package. `(T, error)` lifts to `Result`, comma-ok `(T, bool)` to
+`Option`, at the binding boundary.
+
+**Trade-off.** The declaration layer is a *trusted assertion* re-checked
+by the Go compiler, not a proof; the human curator owns the semantic
+layer (which `(T, bool)` is really comma-ok, where a handle may be nil,
+what needs `Close()`). The generated layer is deliberately allowed to be
+ugly — the adapter layer is where the idiomatic Tide API lives.
 
 ---
 
