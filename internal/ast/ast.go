@@ -241,6 +241,91 @@ func (n *Param) NodeSpan() Span   { return n.Span }
 func (n *Param) NodeKind() string { return "Param" }
 
 // ---------------------------------------------------------------
+// Foreign bindings (Go FFI — ffi.md)
+// ---------------------------------------------------------------
+
+// GoRef is a parsed `@go("...")` foreign-binding attribute. Raw is the
+// string verbatim (quotes stripped): on an extern type/func it names the
+// Go referent as an import path optionally suffixed `.Symbol`; on an
+// extern-impl member it is the bare Go method/field name. The
+// package/symbol split is interpreted by sema/codegen (ffi.md §GoRef).
+type GoRef struct {
+	Span Span
+	Raw  string
+}
+
+func (n *GoRef) NodeSpan() Span   { return n.Span }
+func (n *GoRef) NodeKind() string { return "GoRef" }
+
+// ExternTypeDecl — `extern type T @go("pkg")` — an opaque foreign handle.
+// Tide knows the name, never the layout (ffi.md §ExternType). Go is nil
+// when the attribute is omitted (symbol defaults to the Tide name).
+type ExternTypeDecl struct {
+	Span Span
+	Name string
+	Go   *GoRef
+}
+
+func (n *ExternTypeDecl) NodeSpan() Span   { return n.Span }
+func (n *ExternTypeDecl) NodeKind() string { return "ExternTypeDecl" }
+func (n *ExternTypeDecl) declMarker()      {}
+
+// ExternFuncDecl — `extern func f(params): R @go("pkg.Sym")` — a
+// package-level foreign function. No body: the `@go` attribute is the
+// binding (ffi.md §ExternFunc).
+type ExternFuncDecl struct {
+	Span       Span
+	Name       string
+	TypeParams []string // empty for non-generic
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ unit
+	Go         *GoRef
+}
+
+func (n *ExternFuncDecl) NodeSpan() Span   { return n.Span }
+func (n *ExternFuncDecl) NodeKind() string { return "ExternFuncDecl" }
+func (n *ExternFuncDecl) declMarker()      {}
+
+// ExternImplDecl — `extern impl T { methods, fields }` — methods and
+// exported fields on a foreign handle (ffi.md §ExternImpl). The receiver
+// is the foreign value; the Go import path comes from T's own declaration.
+type ExternImplDecl struct {
+	Span    Span
+	Type    string // the extern type name T
+	Methods []*ExternMethod
+	Fields  []*ExternField
+}
+
+func (n *ExternImplDecl) NodeSpan() Span   { return n.Span }
+func (n *ExternImplDecl) NodeKind() string { return "ExternImplDecl" }
+func (n *ExternImplDecl) declMarker()      {}
+
+// ExternMethod — `name(params): R @go("GoName")` inside an extern impl.
+type ExternMethod struct {
+	Span       Span
+	Name       string
+	Params     []*Param
+	ReturnType TypeExpr // nil ⇒ unit
+	Go         *GoRef
+}
+
+func (n *ExternMethod) NodeSpan() Span   { return n.Span }
+func (n *ExternMethod) NodeKind() string { return "ExternMethod" }
+
+// ExternField — `var|let name: T @go("GoField")` inside an extern impl —
+// an exported-field accessor (read for `let`, read/write for `var`).
+type ExternField struct {
+	Span       Span
+	Name       string
+	DeclType   TypeExpr
+	Mutability string // "Let" or "Var"
+	Go         *GoRef
+}
+
+func (n *ExternField) NodeSpan() Span   { return n.Span }
+func (n *ExternField) NodeKind() string { return "ExternField" }
+
+// ---------------------------------------------------------------
 // Type expressions
 // ---------------------------------------------------------------
 

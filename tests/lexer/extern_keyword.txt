@@ -1,0 +1,16 @@
+--- TITLE ---
+`extern` is a hard keyword; `@`/`go` form the foreign-binding attribute
+
+--- INPUT ---
+extern type Cmd @go("os/exec")
+
+--- TOKENS ---
+Keyword<extern>  1:1
+Keyword<type>  1:8
+Ident<Cmd>  1:13
+Punct<@>  1:17
+Ident<go>  1:18
+Punct<(>  1:20
+StringLit<"os/exec">  1:21
+Punct<)>  1:30
+EOF<>  1:31

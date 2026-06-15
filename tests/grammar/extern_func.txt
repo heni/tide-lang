@@ -1,0 +1,19 @@
+--- TITLE ---
+extern func — package-level foreign function, @go names the Go referent
+
+--- INPUT ---
+extern func command(name: string, args: []string): Cmd @go("os/exec.Command")
+
+--- AST ---
+(File @1:1-1:78
+  (ExternFuncDecl "command" @1:1-1:78
+    (type-params)
+    (params
+      (Param "name" @1:21-1:33
+        (PrimitiveType "string" @1:27-1:33))
+      (Param "args" @1:35-1:49
+        (SliceType @1:41-1:49
+          (PrimitiveType "string" @1:43-1:49))))
+    (return
+      (NamedType "Cmd" @1:52-1:55))
+    (go "os/exec.Command")))

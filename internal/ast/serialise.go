@@ -210,6 +210,96 @@ func write(b *strings.Builder, n Node, depth int) {
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.DeclType, depth+1)
+	case *ExternTypeDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		writeGoRef(b, v.Go, depth+1)
+	case *ExternFuncDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.TypeParams) == 0 {
+			b.WriteString("(type-params)")
+		} else {
+			b.WriteString("(type-params")
+			for _, tp := range v.TypeParams {
+				b.WriteByte(' ')
+				writeQuoted(b, tp)
+			}
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.Params) == 0 {
+			b.WriteString("(params)")
+		} else {
+			b.WriteString("(params")
+			for _, p := range v.Params {
+				b.WriteByte('\n')
+				write(b, p, depth+2)
+			}
+			b.WriteByte(')')
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeGoRef(b, v.Go, depth+1)
+	case *ExternImplDecl:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Type)
+		writeSpan(b, v.Span)
+		for _, m := range v.Methods {
+			b.WriteByte('\n')
+			write(b, m, depth+1)
+		}
+		for _, f := range v.Fields {
+			b.WriteByte('\n')
+			write(b, f, depth+1)
+		}
+	case *ExternMethod:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		writeIndent(b, depth+1)
+		if len(v.Params) == 0 {
+			b.WriteString("(params)")
+		} else {
+			b.WriteString("(params")
+			for _, p := range v.Params {
+				b.WriteByte('\n')
+				write(b, p, depth+2)
+			}
+			b.WriteByte(')')
+		}
+		if v.ReturnType != nil {
+			b.WriteByte('\n')
+			writeIndent(b, depth+1)
+			b.WriteString("(return\n")
+			write(b, v.ReturnType, depth+2)
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+		writeGoRef(b, v.Go, depth+1)
+	case *ExternField:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		b.WriteByte(' ')
+		b.WriteString(v.Mutability)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.DeclType, depth+1)
+		b.WriteByte('\n')
+		writeGoRef(b, v.Go, depth+1)
 	case *NamedType:
 		b.WriteByte(' ')
 		writeQuoted(b, strings.Join(v.QName, "."))
@@ -735,6 +825,19 @@ func writeIndent(b *strings.Builder, depth int) {
 
 func writeSpan(b *strings.Builder, s Span) {
 	fmt.Fprintf(b, " @%d:%d-%d:%d", s.StartLine, s.StartCol, s.EndLine, s.EndCol)
+}
+
+// writeGoRef emits a `@go(...)` attribute as `(go "raw")`, or the empty
+// `(go)` when the attribute was omitted, at the given indent.
+func writeGoRef(b *strings.Builder, g *GoRef, depth int) {
+	writeIndent(b, depth)
+	if g == nil {
+		b.WriteString("(go)")
+		return
+	}
+	b.WriteString("(go ")
+	writeQuoted(b, g.Raw)
+	b.WriteByte(')')
 }
 
 func writeQuoted(b *strings.Builder, s string) {

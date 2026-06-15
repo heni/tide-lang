@@ -262,6 +262,7 @@ Decl         = FuncDecl
              | ClassDecl
              | InterfaceDecl
              | TopLevelLet
+             | ExternDecl
              ;
 
 TopLevelLet  = "let" Ident ( ":" TypeExpr )? "=" Expr ;
@@ -322,6 +323,29 @@ FuncDecl     = "func" Ident TypeParams? "(" ParamList? ")" ReturnAnnot? Block ;
 ParamList    = Param ( "," Param )* ;
 Param        = ( Ident | "_" ) ":" TypeExpr ;
 ReturnAnnot  = ":" Newline? TypeExpr ;   // type may wrap to the next line
+
+// =============================================================
+// Foreign-binding (Go FFI) declarations — see ffi.md
+// =============================================================
+
+ExternDecl   = "extern" ( ExternType | ExternFunc | ExternImpl ) ;
+                          // `impl` is contextual — a keyword only
+                          // immediately after `extern`.
+
+ExternType   = "type" Ident GoAttr? ;          // opaque foreign handle
+ExternFunc   = "func" Ident TypeParams?
+               "(" ParamList? ")" ReturnAnnot? GoAttr? ;
+ExternImpl   = "impl" Ident "{" Newline? ExternMember* "}" ;
+ExternMember = ExternField | ExternMethod ;
+ExternField  = ("let" | "var") Ident ":" TypeExpr GoAttr? Newline+ ;
+ExternMethod = Ident "(" ParamList? ")" ReturnAnnot? GoAttr? Newline+ ;
+
+GoAttr       = "@" "go" "(" StringLit ")" ;
+                          // names the Go referent: an import path,
+                          // optionally suffixed ".Symbol"; on an
+                          // ExternMember the bare Go method/field name.
+                          // An extern item has no body — GoAttr is the
+                          // binding (no EXT marker / no "=GoName").
 
 // =============================================================
 // Type expressions

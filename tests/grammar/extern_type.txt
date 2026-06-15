@@ -1,0 +1,13 @@
+--- TITLE ---
+extern type — opaque foreign handle, with and without an @go attribute
+
+--- INPUT ---
+extern type Cmd @go("os/exec")
+extern type Regexp
+
+--- AST ---
+(File @1:1-2:19
+  (ExternTypeDecl "Cmd" @1:1-1:31
+    (go "os/exec"))
+  (ExternTypeDecl "Regexp" @2:1-2:19
+    (go)))

@@ -73,6 +73,9 @@ Decl =
   | ClassDecl
   | InterfaceDecl
   | TopLevelLet
+  | ExternTypeDecl
+  | ExternFuncDecl
+  | ExternImplDecl
 ```
 
 ### `FuncDecl`
@@ -187,6 +190,79 @@ implementation should preserve that order.
 | `span` | `Span` | yes | |
 | `name` | `string` | yes | `"_"` allowed (discard parameter) |
 | `decl_type` | `Option<TypeExpr>` | optional in short-closure shape; required elsewhere | |
+
+## Foreign bindings — Go FFI (`ffi.md`)
+
+The three `extern` declaration nodes and their member/attribute
+shapes. Semantics are in `ffi.md`; this section is the AST contract.
+
+### `GoRef`
+
+The `@go("...")` attribute. `raw` is the string verbatim (quotes
+decoded); the package/symbol split is interpreted by sema/codegen
+(`ffi.md` §GoRef), not stored here.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | spans `@go( … )` |
+| `raw` | `string` | yes | referent string with quotes stripped |
+
+### `ExternTypeDecl`
+
+An opaque foreign handle (`extern type T @go("pkg")`).
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | |
+| `name` | `string` | yes | the Tide handle name |
+| `go` | `Option<GoRef>` | optional | absent ⇒ symbol defaults to `name` |
+
+### `ExternFuncDecl`
+
+A package-level foreign function. No body — `go` is the binding.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | |
+| `name` | `string` | yes | |
+| `type_params` | `[]string` | yes (may be empty) | |
+| `params` | `[]Param` | yes (may be empty) | |
+| `return_type` | `Option<TypeExpr>` | optional | absent ⇒ `unit` |
+| `go` | `Option<GoRef>` | optional | absent ⇒ symbol defaults to case-converted `name` |
+
+### `ExternImplDecl`
+
+Methods and exported-field accessors on a foreign handle. The Go
+import path comes from the named handle's own `ExternTypeDecl`.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | |
+| `type` | `string` | yes | the extern handle name `T` |
+| `methods` | `[]ExternMethod` | yes (may be empty) | |
+| `fields` | `[]ExternField` | yes (may be empty) | |
+
+Invariant: `methods` and `fields` appear in declaration order.
+
+### `ExternMethod`
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | |
+| `name` | `string` | yes | |
+| `params` | `[]Param` | yes (may be empty) | receiver is implicit |
+| `return_type` | `Option<TypeExpr>` | optional | absent ⇒ `unit` |
+| `go` | `Option<GoRef>` | optional | bare Go method name; absent ⇒ case-converted `name` |
+
+### `ExternField`
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `span` | `Span` | yes | |
+| `name` | `string` | yes | |
+| `decl_type` | `TypeExpr` | yes | |
+| `mutability` | `Mutability` | yes | `Let` (read) or `Var` (read/write) |
+| `go` | `Option<GoRef>` | optional | bare Go field name; absent ⇒ case-converted `name` |
 
 ## Type expressions — `TypeExpr` is a sum
 

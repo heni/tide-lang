@@ -1,0 +1,31 @@
+--- TITLE ---
+extern impl — methods and an exported-field accessor on a foreign handle
+
+--- INPUT ---
+extern impl Cmd {
+  output(): Result<[]byte, error> @go("Output")
+  run(): Result<unit, error> @go("Run")
+  var dir: string @go("Dir")
+}
+
+--- AST ---
+(File @1:1-5:2
+  (ExternImplDecl "Cmd" @1:1-5:2
+    (ExternMethod "output" @2:3-2:48
+      (params)
+      (return
+        (NamedType "Result" @2:13-2:34
+          (SliceType @2:20-2:26
+            (PrimitiveType "byte" @2:22-2:26))
+          (NamedType "error" @2:28-2:33)))
+      (go "Output"))
+    (ExternMethod "run" @3:3-3:40
+      (params)
+      (return
+        (NamedType "Result" @3:10-3:29
+          (PrimitiveType "unit" @3:17-3:21)
+          (NamedType "error" @3:23-3:28)))
+      (go "Run"))
+    (ExternField "dir" Var @4:3-4:29
+      (PrimitiveType "string" @4:12-4:18)
+      (go "Dir"))))

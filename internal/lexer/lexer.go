@@ -97,7 +97,8 @@ var keywordSet = map[string]bool{
 	"spawn": true, "scope": true, "select": true,
 	"break": true, "continue": true,
 	"true": true, "false": true, "unit": true,
-	"this": true,
+	"this":   true,
+	"extern": true, // FFI foreign-binding declarations (ffi.md)
 }
 
 // Multi-character operator alternatives, sorted longest-first so that

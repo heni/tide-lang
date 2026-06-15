@@ -24,8 +24,13 @@ implements          extends    static
 func      let       const      var        if         else
 for       in        while      return
 match     try       defer      spawn      scope      select
-break     continue
+break     continue  extern
 ```
+
+`extern` introduces a foreign-binding declaration (`extern type`,
+`extern func`, `extern impl`) — the Go FFI surface in `ffi.md`. It is
+the only new hard keyword the FFI adds; `impl` and `go` stay
+contextual (below).
 
 `const` is a surface alias for `let`. The two produce identical
 AST nodes and the same lowering; `const` exists so the user can
@@ -66,6 +71,8 @@ those positions they are ordinary identifiers.
 | `_`     | `let _`, `var _`, `for _ in`, function-parameter, `match` patterns | identifier |
 | `case`  | inside `select { ... }` | identifier |
 | `default` | inside `select { ... }` | identifier |
+| `impl`  | immediately after `extern` (`extern impl T { … }`) | identifier |
+| `go`    | as the attribute head in `@go("…")` (a `@` token followed by `go`) | identifier |
 
 ## Built-in identifiers (predeclared, NOT keywords)
 
@@ -165,7 +172,7 @@ disagreement, `grammar.ebnf` wins (D17).
 ..         Op    — half-open range (`a..b`)
 ..=        Op    — inclusive range (`a..=b`)
 ...        Op    — variadic parameter / spread (e.g. `args: ...Any`)
-@          Punct — reserved for future use (annotations / attributes); not in v1
+@          Punct — foreign-binding attribute head (`@go("…")`, ffi.md); no other v1 production accepts it
 ```
 
 ## Lexical conflict resolution
