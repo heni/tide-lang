@@ -102,6 +102,9 @@ func cmdImport(args []string) int {
 		return 1
 	}
 	fmt.Print(src)
+	if !bindgen.HasBindings(src) {
+		fmt.Fprintf(os.Stderr, "tide import: %s has no bindable symbols (every export bailed)\n", fs.Arg(0))
+	}
 	return 0
 }
 

@@ -73,9 +73,15 @@ func TestGenerateRegexpHandle(t *testing.T) {
 // TestGeneratedRoundTrips — the generated bindings must be valid Tide:
 // they parse and type-check with no diagnostics (the generator never
 // emits something the compiler rejects; unbindable symbols are comments).
+// Precondition: a package with ≥1 binding (an all-bail package yields a
+// comment-only report, covered separately below).
 func TestGeneratedRoundTrips(t *testing.T) {
 	for _, path := range []string{"strconv", "regexp", "strings", "math"} {
 		src := gen(t, path)
+		if !HasBindings(src) {
+			t.Errorf("%s: expected ≥1 binding to round-trip", path)
+			continue
+		}
 		toks, lerr := lexer.LexFile(src, path+".td")
 		if lerr != nil {
 			t.Errorf("%s: generated bindings fail to lex: %v", path, lerr)
@@ -90,6 +96,22 @@ func TestGeneratedRoundTrips(t *testing.T) {
 			t.Errorf("%s: generated bindings produced %d sema diagnostics: %v",
 				path, len(diags), diags)
 		}
+	}
+}
+
+// TestAllBailPackage — a package whose every export bails yields a
+// comment-only report carrying the "no bindable symbols" note, not a
+// silently-uncompilable file. `crypto/sha256` is all-bail today (its
+// digests are fixed-size arrays, its constructor returns the cross-
+// package `hash.Hash` interface); the assertion is tolerant in case a
+// future Go release adds a bindable symbol.
+func TestAllBailPackage(t *testing.T) {
+	src := gen(t, "crypto/sha256")
+	if HasBindings(src) {
+		t.Skip("crypto/sha256 gained a bindable symbol in this Go version")
+	}
+	if !strings.Contains(src, "No bindable symbols") {
+		t.Errorf("all-bail package missing the no-bindable-symbols note\n%s", src)
 	}
 }
 

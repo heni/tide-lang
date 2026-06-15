@@ -84,7 +84,24 @@ func (g *generator) run() string {
 		}
 		b.WriteString(g.renderType(tn))
 	}
-	return b.String()
+	out := b.String()
+	// An all-bail package (every exported symbol untranslatable) yields a
+	// comment-only file with no declarations — the compiler would reject
+	// that with E0112, so the round-trip property holds only for a file
+	// with ≥1 binding. Make the emptiness explicit rather than emit a
+	// silently-uncompilable file (ffi.md §"The generator").
+	if !strings.Contains(out, "\nextern ") {
+		out += "\n// No bindable symbols — every exported symbol bailed above.\n" +
+			"// Nothing to compile; bind the needed Go shapes by hand or via an adapter.\n"
+	}
+	return out
+}
+
+// HasBindings reports whether generated output contains at least one
+// `extern` declaration (vs an all-comment / all-bail report). The
+// `tide import` command warns when false.
+func HasBindings(src string) bool {
+	return strings.Contains(src, "\nextern ")
 }
 
 // renderFunc renders a package-level function as an `extern func`, or a

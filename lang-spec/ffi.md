@@ -157,12 +157,26 @@ is comma-ok rather than a meaningful bool). Names colliding with a Tide
 keyword are escaped (`Match → match_`), the `@go` attribute pinning the
 real Go symbol.
 
+Every emitted `extern` binding round-trips through the compiler — it
+parses and type-checks with no diagnostics. (Precondition: a package
+with ≥ 1 bindable symbol. A package whose *every* export bails yields a
+comment-only report carrying a "no bindable symbols" note, not a
+compilable module — there is nothing to bind.)
+
+This epoch's generator binds a **named type whose underlying is an
+interface** (e.g. `os.Signal`) as an opaque handle, and **bails** on a
+`func`-typed parameter or result (Tide closures-as-FFI-callbacks are a
+later slice). Both diverge from the RFC's eventual table (interfaces →
+Tide `interface`, `func(A) R → (A) => R`); the curator bridges the gap
+by hand until those lifts land.
+
 ## Bindable subset and bail-out
 
 A symbol whose signature uses only translatable types is bindable; one
 that uses an untranslatable type (`unsafe.Pointer`, `uintptr`,
-`complex*`, arity-≥3 non-error returns, interfaces, cross-package named
-types, variadics — until Tide grows them) is **not** emitted as a
+`complex*`, arity-≥3 non-error returns, anonymous interfaces, `func`
+types, cross-package named types, variadics — until Tide grows them) is
+**not** emitted as a
 binding: the generator currently renders it as a `// UNBINDABLE` comment
 naming the real reason, so one untranslatable symbol does not sterilise
 the rest of the package. The RFC's stronger **poison declaration** (a
