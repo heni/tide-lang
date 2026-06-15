@@ -117,6 +117,36 @@ func bad(): Cmd {
 	}
 }
 
+// TestExternHandleNotBraceLit — the brace-literal construction form
+// `T { … }` is rejected with E1001, like the call form.
+func TestExternHandleNotBraceLit(t *testing.T) {
+	src := `extern type Cmd @go("os/exec")
+func bad(): int {
+  let c = Cmd {}
+  return 0
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E1001") {
+		t.Errorf("expected E1001 on opaque-handle brace literal, got %v", codes)
+	}
+}
+
+// TestExternHandleNotEqComparable — `==` on a handle is illegal (it is
+// excluded from structural comparison and routed to refEq): E0401.
+func TestExternHandleNotEqComparable(t *testing.T) {
+	src := `extern type Cmd @go("os/exec")
+extern func command(name: string): Cmd @go("os/exec.Command")
+func bad(): bool {
+  let a = command("ls")
+  let b = command("ls")
+  return a == b
+}
+`
+	if codes := runCheck(t, src); !contains(codes, "E0401") {
+		t.Errorf("expected E0401 on `==` over opaque handles, got %v", codes)
+	}
+}
+
 // TestExternHandleNotDestructurable — a handle has no visible layout, so
 // a tuple pattern over it fires E1002.
 func TestExternHandleNotDestructurable(t *testing.T) {
