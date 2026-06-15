@@ -285,7 +285,14 @@ negative cases live **as deltas against the valid base**:
     backend (D10) — a property a code-only assertion would lose.
   - **`matches`** — a paired sidecar file (`errors/<case>.expected`)
     holding the expected diagnostic *text*, which can be multi-line and
-    bulky. Kept out of the manifest so the manifest stays lean.
+    bulky. Kept out of the manifest so the manifest stays lean. The
+    sidecar records the **ideal** diagnostic the user deserves — one that
+    lets them find the problem fast, in Tide terminology (D10), never
+    leaking compiler internals (raw `go/types`, or lexer token-kind names
+    like `Punct`/`Keyword`). It is deliberately *not* a verbatim capture
+    of today's output: where the compiler falls short, the case is a
+    known **diagnostic-quality gap**, and the corpus tracks how many cases
+    already meet their ideal (the `diag_ok` metric below).
 - **Matching is tolerant.** Code(s) must match as a set; message text
   matches by substring against the sidecar; coordinates are checked
   **relatively** (position *within the patched region*, à la [Clang's
@@ -355,6 +362,27 @@ the cheap, mechanical check that backs the live-diagnostics rule —
 modelled on Rust's first-class [error index (`rustc --explain
 E0XXX`)][rust-error-index], where codes are an enumerable registry
 rather than ad-hoc strings.
+
+The corpus tracks **two** ratcheted metrics, each with a CI-enforced
+floor committed in `examples/metric-floors.toml`:
+
+- **`build_ok`** — examples that build end-to-end (the positive half).
+  Strict ratchet: the floor is only ever raised.
+- **`diag_ok`** — negative cases whose actual diagnostic already meets
+  the **ideal** recorded in their `.expected` sidecar (the *correct error
+  messages* metric). Because the sidecar is the ideal rather than a
+  capture of current output, `diag_ok` is honestly below the case total,
+  and the shortfall is the diagnostic-quality backlog (enumerated in
+  `STATUS.md`). Its floor carries **headroom**: an individual imprecise
+  message is a penalty on the number, not a CI failure, until the count
+  crosses the floor — which is lowered only in a commit justifying a
+  legitimate regression.
+
+The redness split is principled: the measurement **tooling** breaking (a
+patch that won't apply, a compiler panic, a missing floors file) is
+always red — the metric would otherwise be a lie — whereas a diagnostic
+merely *falling short of its ideal* lowers `diag_ok` without reddening
+CI.
 
 ### Contribution process
 

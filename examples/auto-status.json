@@ -1,11 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "totals": {
     "total": 54,
     "parse_fail": 7,
     "sema_fail": 2,
     "emit_fail": 1,
-    "build_ok": 44
+    "build_ok": 44,
+    "diag_ok": 77,
+    "diag_total": 100
   },
   "files": [
     {
@@ -277,6 +279,123 @@
       "path": "user_tests/leetcode_3131_idiomatic.td",
       "stage": "build",
       "blocker": ""
+    }
+  ],
+  "diag_misses": [
+    {
+      "case": "examples/core-language/deep_destructure/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"cause\""
+    },
+    {
+      "case": "examples/core-language/fizzbuzz/errors/missing-brace.patch",
+      "want": "error[E0112]: expected `{`",
+      "got": "error[E0112]: expected Punct \"{\", got Newline \"\""
+    },
+    {
+      "case": "examples/core-language/fizzbuzz/errors/missing-in.patch",
+      "want": "error[E0112]: expected `in`",
+      "got": "error[E0112]: expected Keyword \"in\", got IntLit \"1\""
+    },
+    {
+      "case": "examples/core-language/invert_binary_tree/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"right\""
+    },
+    {
+      "case": "examples/core-language/merge_intervals/errors/organic-merge3-e0112.patch",
+      "want": "error[E0112]: expected a type",
+      "got": "error[E0112]: expected type expression, got Newline \"\""
+    },
+    {
+      "case": "examples/core-language/p1242/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"v\""
+    },
+    {
+      "case": "examples/core-language/p1335/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"e\""
+    },
+    {
+      "case": "examples/core-language/p1349/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"e\""
+    },
+    {
+      "case": "examples/core-language/p1404/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"e\""
+    },
+    {
+      "case": "examples/core-language/p1605/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"e\""
+    },
+    {
+      "case": "examples/core-language/p1683/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"e\""
+    },
+    {
+      "case": "examples/core-language/p1786/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"b\""
+    },
+    {
+      "case": "examples/core-language/p1820/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"b\""
+    },
+    {
+      "case": "examples/core-language/set_algebra/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"b\""
+    },
+    {
+      "case": "examples/core-language/two_sum/errors/missing-comma-args.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"i\""
+    },
+    {
+      "case": "examples/core-language/two_sum/errors/missing-in-for.patch",
+      "want": "error[E0112]: expected `in`",
+      "got": "error[E0112]: expected Keyword \"in\", got Ident \"nums\""
+    },
+    {
+      "case": "examples/modeling-errors/error_chain/errors/organic-dividend2-e0112.patch",
+      "want": "error[E0112]: expected an expression",
+      "got": "error[E0112]: expected expression, got Punct \".\""
+    },
+    {
+      "case": "examples/modeling-errors/parse_int/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"v\""
+    },
+    {
+      "case": "examples/modeling-errors/rpn_calculator/errors/organic-parseop2-e0112.patch",
+      "want": "error[E0112]: expected `(`",
+      "got": "error[E0112]: expected Punct \"(\", got Punct \",\""
+    },
+    {
+      "case": "examples/modeling-errors/safe_divide/errors/bare-record-literal.patch",
+      "want": "error[E0112]: expected an expression",
+      "got": "error[E0112]: expected expression, got Punct \":\""
+    },
+    {
+      "case": "examples/modeling-errors/vending_machine/errors/organic-step2-e0112.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Punct \":\""
+    },
+    {
+      "case": "examples/stdlib-binding/config_loader/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got Ident \"cfg\""
+    },
+    {
+      "case": "examples/stdlib-binding/wc/errors/missing-comma.patch",
+      "want": "error[E0112]: expected `)`",
+      "got": "error[E0112]: expected Punct \")\", got StringLit \"\\\"\\\\n\\\"\""
     }
   ]
 }

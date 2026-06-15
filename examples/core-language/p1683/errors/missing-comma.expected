@@ -1,1 +1,1 @@
-error[E0112]: expected Punct ")", got Ident "e"
+error[E0112]: expected `)`

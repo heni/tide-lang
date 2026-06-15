@@ -1,0 +1,19 @@
+# CI-enforced floors for the corpus metrics.
+#
+# Checked by `scripts/corpus_status.py --check` (run in CI). CI is RED when:
+#   * a measured metric drops below its floor here, or
+#   * the measurement tooling itself fails (a patch won't apply, the
+#     compiler crashes, a manifest can't be parsed).
+# An individual imprecise/non-reproducing error message is NOT a red CI —
+# it is a penalty on `diag_ok`, absorbed until the count crosses the floor.
+#
+# Adjusting the floors:
+#   build_ok_min — STRICT ratchet. Only ever raised (a build regression is a
+#     real breakage). Never lower it.
+#   diag_ok_min  — relaxable, but ONLY in a commit that justifies why a
+#     diagnostic legitimately regressed (e.g. a compiler refactor reworded a
+#     message). Otherwise raise it as coverage grows.
+
+build_ok_min = 44   # current build_ok; strict ratchet
+diag_ok_min  = 70   # headroom below current diag_ok (77) so an
+                    # individual imprecise message is a penalty, not a red
