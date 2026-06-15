@@ -1,1 +1,1 @@
-error[E0114]: Cyclic type alias: A → B → A
+error[E0114]: Cyclic type alias
