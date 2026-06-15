@@ -93,7 +93,7 @@ severity column.
 |---|---|---|---|---|
 | E0401 | E | `==`/`!=` on non-comparable type | `type-system.md` T-Cmp / `builtins.md` §Comparable | Compare a field-wise; for class identity use `refEq`. |
 | E0402 | E | `try` outside Result/Option-returning function | `type-system.md` T-Try-Result / T-Try-Option | Change the function return type, or replace `try` with explicit `match`. |
-| E0403 | E | Error type of `try`'s sub-expression does not match the enclosing function's error type | `type-system.md` T-Try-Result (G11) | Make the error types equal, or wrap explicitly with `match`. |
+| E0403 | E | Error type of `try`'s sub-expression does not match the enclosing function's error type | `type-system.md` T-Try-Result | Make the error types equal, or wrap explicitly with `match`. |
 | E0404 | E | `break`/`continue` outside a loop | `type-system.md` T-Break / T-Continue | Move the statement inside `for` / `while`. |
 | E0405 | E | `spawn` outside a `scope` block | `type-system.md` T-Spawn | Wrap the call in `scope<T, error> { ... }`. |
 | E0406 | E | `defer` argument must be a call | `type-system.md` T-Defer | Use a call expression, optionally wrapping in a closure: `defer (() => { ... })()`. |

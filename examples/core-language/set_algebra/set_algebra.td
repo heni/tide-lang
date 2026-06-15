@@ -2,13 +2,13 @@
 //
 // Raku's [`S03-operators/set_*`](https://github.com/Raku/roast/tree/master/S03-operators)
 // tests cover a small algebra of set operators (`(|)`, `(&)`, `(-)`,
-// `(^)`, `(<=)`, `(<)`). Tide's `Set<T>` (G48) ships only the four
+// `(^)`, `(<=)`, `(<)`). Tide's `Set<T>` ships only the four
 // core ops — `add`/`has`/`delete`/`len` — so the algebra has to be
 // reconstructed in user code. This file does that and reports what
 // the v1 surface is missing.
 //
 // Forces: `Set<T>` literals, iteration over `Set`, building a new
-// set from two inputs, the absence of `==` on classes (G26 — sets
+// set from two inputs, the absence of `==` on classes (sets
 // are classes, so structural equality goes through a helper).
 
 import fmt
@@ -42,7 +42,7 @@ func symmetric(a: Set<int>, b: Set<int>): Set<int> {
 }
 
 // Structural set equality. `==` on `Set<int>` would compare references
-// (G26 — classes use refEq). For value equality we walk both sides.
+// (classes use refEq). For value equality we walk both sides.
 func setEq(a: Set<int>, b: Set<int>): bool {
   if a.len() != b.len() { return false }
   for x in a {
@@ -59,7 +59,7 @@ func isSubset(a: Set<int>, b: Set<int>): bool {
 }
 
 func render(s: Set<int>): string {
-  // Order is unspecified for Set iteration (G48); for the demo we
+  // Order is unspecified for Set iteration; for the demo we
   // emit elements in whatever order Set hands us.
   var out = "{"
   var first = true

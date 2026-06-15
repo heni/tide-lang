@@ -7,8 +7,8 @@
 // items fall in *no* fresh range. Print the merged-DB size, the count
 // of fresh-in-stock items, and the total count of fresh IDs covered.
 //
-// Forces: a two-section parser, sorting tuples by first component
-// (G24), merging sorted intervals (the same shape as merge_intervals
+// Forces: a two-section parser, sorting tuples by first component,
+// merging sorted intervals (the same shape as merge_intervals
 // from leetcode/), iteration with index over a sorted slice.
 
 import fmt

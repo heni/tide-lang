@@ -8,7 +8,7 @@
 //
 // Forces: `s.bytes()` to view a string as `[]byte`, byte arithmetic
 // over a mutable `[]byte` accumulator, primitive `byte(n)` conversions
-// for integer constants in mixed expressions (G49),
+// for integer constants in mixed expressions,
 // `strings.fromBytes` for the round-trip.
 
 import fmt

@@ -9,7 +9,7 @@
 // Forces: a `Stack`-free state machine — the KMP prefix function `pi`
 // is a flat `makeSlice<int>(n)` table mutated by index-write; the
 // inner `nextState` walks `pi` via `pi[st]` chains. Stresses
-// byte-indexed string access (G45) and Go-style integer arithmetic
+// byte-indexed string access and Go-style integer arithmetic
 // on small ints.
 
 import fmt

@@ -4,7 +4,7 @@
 // (e.g. "L20", "R5"). Starting at position 50 on a 100-position dial,
 // apply each rotation and count how many times the dial passes through 0.
 //
-// Forces: file read, line splitting, string slicing `s[a:b]` (G45),
+// Forces: file read, line splitting, string slicing `s[a:b]`,
 // integer parsing, modular arithmetic.
 
 import fmt

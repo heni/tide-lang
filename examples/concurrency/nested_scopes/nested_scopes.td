@@ -6,11 +6,11 @@
 // outer scope's context.
 //
 // Forces: scope nesting, the explicit-parent scope form
-// `scope<T, E>(parentCtx) { ... }` (G44), channel-and-drain collection
+// `scope<T, E>(parentCtx) { ... }`, channel-and-drain collection
 // in the trailing expression (the unified scope model — see
 // language-spec.md §Concurrency · Structured concurrency), and
 // callees that take an explicit context.Context parameter —
-// `scope.context` is lexically bound (G40) and does not flow into
+// `scope.context` is lexically bound and does not flow into
 // callees.
 
 import context

@@ -102,7 +102,7 @@ func encodeOutbound(o: Outbound): []byte {
 
 // First-pass shape — `p` stays as raw JSON bytes (Go's
 // `json.RawMessage` idiom) so a second-pass parse can narrow per
-// envelope kind without resorting to G23's `Any` escape in
+// envelope kind without resorting to the `Any` escape in
 // user-authored code.
 type RawInbound = {
   t: string

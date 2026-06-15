@@ -200,7 +200,7 @@ unwrapped value or returns the wrapped error.
 [[ TryExpr { inner: e } ]]
   where typeof(e) = Result<T, E_inner>
   and the enclosing function returns Result<U, E_outer>
-  and E_inner = E_outer                                  (per T-Try-Result, G11)
+  and E_inner = E_outer                                  (per T-Try-Result)
                                                       ⟿
   MatchExpr {
     subject: e,
@@ -239,8 +239,8 @@ The Option case is symmetric:
 ```
 
 After this stage, the IR contains **no** `TryExpr` nodes. The
-side-condition `E_inner = E_outer` is checked by sema (T-Try-Result,
-G11); E0402 / E0403 have fired already if it didn't hold. Desugaring
+side-condition `E_inner = E_outer` is checked by sema (T-Try-Result);
+E0402 / E0403 have fired already if it didn't hold. Desugaring
 asserts the invariant — if it fails here, that's E0701 (internal
 compiler error).
 

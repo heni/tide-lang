@@ -59,6 +59,34 @@ ask of the project.
 
 ## Decisions
 
+**Index.** Each decision below carries a stable label `Dn`, used as a
+cross-reference across these docs, code comments, and RFCs. This table is
+the canonical resolution for those labels (the convention is described in
+RFC-0000 §"Referencing decisions and stable labels").
+
+| Label | Decision |
+|---|---|
+| D1 | Go is an intermediate representation, not a target |
+| D2 | TypeScript-flavored syntax, ML-family type system, no JavaScript semantics |
+| D3 | Bind, do not port, the Go standard library |
+| D4 | Go packages are reachable only through an explicit binding layer |
+| D5 | Tide has its own decentralized package ecosystem |
+| D6 | Bindings are generated from `go/packages`, not hand-written |
+| D7 | No async/await function coloring; concurrency is uncolored |
+| D8 | Source-level debugging via `//line` directives |
+| D9 | The compiler is implemented in Go |
+| D10 | Errors are reported in Tide source coordinates |
+| D11 | Surface-syntax discipline |
+| D12 | v1 scope is defined by an example acceptance suite |
+| D13 | Validate the spec on paper before building the compiler |
+| D14 | Structural records, nominal behavioral types |
+| D15 | Tide targets a defined, stable subset of Go as its IR contract |
+| D16 | Tide is not a transpiler at the UX level |
+| D17 | Formal docs are authoritative; coverage is a hard rule |
+| D18 | Tide has a runtime, and it is part of the language contract |
+| D19 | Third-party Go dependencies are reserved for UX-only surfaces |
+| D20 | Module import graph is acyclic |
+
 ### D1 — Go is an intermediate representation, not a target
 
 **Claim.** Generated Go is a build artifact, like assembly or LLVM IR. It is
@@ -230,8 +258,8 @@ lexer or parser exists keeps mistakes cheap: a missing form in the spec
 costs an edit, not a compiler rebuild.
 
 **Status.** Complete for v1. Found roughly thirty surface-syntax gaps;
-each has a resolution folded into `docs/language-spec.md` (G15 binding
-naming convention also noted on D14).
+each has a resolution folded into `docs/language-spec.md` (the binding
+naming convention is also noted on D14).
 
 ### D14 — Structural records, nominal behavioral types
 
@@ -289,6 +317,26 @@ thin skin over Go, undermining its identity as a language in its own right.
 This is the product-identity counterpart to D1 (Go is an IR), D8 (`//line`
 source maps), and D10 (errors in Tide coordinates) — naming it explicitly
 guards against the project sliding into "just nicer Go syntax."
+
+### D17 — Formal docs are authoritative; coverage is a hard rule
+
+**Claim.** The formal specification in `lang-spec/` is the contract; the
+prose `docs/language-spec.md` is its mirror. On any disagreement the formal
+docs win, and a change requires a *paired* edit to both. Every spec
+artifact — each keyword, grammar production, operator, type rule,
+diagnostic code, and lowering rule — must be exercised by at least one
+atomic test fixture; an uncovered artifact blocks the change that
+introduces it.
+
+**Why.** A spec that prose and formal text can silently disagree on is two
+specs; making the formal text authoritative and the edits paired keeps them
+one. Mandatory atomic coverage makes the spec executable rather than
+aspirational — every rule the docs claim is backed by a fixture that fails
+if codegen drifts from it.
+
+**Trade-off.** Every spec-touching change costs a paired prose edit and at
+least one fixture. Accepted deliberately: the alternative is documentation
+rot and an untested contract.
 
 ### D18 — Tide has a runtime, and it is part of the language contract
 
@@ -435,8 +483,8 @@ question.
   transitive footprint.
 - Generated user code (Tide → Go output) may depend on a third-party
   Go module **only** through an explicit, version-pinned, hermetic
-  binding declared by the foreign-binding interface (see D21 /
-  RFC-0005) — a package named in the binding manifest, resolved via a
+  binding declared by the foreign-binding interface (see RFC-0005) —
+  a package named in the binding manifest, resolved via a
   vendored `replace` so the build never touches the network.
   *Accidental* and *transitive* third-party deps in generated code
   remain forbidden. Absent such a binding, the runtime in `tidert/`
@@ -493,49 +541,6 @@ functions, recursive types, recursive class methods, sum
 variants pointing to their own type, etc. The acyclic constraint
 applies to **module** imports only, never to definitions within
 a module.
-
-### D21 — Binding Go libraries: a semi-automatic FFI
-
-**Claim.** Tide binds Go libraries through a semi-automatic
-foreign-function interface, specified in
-[RFC-0005](rfcs/0005-go-ffi.md). A generator reads a Go package's
-*type* information and emits **declaration files** — Tide source whose
-function bodies are the marker `EXT` ("implemented by this Go symbol").
-A human curates those declarations and writes thin **adapter**
-functions on top. Automation does the mechanical routine; humans build
-the ergonomic interface. The surface covers any Go package — standard
-library and, through the D19-amended pinned-and-hermetic path,
-third-party.
-
-**Why.** Hand-writing a binding table per call does not scale to real
-library surface area (a process or regexp type has a dozen methods);
-fully-automatic translation is brittle at exactly the edges that
-matter (nullability, ownership, multiple returns, untranslatable
-types). The generate-then-curate split keeps the machine on the
-routine and the human where judgement is required. This is the
-concrete realisation of D6 ("binding signatures derived mechanically;
-humans write only the idiomatic wrapper").
-
-**The key advantage.** Because Tide compiles to Go and then
-type-checks the result, the **Go type checker re-verifies every
-binding against the real package**. A binding that has drifted from
-its library fails to build — surfaced in Tide source coordinates
-(D10). This turns the classic foreign-binding footgun — a wrong
-declaration that silently miscompiles, which afflicts every
-`external`-keyword language — into a build-time error.
-
-**Guarantees.** Foreign types Tide cannot model structurally become
-**opaque handles** (used through their methods); a symbol that uses an
-untranslatable type is emitted as a *poison declaration* that errors
-only when referenced — so one untranslatable corner never sterilises a
-whole package. `(T, error)` lifts to `Result`, comma-ok `(T, bool)` to
-`Option`, at the binding boundary.
-
-**Trade-off.** The declaration layer is a *trusted assertion* re-checked
-by the Go compiler, not a proof; the human curator owns the semantic
-layer (which `(T, bool)` is really comma-ok, where a handle may be nil,
-what needs `Close()`). The generated layer is deliberately allowed to be
-ugly — the adapter layer is where the idiomatic Tide API lives.
 
 ---
 

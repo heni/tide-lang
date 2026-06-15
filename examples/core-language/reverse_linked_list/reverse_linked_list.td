@@ -1,7 +1,7 @@
 // LeetCode 206. Reverse Linked List.
 // Iterative reversal of a singly-linked list. Classic O(n) / O(1).
 //
-// Forces: reference-typed nodes (G16 — `class` is a reference type, records
+// Forces: reference-typed nodes (`class` is a reference type, records
 // are values), Option-typed links, mutation through `var` and `this.field`.
 
 import fmt

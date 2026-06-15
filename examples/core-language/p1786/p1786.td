@@ -9,7 +9,7 @@
 //
 // Forces: a `[][]int` 2-D DP table allocated via two-step
 // `makeSlice<[]int>(n)` + per-row `makeSlice<int>(m)`, chained
-// index-write `dp[i][j] = ...` (G45 corollary), `Option<int>` modeled
+// index-write `dp[i][j] = ...` (corollary), `Option<int>` modeled
 // as `int` with a -1 sentinel matching the Go reference (Tide would
 // idiomatically use `Option<int>` — left as Option-style sentinel for
 // faithfulness to the reference), and rune-level case/class checks.

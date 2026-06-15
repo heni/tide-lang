@@ -18,9 +18,8 @@ then curates those declarations and writes thin **adapter** functions
 on top for ergonomics. The generated layer is allowed to be ugly; the
 adapter layer is where the nice Tide API lives. This is the
 "automation does the routine, humans build the interfaces and
-adapters" split, and it is the concrete realisation of decision D6
-("binding *signatures* derived mechanically from Go type info; humans
-write only the idiomatic wrapper layer").
+adapters" split: binding *signatures* are derived mechanically from
+Go type info, and humans write only the idiomatic wrapper layer.
 
 The interface covers the **whole FFI surface** — any Go package,
 stdlib or third-party — not a fixed binding list. Its forcing
@@ -43,8 +42,8 @@ Three forces make this necessary now.
    across the codegen *and* sema tables, with no oracle that the
    signatures are right.
 
-2. **`go/packages` is already in-process.** D9 chose Go as the host
-   language *specifically* so the binding generator can introspect Go
+2. **`go/packages` is already in-process.** The compiler is written in
+   Go *specifically* so the binding generator can introspect Go
    packages with `go/packages` / `go/types` in-process rather than by
    subprocess. The `internal/bindgen` package has stood as an empty
    stub ("Status: not implemented") since the project began. This RFC
@@ -100,12 +99,12 @@ This is cxx's "static-assert the boundary, don't translate the header"
 move, available to us for free:
 
 - At **generation** time, signatures come from `go/types` — wrong
-  arity / types / variadics are impossible by construction (D6).
+  arity / types / variadics are impossible by construction.
 - At **build** time, the emitted call (`pkg.GoName(args)`) is
   type-checked by Go against the imported package; a binding that has
   drifted from its package fails the build.
-- Per D10, such a failure must be surfaced in **`.td` coordinates and
-  Tide terminology**, never as a raw `go/types` diagnostic pointing at
+- Such a failure must be surfaced in **`.td` coordinates and Tide
+  terminology**, never as a raw `go/types` diagnostic pointing at
   generated Go. (A binding-drift diagnostic is a new obligation; see
   Paired edits.)
 
@@ -164,7 +163,7 @@ Elements:
   not just methods.
 - **`extern fn name(...): R = "GoName"`** — a package-level function.
   The body *is* the Go symbol; `= "GoName"` is the name override
-  (Go `Command` ↔ Tide `command`, the D6 case convention). The form
+  (Go `Command` ↔ Tide `command`, the standard case convention). The form
   `{ EXT }` (no override, Tide name = Go name) is equivalent.
 - **`extern impl T { … }`** — methods and fields on a foreign type.
   A method's receiver is the foreign value; an `extern var f: U` is an
@@ -206,7 +205,7 @@ The generator maps each Go type to a Tide type. The total rule:
 | `*T` (named) | opaque handle `T` | raw stays a handle; nil→`Option` is an adapter lift, never automatic (below) |
 | exported `struct{…}` | `extern struct` (record) **or** opaque `extern type` | human chooses (field-access vs method-only) |
 | `interface{ … }` | Tide `interface` | exported methods translated |
-| Go type param `[T any]` | Tide generic `<T>` | unbounded only (D11) |
+| Go type param `[T any]` | Tide generic `<T>` | unbounded only (bounded generics are out of v1 scope) |
 
 **Boundary lifts** happen *at the binding*, not deep in user code
 (ReScript's `@return(nullable)` / PureScript's `toMaybe` lesson):
@@ -241,7 +240,7 @@ type is **not silently mistranslated**.
 Untranslatable today (bail list): `unsafe.Pointer`, `uintptr`,
 `complex64/128`, channels/maps of unbindable element, multiple
 non-error returns of arity ≥ 3, embedded/anonymous struct fields,
-generic *constraints* beyond `any` (D11 parks bounded generics).
+generic *constraints* beyond `any` (bounded generics are out of v1 scope).
 
 **Bail-out strategy: poison-on-use, not demote-to-opaque.** Zig's
 cautionary tale: demoting an untranslatable struct to an opaque type
@@ -258,7 +257,7 @@ of the package, and the failure names the real reason at the use site.
 - **Symbol rename** — the trailing `= "GoName"` string decouples the
   Tide name from the Go symbol (universal across the lineage: OCaml
   `="caml_…"`, ReScript `="jsName"`, Crystal `= "c_name"`). Default is
-  the D6 case convention (`ServeHTTP` ↔ `serveHTTP`, `Compile` ↔
+  the standard case convention (`ServeHTTP` ↔ `serveHTTP`, `Compile` ↔
   `compile`).
 - **Namespace/path** — `@go("net/http")` supplies the Go import path;
   the Tide namespace is the package's short name (`http`). Nested
@@ -272,7 +271,7 @@ the fix is to depend only on stable, passed-in values. Tide's analog:
 **hand-written adapters and any Go-side shim depend only on a frozen,
 documented runtime/ABI surface** (the `Option`/`Result`/container
 prelude, the `tideResultOf` family), never on the incidental shape of
-generated Go. This contract is part of the runtime (D18); changing it
+generated Go. This contract is part of the runtime; changing it
 is a breaking change with its own review. Without this freeze, every
 codegen tweak risks breaking every binding.
 
@@ -367,8 +366,7 @@ Per the project's atomic-coverage rule, the constructs this RFC adds
 boundary-lift lowering, the new diagnostics) each owe ≥ 1 atomic
 fixture in `tests/{lexer,grammar,sema,codegen}/` on `implemented` —
 including a **`tests/lexer/`** fixture for the new `extern`/`EXT`
-tokens and the `@go` attribute (a new keyword owes lexer coverage per
-D17). Live
+tokens and the `@go` attribute (a new keyword owes lexer coverage). Live
 coverage is the corpus analyzer itself (soft until it lands). The Go
 type-checker re-verification is itself a testable invariant (a binding
 whose Go symbol is removed must fail with the `.td`-coord drift
@@ -394,7 +392,8 @@ diagnostic, not a `go/types` leak).
   and still needs the third-party-module plumbing. Pure-Tide adapters
   over raw `extern` items are the default.
 - **Borgo's `go/ast`/`go/doc` importer verbatim.** Rejected: it is
-  untyped (loses the very type info that makes D6 sound), hardcodes
+  untyped (loses the very type info that makes mechanical signature
+  derivation sound), hardcodes
   module paths, denies large packages, and `log.Fatal`s on shapes it
   cannot handle. We adopt its *shape* (`EXT`, opaque empty types, the
   two lift rules, a module manifest) and replace its engine with a
@@ -492,12 +491,13 @@ accepted with them open, resolved before `implemented`.
    like `json.parse<T>`); fully-inferred bound generics are not yet
    specified. In scope for the FFI v1, or deferred to the generics
    work?
-9. **Bindable subset vs the supported-Go-version range (D15).** The
-   bail-list is static, but D15 says the Go surface bindgen must
-   understand grows across Go releases — a third-party lib may use
-   generics constraints / type aliases / embedding outside today's
-   subset. Which Go version's surface must `tide import` understand,
-   and how is the bail-list pinned to the D15 supported range?
+9. **Bindable subset vs the supported-Go-version range.** The
+   bail-list is static, but the Go surface bindgen must understand
+   grows across Go releases (Tide pins a stable Go subset as its IR
+   contract) — a third-party lib may use generics constraints / type
+   aliases / embedding outside today's subset. Which Go version's
+   surface must `tide import` understand, and how is the bail-list
+   pinned to that supported range?
 10. **Runtime trust boundary for third-party code.** Build hermeticity
     (vendored `replace`) is handled, but a bound third-party package
     executes with full Go privileges at *runtime* — the first time the
@@ -517,8 +517,8 @@ accepted with them open, resolved before `implemented`.
   §"Relationship to D19".
 - 2026-06-15 — `draft → accepted`. The D19 amendment was signed off
   (third-party deps admitted in generated code only via an explicit,
-  pinned, hermetic binding); D19 amended and a public D21 decision
-  recorded. The ten open questions are flagged, not
+  pinned, hermetic binding); the D19 amendment was applied to the
+  public decision record. The ten open questions are flagged, not
   blockers (they resolve before `implemented`). Implementation — the
   `tide import` tool, the `extern` surface, third-party plumbing, and
   the corpus-analyzer port that motivated this RFC — is the next

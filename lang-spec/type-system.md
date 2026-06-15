@@ -38,7 +38,7 @@ formatting parameters on bound stdlib functions like
 type — a value of type `Any` cannot be used where a concrete `T`
 is expected, with no implicit cast. The resolver and sema
 together enforce that user-authored Tide code never introduces
-an `Any`-typed parameter (per D11/G23).
+an `Any`-typed parameter (per D11).
 
 `Dynamic` is the user-facing runtime-erased wrapper used by the
 reflection API (per RFC-0003 and D18). `Dynamic` is deliberately
@@ -345,7 +345,7 @@ component is.
                       Γ, x : T ⊢ var x : T' = e : unit
 
 [ Bare `var x : T` with no initialiser is rejected at the AST
-  / sema-stage level per G1 — v1 requires every `var` binding to
+  / sema-stage level — v1 requires every `var` binding to
   carry an explicit initial value (e.g. `var n: int = 0`). No
   zero-value defaulting. ]
 
@@ -594,7 +594,7 @@ under-report (miss a non-exhaustive match), never over-report.
 ```
 (T-Try-Result) Γ ⊢ e : Result<T, E_inner>
                enclosing function returns Result<U, E_outer>
-               E_inner = E_outer                              (per G11 — no implicit conversion)
+               E_inner = E_outer                              (no implicit conversion)
                ─────────────────────────────────────────────
                           Γ ⊢ try e : T
 
@@ -641,7 +641,7 @@ fires **E0404**. `spawn` outside a `scope` block fires
                        Γ ⊢ defer call : unit
 ```
 
-`defer` admits only a call expression as its argument (per G27);
+`defer` admits only a call expression as its argument;
 any other expression shape fires **E0406 defer argument must be
 a call**. The return type `T` of the deferred call is discarded.
 
@@ -834,7 +834,7 @@ Both are well-typed.
                   Γ ⊢ InterfaceDecl I         binds I as an interface type
 ```
 
-Top-level `let` is immutable (G14) and requires an initialiser
+Top-level `let` is immutable and requires an initialiser
 (no bare `let x: T` at file scope; the parser rejects, sema
 never sees it). There is no top-level `var` in v1.
 

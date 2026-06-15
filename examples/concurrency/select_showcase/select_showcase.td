@@ -3,7 +3,7 @@
 // time.after. The "right" way to wait on multiple channels with a
 // deadline, without leaking a goroutine.
 //
-// Forces: all `select` shapes (G28), time.after as a timeout idiom,
+// Forces: all `select` shapes, time.after as a timeout idiom,
 // mixed send+receive cases.
 
 import fmt

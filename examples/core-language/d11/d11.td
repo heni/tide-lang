@@ -7,7 +7,7 @@
 // the assumption the graph has no cycles in the relevant direction.
 //
 // Forces: `Map<string, []string>` (adjacency), `Map<string, int>`
-// (memoisation cache), `Set<string>` (G48) for cycle detection,
+// (memoisation cache), `Set<string>` for cycle detection,
 // recursion, string splitting.
 
 import fmt

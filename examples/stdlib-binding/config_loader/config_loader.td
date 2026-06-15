@@ -3,7 +3,7 @@
 //
 // Forces: structs, the `encoding/json` binding, file I/O, layered error
 // handling with `try`. JSON-tagged field names are part of the record's
-// declared shape — there is no `any`-typed escape (G23) needed at user
+// declared shape — there is no `any`-typed escape needed at user
 // level.
 
 import fmt

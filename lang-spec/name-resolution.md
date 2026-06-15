@@ -163,7 +163,7 @@ should rename or annotate.
 
 - **`this`** — receiver of an instance method. See above.
 - **`scope`** — inside the lexical body of a `scope { ... }`
-  block (G40), `scope` is a bound identifier that yields the
+  block, `scope` is a bound identifier that yields the
   current scope handle. `scope.context` is the cancellable
   context. Outside a scope block, `scope` *as a value* triggers
   **E0601 `scope` outside a scope block**.

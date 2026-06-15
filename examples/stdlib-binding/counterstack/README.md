@@ -14,7 +14,7 @@ in one place:
 | **Strategy as an interface** | `interface Strategy { decide(...): string }` with a trivial `class AlwaysDrop implements Strategy` |
 | **Per-variant DTOs for the wire** | `type HelloPayload = {...}` etc. — JSON serialization keys come from declared field names, not from an anonymous shape |
 | **Generic record** | `type Envelope<P>` — newly speced in `docs/language-spec.md` §Records |
-| **`json.RawMessage` idiom** | `RawInbound.p: []byte` keeps the raw inner JSON for a second-pass typed parse, so the user-side code never has to touch `Any` (G23 keeps `Any` to the binding boundary only) |
+| **`json.RawMessage` idiom** | `RawInbound.p: []byte` keeps the raw inner JSON for a second-pass typed parse, so the user-side code never has to touch `Any` (`Any` is kept to the binding boundary only) |
 
 The decode side is sketched — production code would call
 `json.parse<TickPayload>(raw.p)` etc. on the captured raw-bytes `.p`

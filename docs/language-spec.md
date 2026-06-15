@@ -298,7 +298,7 @@ Patterns support:
   `Err(e)` at its error type, and a user variant's bindings at the
   declared field types.
 - Tuples (`(Idle, InsertCoin(n))`, `(s, e)`). Note that `()` is the
-  unit-literal *pattern*, not a tuple — tuples are arity ≥ 2 (G24).
+  unit-literal *pattern*, not a tuple — tuples are arity ≥ 2.
 - Records by name (`User{ id, name }`) — punning omitted in v1.
 
 A `match` used at statement position discards its value; the arms must
@@ -324,7 +324,7 @@ all type to `unit`.
   (recursive component-wise).
 - Class instances — by **reference** identity (two distinct instances
   with identical fields are not `==`). For explicit reference equality,
-  the built-in `refEq<T>(a, b): bool` is the readable spelling (G26).
+  the built-in `refEq<T>(a, b): bool` is the readable spelling.
 
 **Boolean operators.** All three short-circuit; both operands and the
 result must be `bool`. There is no implicit truthiness — `0`, `""`,
@@ -496,7 +496,7 @@ class-with-instance pattern.
 
 ## Classes
 
-Classes are **reference types** (D14, G16): assignment copies the
+Classes are **reference types** (D14): assignment copies the
 reference; mutating a `var` field through any reference is visible
 through every reference to the same instance.
 

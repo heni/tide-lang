@@ -6,7 +6,7 @@
 //
 // Forces: a `[][]byte` 2-D grid with mutation `grid[r][c] = byte('.')`,
 // nested `r,c` iteration, neighbour scan over 8 deltas, byte-literal
-// comparison via `byte('@')` (G49).
+// comparison via `byte('@')`.
 
 import fmt
 import os

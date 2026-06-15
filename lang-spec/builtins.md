@@ -69,7 +69,7 @@ scope as `NamedType` (with no type args).
 - **`Any`** — escape type used at binding-boundary
   `...Any` variadic parameters. Does **not** narrow back to a
   concrete `T`; users may not introduce `Any`-typed parameters
-  in their own code (D11 / G23, enforced by the resolver).
+  in their own code (D11, enforced by the resolver).
 - **`Dynamic`** — user-facing runtime-erased wrapper for values
   whose static type is unknown to the caller, used by the
   `reflect` module. Introduced only at `reflect.*` parameter
@@ -134,7 +134,7 @@ type Result<T, E> =
 Sum type. Consumed by pattern match or `try` (see
 `T-Try-Result`). E is conventionally bound to `error` but any
 type is admissible — `try` requires the inner `E` to equal the
-enclosing function's declared error type (G11, no implicit
+enclosing function's declared error type (no implicit
 conversion).
 
 **Default error parameter.** When `E` is omitted from a written
@@ -160,7 +160,7 @@ slice value:
   len(): int
   push(e: T): []T                    [returns a NEW slice; the original is
                                        unchanged at the header level. Idiomatic
-                                       use: `xs = xs.push(e)` (G45)]
+                                       use: `xs = xs.push(e)`]
   copy(): []T                        [shallow header-copy with fresh backing
                                        array; used when callers must isolate
                                        mutations]

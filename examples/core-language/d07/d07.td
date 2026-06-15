@@ -7,9 +7,9 @@
 // original, and counts one split. Beams persist across rows. Report
 // the total splits and the surviving total timeline.
 //
-// Forces: `Set<int>` (G48) for the live beam positions, slice
-// index-assignment `s[i] = v` (G45 extension), rune iteration with
-// byte index `for (pos, c) in row` (G25), `.copy()` on slices.
+// Forces: `Set<int>` for the live beam positions, slice
+// index-assignment `s[i] = v` (extension), rune iteration with
+// byte index `for (pos, c) in row`, `.copy()` on slices.
 
 import fmt
 import os

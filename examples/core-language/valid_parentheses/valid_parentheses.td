@@ -1,7 +1,7 @@
 // LeetCode 20. Valid Parentheses.
 // Return true iff every opener has a matching, correctly-nested closer.
 //
-// Forces: a generic stack, runes (G6 — strings iterate as Unicode code
+// Forces: a generic stack, runes (strings iterate as Unicode code
 // points), match on character literals.
 
 import fmt

@@ -182,21 +182,44 @@ specifically the subagent checks:
 implemented` does not — when the paired edits and fixtures land,
 the status flips on the implementing PR.
 
-## Relationship to other decision records
+## Referencing decisions and stable labels
 
-- **D-prefix identifiers** (`D1`…`D17`) reference foundational
-  architectural decisions made during the project's
-  formalization phase; they are short stable labels that may
-  surface in RFC text and code comments. They capture the
-  *historical* foundations of the current baseline — the
-  "why is the language like this" answer — but not "what
-  changed since". Future decisions go through this RFC process,
-  not by appending to the D-series.
-- **Internal pipeline notes** (working drafts, decision logs,
-  contributor process) are gitignored. RFCs are the
-  **public**, committed paper trail.
-- **`lang-spec/`** is the contract. RFCs propose changes to it;
-  accepted RFCs trigger paired edits there.
+Committed artifacts (RFCs, `lang-spec/`, `docs/`, code comments)
+cross-reference each other with short **stable labels** rather than
+prose restatements. Four families are in use, each with a single
+**canonical committed home** that resolves the label:
+
+| Family | Example | Resolves in |
+|---|---|---|
+| **`Dn`** — architectural decision | `D6`, `D19` | `docs/design-decisions.md` (the decision **index** at the head of §Decisions) |
+| **`Exxxx`** — diagnostic code | `E0103`, `E0303` | `lang-spec/diagnostics.md` (the code catalog) |
+| **`T-Foo`** — type-system rule | `T-RefEq`, `T-Extern` | `lang-spec/type-system.md` |
+| **`§Foo`** — spec-section anchor | `§ScopeIR`, `§ForeignCall` | the named `lang-spec/` file |
+
+Two rules keep these honest:
+
+- **A label cited in a committed artifact MUST resolve to a committed
+  home.** A reference that resolves only to a gitignored pipeline note
+  (working drafts, decision logs, the paper-validation gap log and its
+  `Gn` identifiers) is a **dangling link** for anyone outside the dev
+  pipeline and is not allowed in committed files — inline the substance
+  instead, or omit it.
+- **Use labels sparingly.** Prefer stating the rationale inline over a
+  decorative `(Dn)` citation; cite a label only where it is
+  *load-bearing* — most importantly, where an RFC **amends** an existing
+  decision and must name what it changes.
+
+The `Dn` series captures foundational and genuinely cross-cutting
+architectural decisions. Feature-level and surface changes go through
+*this* RFC process and are referenced by their **RFC number**, not by
+minting a new `Dn`; an accepted RFC's own decision is cited as
+`RFC-NNNN`, never duplicated as a parallel `Dn` label.
+
+**Internal pipeline notes** (working drafts, decision logs, the
+paper-validation gap log, contributor process) are gitignored; RFCs and
+the `docs/`/`lang-spec/` records are the **public**, committed paper
+trail. **`lang-spec/`** is the contract — RFCs propose changes to it,
+and accepted RFCs trigger paired edits there.
 
 ## Numbering and naming
 

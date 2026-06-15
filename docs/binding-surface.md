@@ -16,7 +16,7 @@ direct, variadic `interface{}` → `...Any` — apply throughout.
 ## fmt
 
 ```td
-// Variadic output. Each argument widens to Any at the call site (G23).
+// Variadic output. Each argument widens to Any at the call site.
 fmt.println(args: ...Any)
 fmt.print(args: ...Any)
 fmt.printf(format: string, args: ...Any)

@@ -3,7 +3,7 @@
 // Demonstrates static factory methods, instance methods under the
 // implicit-receiver rule (bare field/method names; `this.field` reserved
 // for the shadowed case, which this class avoids by construction), and
-// that classes are reference types (G16) — the list nodes referenced
+// that classes are reference types — the list nodes referenced
 // from the map are the same objects mutated by `touch`.
 
 import fmt

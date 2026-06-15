@@ -7,7 +7,7 @@
 //
 // Forces: a slice-as-queue idiom (`queue = queue.push(p)` to enqueue;
 // `queue[0]` + `queue = queue[1:]` to dequeue), a `Map<Coord, bool>`
-// keyed by a record (record structural equality (G24/§Expressions)
+// keyed by a record (record structural equality (§Expressions)
 // gives the comparable property the map needs), `Option<Coord>` for
 // move results, and sum-typed direction enum with exhaustive match.
 

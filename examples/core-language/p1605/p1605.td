@@ -5,7 +5,7 @@
 // digits in 2^(n - n%2) minus 1, with a small adjustment.
 //
 // Forces: `math.log10` from the new `math` binding row, `int(float64)`
-// truncation (G49), `float64(int)` widening, mixed-type arithmetic.
+// truncation, `float64(int)` widening, mixed-type arithmetic.
 
 import fmt
 import math

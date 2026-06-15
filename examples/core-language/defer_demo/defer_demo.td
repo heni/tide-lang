@@ -2,7 +2,7 @@
 // Source: https://github.com/borgo-lang/borgo/blob/main/compiler/test/snapshot/codegen-emit/defer-statements.exp
 //
 // `defer` is identical in Borgo and Tide: function-scoped, LIFO,
-// adopted directly from Go (G27). The expected output is:
+// adopted directly from Go. The expected output is:
 //
 //   first
 //   second

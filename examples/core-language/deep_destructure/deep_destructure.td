@@ -4,7 +4,7 @@
 // [`S05-pattern-matching/`](https://github.com/Raku/roast/tree/master/S05-grammar)
 // and `S07-iterators-and-laziness` test suites hammer pattern
 // destructuring at unusual depth: variants of records of tuples of
-// variants. Tide's `match` (G8/G19/G24) was designed to handle this
+// variants. Tide's `match` was designed to handle this
 // without growing new syntax — the stress test is whether the spec
 // composes the existing rules cleanly.
 //

@@ -11,9 +11,9 @@
 // Forces: a `class DSU` with array-backed parent and size tables,
 // path-compressing `find` that writes back into a `var` field through
 // the implicit-receiver rule (`id[a] = find(id[a])`); `math.sqrt`;
-// primitive numeric conversion `float64(int)` (G49); `sort.sorted`
+// primitive numeric conversion `float64(int)`; `sort.sorted`
 // over a `(int, int, float64)` tuple by `.2` inside `buildPairs` and
-// by `.1` inside `components()` (G24).
+// by `.1` inside `components()`.
 
 import fmt
 import math

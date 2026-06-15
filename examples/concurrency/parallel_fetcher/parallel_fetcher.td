@@ -20,7 +20,7 @@ type Page = {
 }
 
 // `scope.context` is the cancellable context of the surrounding
-// concurrency scope (G40 — lexically bound). Each fetch attaches its
+// concurrency scope (lexically bound). Each fetch attaches its
 // own deadline derived from that context.
 func fetch(parent: context.Context, url: string, timeout: time.Duration):
     Result<Page, error> {
