@@ -1,0 +1,11 @@
+--- pipeline.td
++++ pipeline.td
+@@ -35,6 +35,8 @@
+   out.close()
+ }
+ 
++func produce() {}
++
+ func main() {
+   let nums    = makeChannel<int>(4)
+   let squares = makeChannel<int>(4)

@@ -1,0 +1,11 @@
+--- p1786.td
++++ p1786.td
+@@ -34,7 +34,7 @@
+   return c
+ }
+ 
+-func cost(a: rune, b: rune): int {
++func cost(a: rune b: rune): int {
+   if a == b                              { return 0  }
+   if toLower(a) == toLower(b)            { return 5  }
+   if isLower(a) == isLower(b)            { return 5  }

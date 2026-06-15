@@ -1,0 +1,11 @@
+--- select_showcase.td
++++ select_showcase.td
+@@ -27,7 +27,7 @@
+ 
+     // Drain outbox so the "send" case can succeed; track count.
+     spawn {
+-      var n = 0
++      var n: string = 0
+       for _ in outbox {
+         n = n + 1
+       }

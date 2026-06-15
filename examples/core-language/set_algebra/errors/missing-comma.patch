@@ -1,0 +1,11 @@
+--- set_algebra.td
++++ set_algebra.td
+@@ -14,7 +14,7 @@
+ import fmt
+ import strconv
+ 
+-func union(a: Set<int>, b: Set<int>): Set<int> {
++func union(a: Set<int> b: Set<int>): Set<int> {
+   let out = Set<int>{}
+   for x in a { out.add(x) }
+   for x in b { out.add(x) }

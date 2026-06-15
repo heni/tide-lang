@@ -1,0 +1,11 @@
+--- merge_intervals.td
++++ merge_intervals.td
+@@ -46,6 +46,8 @@
+   return "[" + strconv.itoa(iv.start) + "," + strconv.itoa(iv.end) + "]"
+ }
+ 
++func merge() {}
++
+ func main() {
+   let input = [
+     Interval{ start: 1,  end: 3 },

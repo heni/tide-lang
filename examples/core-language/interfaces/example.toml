@@ -21,3 +21,10 @@ expect  = ["E0401"]
 stage   = "sema"
 matches = "errors/class-equality.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/dup-baz.patch"   # a second top-level declaration of baz
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-baz.expected"
+origin  = "synthetic"

@@ -35,3 +35,10 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-merge3-e0112.expected"
 origin  = "organic:holefill-3"
+
+[[error]]
+patch   = "errors/dup-merge.patch"   # a second top-level declaration of merge
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-merge.expected"
+origin  = "synthetic"

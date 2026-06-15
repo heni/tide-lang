@@ -1,0 +1,11 @@
+--- concurrency.td
++++ concurrency.td
+@@ -46,7 +46,7 @@
+   //
+   // Fan-out: N workers each send 1 into `ch`; the body collects N and
+   // sums them. The scope's join contract replaces sync.WaitGroup.
+-  let desired = 5
++  let desired: string = 5
+   let total = scope<int, error> {
+     for _ in 0..desired {
+       spawn { ch.send(1); return Ok(()) }

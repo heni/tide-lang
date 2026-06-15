@@ -14,3 +14,10 @@ expect  = ["E0403"]
 stage   = "sema"
 matches = "errors/try-error-type-mismatch.expected"
 origin  = "organic:hole-fill"
+
+[[error]]
+patch   = "errors/missing-comma.patch"   # missing comma between arguments
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-comma.expected"
+origin  = "synthetic"

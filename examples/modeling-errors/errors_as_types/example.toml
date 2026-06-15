@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "errors_as_types.td"
+
+[[error]]
+patch   = "errors/dup-foo.patch"   # a second top-level declaration of foo
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-foo.expected"
+origin  = "synthetic"

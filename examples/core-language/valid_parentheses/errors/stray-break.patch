@@ -1,0 +1,10 @@
+--- valid_parentheses.td
++++ valid_parentheses.td
+@@ -42,6 +42,7 @@
+ }
+ 
+ func main() {
++  break
+   let cases = ["()", "()[]{}", "(]", "([)]", "{[]}", ""]
+   for s in cases {
+     fmt.println(s, "->", isValid(s))

@@ -49,3 +49,10 @@ expect  = ["E0108"]
 stage   = "sema"
 matches = "errors/type-as-value.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/missing-comma.patch"   # missing comma between arguments
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-comma.expected"
+origin  = "synthetic"

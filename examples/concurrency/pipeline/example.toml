@@ -21,3 +21,17 @@ expect  = ["E0405"]
 stage   = "sema"
 matches = "errors/spawn-outside-scope.expected"
 origin  = "synthetic"
+
+[[error]]
+patch   = "errors/annot-mismatch.patch"   # total annotated string but assigned an int
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/annot-mismatch.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/dup-produce.patch"   # a second top-level declaration of produce
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-produce.expected"
+origin  = "synthetic"

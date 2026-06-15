@@ -1,0 +1,11 @@
+--- config_loader.td
++++ config_loader.td
+@@ -39,7 +39,7 @@
+   }
+   match loadConfig(os.args[1]) {
+     Ok(cfg) => {
+-      fmt.println("server:", cfg.server.host + ":", cfg.server.port)
++      fmt.println("server:", cfg.server.host + ":" cfg.server.port)
+       fmt.println("log:",    cfg.log.level)
+       match cfg.log.file {
+         Some(f) => fmt.println("log file:", f),

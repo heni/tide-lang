@@ -49,3 +49,10 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-step2-e0112.expected"
 origin  = "organic:holefill-2"
+
+[[error]]
+patch   = "errors/stray-break.patch"   # a stray break with no enclosing loop
+expect  = ["E0404"]
+stage   = "sema"
+matches = "errors/stray-break.expected"
+origin  = "synthetic"

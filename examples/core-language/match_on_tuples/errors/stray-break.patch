@@ -1,0 +1,10 @@
+--- match_on_tuples.td
++++ match_on_tuples.td
+@@ -13,6 +13,7 @@
+ import fmt
+ 
+ func main() {
++  break
+   let res = match (1, "foo") {
+     (3, _)        => 5,
+     (1, "bar")    => 6,

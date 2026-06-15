@@ -1,0 +1,11 @@
+--- p1683.td
++++ p1683.td
+@@ -23,7 +23,7 @@
+ 
+ func main() {
+   match fmt.scan<int>() {
+-    Err(e) => { fmt.println("read error:", e); os.exit(1) },
++    Err(e) => { fmt.println("read error:" e); os.exit(1) },
+     Ok(n)  => {
+       let cuts = solve(n)
+       fmt.println(cuts.len())

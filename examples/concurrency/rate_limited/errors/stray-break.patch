@@ -1,0 +1,10 @@
+--- rate_limited.td
++++ rate_limited.td
+@@ -17,6 +17,7 @@
+ }
+ 
+ func main() {
++  break
+   let deadline = time.after(time.milliseconds(500))
+   let ticks    = time.tick(time.milliseconds(50))
+   let buffer   = makeChannel<int>(4)

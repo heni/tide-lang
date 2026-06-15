@@ -1,0 +1,11 @@
+--- p1423.td
++++ p1423.td
+@@ -40,7 +40,7 @@
+ // Find first occurrence of `a` in `b`, or -1.
+ func fastFind(a: []byte, b: []byte): int {
+   let pi = calcPrefixFn(a)
+-  var st = 0
++  var st: string = 0
+   for (i, c) in b {
+     st = nextState(a, pi, st, c)
+     if st == a.len() {

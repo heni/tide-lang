@@ -1,0 +1,10 @@
+--- select_showcase.td
++++ select_showcase.td
+@@ -10,6 +10,7 @@
+ import time
+ 
+ func main() {
++  break
+   let inbox   = makeChannel<string>(4)
+   let outbox  = makeChannel<int>(4)
+   let stop    = makeChannel<unit>(1)

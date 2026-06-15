@@ -1,0 +1,11 @@
+--- interfaces.td
++++ interfaces.td
+@@ -35,6 +35,8 @@
+   let _ = c.foo()
+ }
+ 
++func baz() {}
++
+ func main() {
+   let b = Bar{ x: 6 }
+   fmt.println(baz(b))                                 // 10

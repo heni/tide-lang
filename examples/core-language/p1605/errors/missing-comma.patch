@@ -1,0 +1,11 @@
+--- p1605.td
++++ p1605.td
+@@ -19,7 +19,7 @@
+ 
+ func main() {
+   match fmt.scan<int>() {
+-    Err(e) => { fmt.println("read error:", e); os.exit(1) },
++    Err(e) => { fmt.println("read error:" e); os.exit(1) },
+     Ok(n)  => fmt.println(solve(n)),
+   }
+ }

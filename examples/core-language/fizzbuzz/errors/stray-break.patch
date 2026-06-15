@@ -1,0 +1,10 @@
+--- fizzbuzz.td
++++ fizzbuzz.td
+@@ -3,6 +3,7 @@
+ import fmt
+ 
+ func main() {
++  break
+   for i in 1..=100 {
+     if i % 15 == 0 {
+       fmt.println("FizzBuzz")

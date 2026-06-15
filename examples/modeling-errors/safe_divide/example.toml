@@ -14,3 +14,10 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/bare-record-literal.expected"
 origin  = "organic:hole-fill"
+
+[[error]]
+patch   = "errors/dup-safeDivide.patch"   # a second top-level declaration of safeDivide
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-safeDivide.expected"
+origin  = "synthetic"

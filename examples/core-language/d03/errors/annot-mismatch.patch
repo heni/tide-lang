@@ -1,0 +1,11 @@
+--- d03.td
++++ d03.td
+@@ -28,7 +28,7 @@
+     let s = strings.trimSpace(ln)
+     if s.len() == 0 { continue }
+     var line: []int = []int{}
+-    var i = 0
++    var i: string = 0
+     while i < s.len() {
+       let n = try strconv.atoi(s[i:i+1])
+       line = line.push(n)

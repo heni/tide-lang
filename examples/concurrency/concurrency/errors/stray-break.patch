@@ -1,0 +1,10 @@
+--- concurrency.td
++++ concurrency.td
+@@ -25,6 +25,7 @@
+ import fmt
+ 
+ func main() {
++  break
+   let ch = makeChannel<int>(8)
+ 
+   let initial = scope<int, error> {

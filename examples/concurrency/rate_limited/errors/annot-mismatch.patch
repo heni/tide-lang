@@ -1,0 +1,11 @@
+--- rate_limited.td
++++ rate_limited.td
+@@ -26,7 +26,7 @@
+     // Producer: every iteration tries to enqueue a sequential number;
+     // drops if the buffer is full. Exits when deadline closes.
+     spawn {
+-      var i = 0
++      var i: string = 0
+       var done = false
+       while !done {
+         i = i + 1

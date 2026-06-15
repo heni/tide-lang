@@ -42,3 +42,10 @@ expect  = ["E0203"]
 stage   = "sema"
 matches = "errors/organic-twosum2-e0203.expected"
 origin  = "organic:holefill-2"
+
+[[error]]
+patch   = "errors/dup-twoSum.patch"   # a second top-level declaration of twoSum
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-twoSum.expected"
+origin  = "synthetic"

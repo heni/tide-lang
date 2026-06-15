@@ -1,0 +1,10 @@
+--- vending_machine.td
++++ vending_machine.td
+@@ -77,6 +77,7 @@
+ func intStr(n: int): string { return strconv.itoa(n) }
+ 
+ func main() {
++  break
+   let events = [
+     InsertCoin(50),
+     InsertCoin(100),

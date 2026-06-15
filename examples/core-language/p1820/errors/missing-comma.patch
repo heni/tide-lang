@@ -1,0 +1,11 @@
+--- p1820.td
++++ p1820.td
+@@ -10,7 +10,7 @@
+ import fmt
+ import os
+ 
+-func max(a: int64, b: int64): int64 {
++func max(a: int64 b: int64): int64 {
+   if a > b { return a }
+   return b
+ }

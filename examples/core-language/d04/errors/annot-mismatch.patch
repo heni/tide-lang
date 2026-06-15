@@ -1,0 +1,11 @@
+--- d04.td
++++ d04.td
+@@ -28,7 +28,7 @@
+   let roll = byte('@')
+   let n = grid.len()
+   let m = grid[0].len()
+-  var count = 0
++  var count: string = 0
+   for dr in -1..=1 {
+     for dc in -1..=1 {
+       if dr == 0 && dc == 0 { continue }

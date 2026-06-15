@@ -1,0 +1,11 @@
+--- pipeline.td
++++ pipeline.td
+@@ -27,7 +27,7 @@
+ 
+ // Stage 3: read from `inCh`, accumulate a sum, push it to `out`, close.
+ func sum(inCh: RecvChan<int>, out: SendChan<int>) {
+-  var total = 0
++  var total: string = 0
+   for v in inCh {
+     total = total + v
+   }

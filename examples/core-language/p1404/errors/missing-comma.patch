@@ -1,0 +1,11 @@
+--- p1404.td
++++ p1404.td
+@@ -28,7 +28,7 @@
+ 
+ func main() {
+   match fmt.scan<string>() {
+-    Err(e) => { fmt.println("read error:", e); os.exit(1) },
++    Err(e) => { fmt.println("read error:" e); os.exit(1) },
+     Ok(s)  => fmt.println(decode(s)),
+   }
+ }

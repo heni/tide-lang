@@ -1,0 +1,11 @@
+--- d09.td
++++ d09.td
+@@ -81,7 +81,7 @@
+ 
+ func solveSimple(corners: []Corner): int {
+   let n = corners.len()
+-  var best = 0
++  var best: string = 0
+   for i in 0..n {
+     for j in (i + 1)..n {
+       let a = area(corners[i], corners[j])

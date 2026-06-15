@@ -1,0 +1,11 @@
+--- safe_divide.td
++++ safe_divide.td
+@@ -10,6 +10,8 @@
+   return Ok(a / b)
+ }
+ 
++func safeDivide() {}
++
+ func main() {
+   match safeDivide(10, 2) {
+     Ok(v)  => fmt.println("ok", v),

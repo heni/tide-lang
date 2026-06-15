@@ -42,3 +42,10 @@ expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-reverse2-e0112.expected"
 origin  = "organic:holefill-2"
+
+[[error]]
+patch   = "errors/dup-reverse.patch"   # a second top-level declaration of reverse
+expect  = ["E0113"]
+stage   = "sema"
+matches = "errors/dup-reverse.expected"
+origin  = "synthetic"

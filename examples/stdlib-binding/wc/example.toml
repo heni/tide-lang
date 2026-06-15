@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "wc.td"
+
+[[error]]
+patch   = "errors/missing-comma.patch"   # missing comma between arguments
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-comma.expected"
+origin  = "synthetic"

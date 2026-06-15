@@ -1,0 +1,11 @@
+--- p1335.td
++++ p1335.td
+@@ -12,7 +12,7 @@
+ 
+ func main() {
+   match fmt.scan<uint64>() {
+-    Err(e) => { fmt.println("read error:", e); os.exit(1) },
++    Err(e) => { fmt.println("read error:" e); os.exit(1) },
+     Ok(n)  => {
+       fmt.println(n * (n + 1), n * (n + 2), n * n)
+     },

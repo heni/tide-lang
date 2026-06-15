@@ -1,0 +1,11 @@
+--- reverse_linked_list.td
++++ reverse_linked_list.td
+@@ -54,6 +54,8 @@
+   }
+ }
+ 
++func reverse() {}
++
+ func main() {
+   let xs = build([1, 2, 3, 4, 5])
+   fmt.println("before:", render(xs))

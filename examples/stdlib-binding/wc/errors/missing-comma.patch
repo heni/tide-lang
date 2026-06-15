@@ -1,0 +1,11 @@
+--- wc.td
++++ wc.td
+@@ -20,7 +20,7 @@
+ func count(data: []byte): Counts {
+   let text = strings.fromBytes(data)
+   return Counts{
+-    lines: strings.count(text, "\n"),
++    lines: strings.count(text "\n"),
+     words: strings.fields(text).len(),
+     bytes: data.len(),
+   }

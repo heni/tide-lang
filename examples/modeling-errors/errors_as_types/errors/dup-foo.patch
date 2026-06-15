@@ -1,0 +1,11 @@
+--- errors_as_types.td
++++ errors_as_types.td
+@@ -36,6 +36,8 @@
+   return Ok(x)
+ }
+ 
++func foo() {}
++
+ func main() {
+   let x = foo()
+   let y = bar()

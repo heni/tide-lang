@@ -7,10 +7,3 @@ since    = "0.1"
 status   = "target-sketch"
 expects  = "run-pass"
 entry    = "lru_cache.td"
-
-[[error]]
-patch   = "errors/organic-lruget3-e0112.patch"   # Look up k in index map; if found, touch the node and return its value wrapped …
-expect  = ["E0112"]
-stage   = "parse"
-matches = "errors/organic-lruget3-e0112.expected"
-origin  = "organic:holefill-3"

@@ -1,0 +1,11 @@
+--- deep_destructure.td
++++ deep_destructure.td
+@@ -29,7 +29,7 @@
+   | Idle
+   | Move(info: StepInfo)
+   | Pause(reason: string)
+-  | Abort(info: StepInfo, cause: string)
++  | Abort(info: StepInfo cause: string)
+ 
+ func dirName(d: Direction): string {
+   return match d {

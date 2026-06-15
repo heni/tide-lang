@@ -1,0 +1,11 @@
+--- parse_int.td
++++ parse_int.td
+@@ -9,7 +9,7 @@
+ 
+ func main() {
+   match parseInt("42") {
+-    Ok(v)  => fmt.println("ok", v),
++    Ok(v)  => fmt.println("ok" v),
+     Err(e) => fmt.println("err", e),
+   }
+   match parseInt("nope") {

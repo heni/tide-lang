@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "d09.td"
+
+[[error]]
+patch   = "errors/annot-mismatch.patch"   # best annotated string but assigned an int
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/annot-mismatch.expected"
+origin  = "synthetic"

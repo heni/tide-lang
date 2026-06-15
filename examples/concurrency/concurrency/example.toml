@@ -7,3 +7,17 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "concurrency.td"
+
+[[error]]
+patch   = "errors/annot-mismatch.patch"   # desired annotated string but assigned an int
+expect  = ["E0201"]
+stage   = "sema"
+matches = "errors/annot-mismatch.expected"
+origin  = "synthetic"
+
+[[error]]
+patch   = "errors/stray-break.patch"   # a stray break with no enclosing loop
+expect  = ["E0404"]
+stage   = "sema"
+matches = "errors/stray-break.expected"
+origin  = "synthetic"

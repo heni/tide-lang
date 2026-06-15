@@ -1,0 +1,11 @@
+--- two_sum.td
++++ two_sum.td
+@@ -18,6 +18,8 @@
+   return None
+ }
+ 
++func twoSum() {}
++
+ func main() {
+   let nums = [2, 7, 11, 15]
+   let target = 9

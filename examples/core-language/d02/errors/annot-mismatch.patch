@@ -1,0 +1,11 @@
+--- d02.td
++++ d02.td
+@@ -47,7 +47,7 @@
+ 
+ func checkHard(s: string): bool {
+   let n = s.len()
+-  var d = 1
++  var d: string = 1
+   while d <= n / 2 {
+     if n % d == 0 {
+       var parts: []string = []string{}

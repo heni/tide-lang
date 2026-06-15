@@ -1,0 +1,10 @@
+--- defer_demo.td
++++ defer_demo.td
+@@ -12,6 +12,7 @@
+ import fmt
+ 
+ func main() {
++  break
+   fmt.println("first")
+   defer fmt.println("defer 1")
+ 

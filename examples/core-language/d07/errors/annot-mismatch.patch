@@ -1,0 +1,11 @@
+--- d07.td
++++ d07.td
+@@ -42,7 +42,7 @@
+   for _ in 0..width {
+     timelines = timelines.push(0)
+   }
+-  var splits = 0
++  var splits: string = 0
+ 
+   for ln in lines {
+     var nBeams: Set<int> = Set<int>{}

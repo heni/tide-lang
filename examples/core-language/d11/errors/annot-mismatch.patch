@@ -1,0 +1,11 @@
+--- d11.td
++++ d11.td
+@@ -59,7 +59,7 @@
+   }
+   visited.add(v)
+ 
+-  var total = 0
++  var total: string = 0
+   let neighbours = match adj.get(v) {
+     Some(ns) => ns,
+     None     => []string{},
