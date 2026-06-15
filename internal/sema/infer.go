@@ -217,6 +217,12 @@ func (c *checker) inferBraceLit(b *ast.BraceLit) Type {
 		return c.inferContainerBraceLit(b, name)
 	}
 	rt := c.typeFromExpr(b.TypeName)
+	// An opaque handle has no visible layout — it cannot be built
+	// from a literal (ffi.md §ExternType).
+	if isOpaqueHandle(rt) {
+		c.report("E1001", "Cannot construct opaque foreign handle "+rt.String()+" — obtain it from an extern function", b.Span)
+		return &Unknown{}
+	}
 	for _, e := range b.Entries {
 		switch en := e.(type) {
 		case *ast.RecordEntry:
@@ -349,7 +355,7 @@ func (c *checker) inferCall(call *ast.Call) Type {
 	if id, ok := call.Callee.(*ast.Ident); ok {
 		if sym := c.info.Symbol[id]; sym != nil {
 			switch sym.Kind {
-			case SymFunc, SymMethod:
+			case SymFunc, SymMethod, SymExternFunc:
 				if fn, ok := sym.Type.(*Func); ok {
 					if len(fn.TypeParams) > 0 {
 						fn = c.instantiate(fn, call, args)
@@ -357,6 +363,10 @@ func (c *checker) inferCall(call *ast.Call) Type {
 					c.checkArgTypes(fn.Params, args, call.Args, sym.Name)
 					ret = fn.Return
 				}
+			case SymExternType:
+				// An opaque handle cannot be constructed by Tide — only
+				// returned from an extern function (ffi.md §ExternType).
+				c.report("E1001", "Cannot construct opaque foreign handle "+sym.Name+" — obtain it from an extern function", call.Span)
 			case SymClass:
 				ret = c.checkConstructor(sym, args, call.Args)
 			case SymUserVariant:
@@ -559,6 +569,23 @@ func (c *checker) inferField(f *ast.Field) Type {
 		for _, m := range id.Methods {
 			if m.Name == f.Name {
 				return c.interfaceMethodType(m)
+			}
+		}
+		return &Unknown{}
+	}
+	// Opaque-handle member access — a method gives its Func, a field
+	// gives its declared type, both from the `extern impl` (ffi.md).
+	if _, ok := named.Decl.(*ast.ExternTypeDecl); ok {
+		if ei := c.externImpls[named.N]; ei != nil {
+			for _, m := range ei.Methods {
+				if m.Name == f.Name {
+					return c.externMethodSigType(m)
+				}
+			}
+			for _, fld := range ei.Fields {
+				if fld.Name == f.Name {
+					return c.typeFromExpr(fld.DeclType)
+				}
 			}
 		}
 		return &Unknown{}
@@ -866,12 +893,20 @@ func (c *checker) bindPatternType(p ast.Pattern, t Type) {
 			sym.Type = t
 		}
 	case *ast.TuplePat:
+		if isOpaqueHandle(t) {
+			c.report("E1002", "Cannot destructure opaque foreign handle "+t.String(), pat.Span)
+			return
+		}
 		if tup, ok := t.(*Tuple); ok && len(tup.Comps) == len(pat.Sub) {
 			for i, sub := range pat.Sub {
 				c.bindPatternType(sub, tup.Comps[i])
 			}
 		}
 	case *ast.RecordPat:
+		if isOpaqueHandle(t) {
+			c.report("E1002", "Cannot destructure opaque foreign handle "+t.String(), pat.Span)
+			return
+		}
 		for _, f := range pat.Fields {
 			c.bindPatternType(f.Pattern, c.recordFieldType(t, f.Name))
 		}

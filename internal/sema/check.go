@@ -8,7 +8,12 @@ import (
 // plus any diagnostics, ordered by source position.
 // See docs/internals/sema.md.
 func Check(f *ast.File, file string) (*Info, []*Diag) {
-	c := &checker{file: file, info: newInfo(), closureExpect: map[*ast.ClosureLit]*Func{}}
+	c := &checker{
+		file:          file,
+		info:          newInfo(),
+		closureExpect: map[*ast.ClosureLit]*Func{},
+		externImpls:   map[string]*ast.ExternImplDecl{},
+	}
 	scope := c.indexDeclarations(f)
 	c.resolveFile(f, scope)
 	c.constructShapes(f, scope)
@@ -38,6 +43,11 @@ type checker struct {
 	// `sort.sorted`, etc.) rather than left Unknown. Keyed by the
 	// closure node; set just before its enclosing argument is inferred.
 	closureExpect map[*ast.ClosureLit]*Func
+
+	// externImpls maps an opaque foreign handle's name to the
+	// `extern impl T { … }` block carrying its methods/fields, so
+	// member access on a handle (ffi.md §ExternImpl) can resolve.
+	externImpls map[string]*ast.ExternImplDecl
 }
 
 func (c *checker) report(code, message string, span ast.Span) {

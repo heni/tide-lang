@@ -48,6 +48,14 @@ nilability, so the generator cannot prove non-nil. Guarding nil and
 lifting `*T → Option<T>` is an **adapter** responsibility — the raw
 layer never auto-lifts a handle to `Option`.
 
+A handle is **opaque** (T-Extern): it cannot be built from a Tide
+literal or constructor call (**E1001**), cannot be tuple/record-
+destructured (**E1002**), and is excluded from structural `==`/`!=`
+(routed to `refEq`). It **is** admitted into `refEq` as a
+reference-identity type — `refEq(a, b)` on two handles of the same
+`extern type` is well-typed (the relaxed T-RefEq / E0206; now in
+effect).
+
 ### `extern func` — package-level foreign function
 
 `extern func f(params): R @go("pkg.Sym")` binds a package-level Go
@@ -104,16 +112,24 @@ This is the property the `external`-keyword lineage (OCaml, ReScript,
 Gleam, PureScript) lacks — there a wrong declaration miscompiles
 silently. In Tide it is a build-time error.
 
-## Type translation and boundary lifts
+## Typing the surface
 
-The mechanical Go→Tide type map and the two automatic boundary lifts —
+An extern function/method/field is typed by its declared (curated)
+signature, exactly like an ordinary call/field access — the rules are
+**T-Extern** (`type-system.md` §"Foreign handles"). Because the curated
+`.td` writes any boundary-lifted return type (`Result<·, error>`,
+`Option<·>`) **directly**, there is no separate lift judgement at the
+type level: `extern func atoi(s: string): Result<int, error>` simply
+*is* a function returning `Result<int, error>` to the type checker. The
+lift from Go's `(int, error)` into that `Result` is a **lowering** rule
+(`lowering-go.md` §ForeignCall), applied at codegen.
+
+The mechanical Go→Tide type map the **generator** uses, and the two
+automatic boundary lifts it applies when emitting the curated file —
 `(T, error) → Result<T, error>` and comma-ok `(T, bool) → Option<T>` —
-are specified in `../docs/rfcs/0005-go-ffi.md` §"Type translation" and
-land, with their typing rules (`T-Extern`, the boundary-translation
-judgement) and lowering (`lowering-go.md` §ForeignCall), in the sema and
-codegen PRs of this epoch. The invariant fixed now: the only automatic
-`Option`/`Result`-producing lifts are those two; a nil-able `*T` is an
-**adapter** lift, never automatic.
+are specified in `../docs/rfcs/0005-go-ffi.md` §"Type translation". The
+invariant: the only automatic `Option`/`Result`-producing lifts are
+those two; a nil-able `*T` is an **adapter** lift, never automatic.
 
 ## Bindable subset and bail-out
 

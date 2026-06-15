@@ -136,6 +136,10 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 		return &Named{N: head, Decl: sym.Decl}
 	case SymInterface:
 		return &Named{N: head, Decl: sym.Decl}
+	case SymExternType:
+		// Opaque foreign handle — nominal, carries its ExternTypeDecl
+		// so member access / refEq can recognise it (ffi.md §ExternType).
+		return &Named{N: head, Decl: sym.Decl}
 	case SymTypeDecl:
 		td, ok := sym.Decl.(*ast.TypeDecl)
 		if !ok {
@@ -174,6 +178,27 @@ func (c *checker) funcSigType(fn *ast.FuncDecl) *Func {
 
 // methodSigType builds the canonical Func type of a class method.
 func (c *checker) methodSigType(m *ast.Method) *Func {
+	params := make([]Type, len(m.Params))
+	for i, p := range m.Params {
+		params[i] = c.typeFromExpr(p.DeclType)
+	}
+	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType)}
+}
+
+// externFuncSigType builds the Func type of an extern function from
+// its annotations — the curated `.td` writes the lifted return type
+// (e.g. `Result<T, error>`) directly, so no boundary-lift logic is
+// needed here; that lift is a codegen concern (lowering-go.md §ForeignCall).
+func (c *checker) externFuncSigType(fn *ast.ExternFuncDecl) *Func {
+	params := make([]Type, len(fn.Params))
+	for i, p := range fn.Params {
+		params[i] = c.typeFromExpr(p.DeclType)
+	}
+	return &Func{Params: params, Return: c.typeFromExpr(fn.ReturnType), TypeParams: fn.TypeParams}
+}
+
+// externMethodSigType builds the Func type of an extern-impl method.
+func (c *checker) externMethodSigType(m *ast.ExternMethod) *Func {
 	params := make([]Type, len(m.Params))
 	for i, p := range m.Params {
 		params[i] = c.typeFromExpr(p.DeclType)
@@ -259,7 +284,7 @@ func symValueType(sym *Symbol) Type {
 	switch sym.Kind {
 	case SymLocal, SymField, SymTopLevelLet:
 		return sym.Type
-	case SymFunc, SymMethod:
+	case SymFunc, SymMethod, SymExternFunc:
 		if sym.Type != nil {
 			return sym.Type
 		}

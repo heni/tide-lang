@@ -480,8 +480,10 @@ unqualified form is disambiguated by `E0104` per
 
 ```
 fn panic(msg: string): Never
-fn refEq<C>(a: C, b: C): bool          [C must be a class type;
-                                         a, b same class — see T-RefEq]
+fn refEq<C>(a: C, b: C): bool          [C must be a class type or an
+                                         opaque foreign handle (extern
+                                         type); a, b same type — see
+                                         T-RefEq / ffi.md §ExternType]
 fn makeChannel<T>(): Channel<T>
 fn makeChannel<T>(cap: int): Channel<T>
 fn makeSlice<T>(n: int): []T           [n >= 0; runtime panic if n < 0]
@@ -623,8 +625,8 @@ touched by this file:
 
 - **E0205** — Illegal type conversion (source/target pair not in
   the conversion table).
-- **E0206** — `refEq` on non-class operands or operands of
-  different class types.
+- **E0206** — `refEq` on operands that are not the same class or
+  opaque foreign handle.
 - **E0103** — Unknown name (any predeclared identifier that
   isn't in this catalog and isn't user-defined).
 - **E0104** — Ambiguous variant name (built-in vs user-defined

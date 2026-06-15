@@ -19,6 +19,8 @@ const (
 	SymTopLevelLet // module-level `let` constant (name-resolution.md §File scope)
 	SymField       // class field accessible via implicit receiver
 	SymMethod      // class method accessible via implicit receiver
+	SymExternType  // opaque foreign handle (extern type T) — ffi.md
+	SymExternFunc  // package-level foreign function (extern func) — ffi.md
 )
 
 // Symbol is the resolution result attached to every name-position node.

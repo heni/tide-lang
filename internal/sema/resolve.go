@@ -22,7 +22,55 @@ func (c *checker) resolveFile(f *ast.File, fileScope *Scope) {
 				c.resolveTypeExpr(v.DeclType, fileScope)
 			}
 			c.resolveExpr(v.Value, fileScope)
+		case *ast.ExternFuncDecl:
+			c.resolveExternFuncDecl(v, fileScope)
+		case *ast.ExternImplDecl:
+			c.resolveExternImplDecl(v, fileScope)
 		}
+	}
+}
+
+// resolveExternFuncDecl resolves a foreign function's signature
+// annotations and freezes its Func type on the file-scope symbol
+// (Barrier B). An extern func has no body (ffi.md §ExternFunc).
+func (c *checker) resolveExternFuncDecl(fn *ast.ExternFuncDecl, parent *Scope) {
+	c.checkReservedName(fn.Name, fn.Span)
+	fnScope := newScope(parent)
+	for _, tp := range fn.TypeParams {
+		c.checkReservedName(tp, fn.Span)
+		fnScope.declare(&Symbol{Name: tp, Kind: SymTypeParam, Type: &Named{N: tp}})
+	}
+	for _, p := range fn.Params {
+		c.checkReservedName(p.Name, p.Span)
+		c.resolveTypeExpr(p.DeclType, fnScope)
+	}
+	if fn.ReturnType != nil {
+		c.resolveTypeExpr(fn.ReturnType, fnScope)
+	}
+	if sym := parent.lookup(fn.Name); sym != nil && sym.Kind == SymExternFunc {
+		sym.Type = c.externFuncSigType(fn)
+	}
+}
+
+// resolveExternImplDecl resolves the member signatures of an
+// `extern impl T { … }` block. The named handle must be an
+// `extern type` (E0103 otherwise); members carry no body.
+func (c *checker) resolveExternImplDecl(ei *ast.ExternImplDecl, parent *Scope) {
+	if sym := parent.lookup(ei.Type); sym == nil || sym.Kind != SymExternType {
+		c.report("E0103", "Unknown extern type "+ei.Type, ei.Span)
+	}
+	for _, m := range ei.Methods {
+		for _, p := range m.Params {
+			c.checkReservedName(p.Name, p.Span)
+			c.resolveTypeExpr(p.DeclType, parent)
+		}
+		if m.ReturnType != nil {
+			c.resolveTypeExpr(m.ReturnType, parent)
+		}
+	}
+	for _, f := range ei.Fields {
+		c.checkReservedName(f.Name, f.Span)
+		c.resolveTypeExpr(f.DeclType, parent)
 	}
 }
 

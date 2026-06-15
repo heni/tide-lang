@@ -224,6 +224,12 @@ func (c *checker) setPatternType(pat ast.Pattern, t Type) {
 	case *ast.WildcardPat:
 		// `_` binds nothing.
 	case *ast.TuplePat:
+		if isOpaqueHandle(t) {
+			// A handle has no visible layout (ffi.md §ExternType) — name
+			// the real reason rather than the generic non-tuple message.
+			c.report("E1002", "Cannot destructure opaque foreign handle "+t.String(), p.Span)
+			return
+		}
 		tup, ok := t.(*Tuple)
 		if !ok {
 			if concrete(t) {
