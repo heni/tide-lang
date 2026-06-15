@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "fizzbuzz.td"
+
+[[error]]
+patch   = "errors/missing-in.patch"   # drop the `in` keyword from the for-loop header
+expect  = ["E0112"]
+stage   = "parse"
+matches = "errors/missing-in.expected"
+origin  = "synthetic"

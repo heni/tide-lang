@@ -7,3 +7,10 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "hello.td"
+
+[[error]]
+patch   = "errors/unknown-name.patch"   # call an undeclared name in place of the string literal
+expect  = ["E0103"]
+stage   = "sema"
+matches = "errors/unknown-name.expected"
+origin  = "synthetic"
