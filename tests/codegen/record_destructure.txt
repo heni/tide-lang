@@ -1,0 +1,95 @@
+--- TITLE ---
+record-destructure match pattern — `V(Type{ field: pat, … })` binds record fields, nested tuple + wildcard (P-Record)
+
+--- INPUT ---
+import fmt
+
+type Dir = | N | S
+type Info = {
+  at:  (int, int)
+  dir: Dir
+}
+type Step =
+  | Move(info: Info)
+  | Stop(info: Info, why: string)
+
+func describe(s: Step): int {
+  return match s {
+    Move(Info{ at: (x, y), dir: _ }) => x + y,
+    Stop(Info{ at: (x, y), dir: _ }, _) => x - y,
+  }
+}
+
+func main() {
+  fmt.println(describe(Move(Info{ at: (3, 4), dir: N })))
+  fmt.println(describe(Stop(Info{ at: (9, 2), dir: S }, "halt")))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+type Dir struct {
+	Tag uint8
+}
+
+var (
+	DirN = Dir{Tag: 0}
+	DirS = Dir{Tag: 1}
+)
+
+type Info struct {
+	At struct {
+		_0 int
+		_1 int
+	} `json:"at"`
+	Dir Dir `json:"dir"`
+}
+type Step struct {
+	Tag      uint8
+	MoveInfo Info
+	StopInfo Info
+	StopWhy  string
+}
+
+func StepMove(info Info) Step {
+	return Step{Tag: 0, MoveInfo: info}
+}
+func StepStop(info Info, why string) Step {
+	return Step{Tag: 1, StopInfo: info, StopWhy: why}
+}
+func describe(s Step) int {
+	return func() int {
+		__tide_match_1 := s
+		switch __tide_match_1.Tag {
+		case 0:
+			x := __tide_match_1.MoveInfo.At._0
+			y := __tide_match_1.MoveInfo.At._1
+			return x + y
+		case 1:
+			x := __tide_match_1.StopInfo.At._0
+			y := __tide_match_1.StopInfo.At._1
+			return x - y
+		}
+		var __zero int
+		return __zero
+	}()
+}
+func main() {
+	fmt.Println(describe(StepMove(Info{At: struct {
+		_0 int
+		_1 int
+	}{_0: 3, _1: 4}, Dir: DirN})))
+	fmt.Println(describe(StepStop(Info{At: struct {
+		_0 int
+		_1 int
+	}{_0: 9, _1: 2}, Dir: DirS}, "halt")))
+}
+
+--- STDOUT ---
+7
+7
+
+--- EXIT ---
+0

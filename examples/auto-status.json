@@ -2,10 +2,10 @@
   "schema_version": 1,
   "totals": {
     "total": 52,
-    "parse_fail": 9,
+    "parse_fail": 8,
     "sema_fail": 2,
     "emit_fail": 1,
-    "build_ok": 40
+    "build_ok": 41
   },
   "files": [
     {
@@ -170,8 +170,8 @@
     },
     {
       "path": "examples/raku/deep_destructure.td",
-      "stage": "parse",
-      "blocker": "error[E0112]: expected Punct \")\", got Punct \"{\""
+      "stage": "build",
+      "blocker": ""
     },
     {
       "path": "examples/raku/error_chain.td",

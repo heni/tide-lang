@@ -1,0 +1,37 @@
+--- TITLE ---
+RecordPat — `Type{ field: pat, … }` record-destructure in a variant payload (grammar.ebnf §RecordPat)
+
+--- INPUT ---
+func summary(s: Step): int {
+  match s {
+    Move(Info{ at: (x, y), dir: _ }) => x,
+    _ => 0,
+  }
+}
+
+--- AST ---
+(File @1:1-6:2
+  (FuncDecl "summary" @1:1-6:2
+    (type-params)
+    (params
+      (Param "s" @1:14-1:21
+        (NamedType "Step" @1:17-1:21)))
+    (return
+      (PrimitiveType "int" @1:24-1:27))
+    (Block @1:28-6:2
+      (trailing
+        (MatchExpr @2:3-5:4
+          (Ident "s" @2:9-2:10)
+          (MatchArm @3:5-3:42
+            (VariantPat "Move" @3:5-3:37
+              (RecordPat "Info" @3:10-3:36
+                (RecordPatField "at" @3:16-3:26
+                  (TuplePat @3:20-3:26
+                    (IdentPat "x" @3:21-3:22)
+                    (IdentPat "y" @3:24-3:25)))
+                (RecordPatField "dir" @3:28-3:34
+                  (WildcardPat @3:33-3:34))))
+            (Ident "x" @3:41-3:42))
+          (MatchArm @4:5-4:11
+            (WildcardPat @4:5-4:6)
+            (IntLitExpr 0 @4:10-4:11)))))))

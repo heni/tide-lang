@@ -837,16 +837,46 @@ func (c *checker) typeMatchTuplePayload(subject Type, tp *ast.TuplePat) {
 	}
 }
 
-// bindPayload sets the type of the i-th sub-pattern's binding symbol
-// when it is an IdentPat (skips wildcards, nil types, out-of-range i).
+// bindPayload types the i-th sub-pattern of a variant pattern against
+// payload-field type t (skips nil types, out-of-range i).
 func (c *checker) bindPayload(vp *ast.VariantPat, i int, t Type) {
 	if t == nil || i >= len(vp.Sub) {
 		return
 	}
-	if ip, ok := vp.Sub[i].(*ast.IdentPat); ok {
-		if sym := c.info.Def[ip]; sym != nil {
+	c.bindPatternType(vp.Sub[i], t)
+}
+
+// bindPatternType assigns binding types under pattern p from the value
+// type t it matches. It recurses through the binding-introducing
+// pattern shapes — IdentPat binds the whole value; TuplePat distributes
+// over a matching-arity tuple; RecordPat types each field via
+// recordFieldType; a nested VariantPat re-enters typeMatchPayload.
+// Literal / wildcard patterns bind nothing. Mirrors codegen's
+// bindSubPattern (type-system.md §P-Record).
+func (c *checker) bindPatternType(p ast.Pattern, t Type) {
+	if t == nil {
+		return
+	}
+	switch pat := p.(type) {
+	case *ast.IdentPat:
+		if pat.Name == "" || pat.Name == "_" {
+			return
+		}
+		if sym := c.info.Def[pat]; sym != nil {
 			sym.Type = t
 		}
+	case *ast.TuplePat:
+		if tup, ok := t.(*Tuple); ok && len(tup.Comps) == len(pat.Sub) {
+			for i, sub := range pat.Sub {
+				c.bindPatternType(sub, tup.Comps[i])
+			}
+		}
+	case *ast.RecordPat:
+		for _, f := range pat.Fields {
+			c.bindPatternType(f.Pattern, c.recordFieldType(t, f.Name))
+		}
+	case *ast.VariantPat:
+		c.typeMatchPayload(t, pat)
 	}
 }
 
@@ -864,6 +894,10 @@ func (c *checker) checkNoFloatPat(p ast.Pattern) {
 	case *ast.TuplePat:
 		for _, s := range v.Sub {
 			c.checkNoFloatPat(s)
+		}
+	case *ast.RecordPat:
+		for _, f := range v.Fields {
+			c.checkNoFloatPat(f.Pattern)
 		}
 	case *ast.AltPat:
 		for _, a := range v.Atoms {

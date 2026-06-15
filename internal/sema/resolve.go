@@ -296,6 +296,10 @@ func (c *checker) bindPattern(p ast.Pattern, scope *Scope, decl any) {
 		for _, sub := range v.Sub {
 			c.bindPattern(sub, scope, decl)
 		}
+	case *ast.RecordPat:
+		for _, f := range v.Fields {
+			c.bindPattern(f.Pattern, scope, decl)
+		}
 	case *ast.AltPat:
 		// Atoms are literal pats or nullary variants (P-Alt) — none
 		// bind, but recurse so the empty-binding invariant holds even

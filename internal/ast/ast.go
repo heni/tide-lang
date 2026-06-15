@@ -655,6 +655,32 @@ func (n *AltPat) NodeSpan() Span   { return n.Span }
 func (n *AltPat) NodeKind() string { return "AltPat" }
 func (n *AltPat) patternMarker()   {}
 
+// RecordPat — `Type{ f1: p1, f2: p2, … }` (ast.md §Pattern,
+// grammar.ebnf §RecordPat). Destructures a record-typed value by
+// field name; each field binds its sub-pattern. QName is the record
+// type's qualified name (last segment is the type). Record punning
+// (`{ at }` for `at: at`) is intentionally omitted in v1 — every field
+// is the explicit `name: Pattern` form.
+type RecordPat struct {
+	Span   Span
+	QName  []string
+	Fields []*RecordPatField
+}
+
+func (n *RecordPat) NodeSpan() Span   { return n.Span }
+func (n *RecordPat) NodeKind() string { return "RecordPat" }
+func (n *RecordPat) patternMarker()   {}
+
+// RecordPatField — one `name: Pattern` entry of a RecordPat.
+type RecordPatField struct {
+	Span    Span
+	Name    string
+	Pattern Pattern
+}
+
+func (n *RecordPatField) NodeSpan() Span   { return n.Span }
+func (n *RecordPatField) NodeKind() string { return "RecordPatField" }
+
 // ---------------------------------------------------------------
 // Expressions
 // ---------------------------------------------------------------

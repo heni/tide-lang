@@ -2974,9 +2974,10 @@ func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 }
 
 // parseSinglePat admits IdentPat, WildcardPat (`_`), IntLitPat,
-// FloatLitPat, StringLitPat, RuneLitPat, BoolLitPat, TuplePat, and
-// VariantPat (with optional payload subpatterns). RecordPat lands
-// later. AltPat is assembled by parsePattern from these.
+// FloatLitPat, StringLitPat, RuneLitPat, BoolLitPat, TuplePat,
+// VariantPat (with optional payload subpatterns), and RecordPat
+// (`Type{ field: pat, … }`). AltPat is assembled by parsePattern
+// from these.
 func (p *parser) parseSinglePat() (ast.Pattern, *Diag) {
 	t := p.peek()
 	// TuplePat: `(p1, p2, ...)` — arity ≥ 2.
@@ -3035,6 +3036,13 @@ func (p *parser) parseSinglePat() (ast.Pattern, *Diag) {
 			next := p.advance()
 			qname = append(qname, next.Lexeme)
 			endLine, endCol = next.Line, next.Col+utf8.RuneCountInString(next.Lexeme)
+		}
+		// RecordPat: `Type{ field: pat, … }` (grammar.ebnf §RecordPat).
+		// A capitalised name followed by `{` is a record-destructure
+		// pattern, not a nullary variant — parse it before the
+		// VariantPat branch so the `{` is consumed here.
+		if isCapitalised(nameTok.Lexeme) && p.at(lexer.KindPunct, "{") {
+			return p.parseRecordPat(qname, nameTok)
 		}
 		if isCapitalised(nameTok.Lexeme) || len(qname) > 1 || p.at(lexer.KindPunct, "(") {
 			vp := &ast.VariantPat{
@@ -3143,6 +3151,63 @@ func (p *parser) parseSinglePat() (ast.Pattern, *Diag) {
 	return nil, p.diag("E0112",
 		fmt.Sprintf("expected pattern, got %s %q", t.Kind, t.Lexeme),
 		t.Line, t.Col)
+}
+
+// parseRecordPat parses `Type{ field: pat (, field: pat)* ,? }` with the
+// cursor at the opening `{` (grammar.ebnf §RecordPat). qname is the
+// already-parsed record type name; nameTok carries the start position.
+// Record punning is intentionally omitted in v1 — every field is the
+// explicit `name: Pattern` form.
+func (p *parser) parseRecordPat(qname []string, nameTok lexer.Token) (ast.Pattern, *Diag) {
+	p.advance() // consume '{'
+	p.skipNewlines()
+	var fields []*ast.RecordPatField
+	for !p.at(lexer.KindPunct, "}") && !p.at(lexer.KindEOF) {
+		if !p.at(lexer.KindIdent) {
+			t := p.peek()
+			return nil, p.diag("E0112",
+				fmt.Sprintf("expected record field name in pattern, got %s %q", t.Kind, t.Lexeme),
+				t.Line, t.Col)
+		}
+		fnameTok := p.advance()
+		if _, err := p.expect(lexer.KindPunct, ":"); err != nil {
+			return nil, err
+		}
+		p.skipNewlines()
+		sub, err := p.parsePattern()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, &ast.RecordPatField{
+			Span: ast.Span{
+				StartLine: fnameTok.Line, StartCol: fnameTok.Col,
+				EndLine: sub.NodeSpan().EndLine, EndCol: sub.NodeSpan().EndCol,
+			},
+			Name:    fnameTok.Lexeme,
+			Pattern: sub,
+		})
+		p.skipNewlines()
+		if !p.at(lexer.KindPunct, ",") {
+			break
+		}
+		p.advance() // consume ','
+		p.skipNewlines()
+	}
+	closeTok, err := p.expect(lexer.KindPunct, "}")
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 {
+		return nil, p.diag("E0112", "record pattern needs at least one field", nameTok.Line, nameTok.Col)
+	}
+	return &ast.RecordPat{
+		Span: ast.Span{
+			StartLine: nameTok.Line, StartCol: nameTok.Col,
+			EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+		},
+		QName:  qname,
+		Fields: fields,
+	}, nil
 }
 
 func isCapitalised(s string) bool {

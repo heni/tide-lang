@@ -50,9 +50,9 @@ func summarise(s: Step): string {
     // punning is intentionally omitted in v1 — `at: (x, y)` is
     // the explicit form, never `at` alone).
     Move(StepInfo{ at: (x, y), heading: dir, remaining: rest }) =>
-      "move " + dirName(dir)
+      ("move " + dirName(dir)
         + " from (" + strconv.itoa(x) + "," + strconv.itoa(y) + ")"
-        + ", " + strconv.itoa(rest) + " left",
+        + ", " + strconv.itoa(rest) + " left"),
 
     Pause(why) =>
       "paused: " + why,

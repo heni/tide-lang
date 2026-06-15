@@ -503,6 +503,20 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteByte('\n')
 			write(b, a, depth+1)
 		}
+	case *RecordPat:
+		b.WriteByte(' ')
+		writeQuoted(b, strings.Join(v.QName, "."))
+		writeSpan(b, v.Span)
+		for _, f := range v.Fields {
+			b.WriteByte('\n')
+			write(b, f, depth+1)
+		}
+	case *RecordPatField:
+		b.WriteByte(' ')
+		writeQuoted(b, v.Name)
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Pattern, depth+1)
 	case *Block:
 		writeSpan(b, v.Span)
 		for _, s := range v.Stmts {

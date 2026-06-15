@@ -732,6 +732,17 @@ func (g *gen) bindSubPattern(sub ast.Pattern, valueExpr string) error {
 				return err
 			}
 		}
+	case *ast.RecordPat:
+		// Destructure a record-typed value by field: each field's
+		// sub-pattern binds against `valueExpr.<GoField>` (the exported
+		// struct-field spelling, §Record lowering), recursing so nested
+		// tuple / record / wildcard patterns compose.
+		for _, f := range sp.Fields {
+			fieldExpr := valueExpr + "." + exportFieldName(f.Name)
+			if err := g.bindSubPattern(f.Pattern, fieldExpr); err != nil {
+				return err
+			}
+		}
 	default:
 		return fmt.Errorf("codegen: nested sub-pattern %T in variant payload not supported in v1", sub)
 	}
