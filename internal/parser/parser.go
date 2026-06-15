@@ -2980,10 +2980,21 @@ func (p *parser) parsePattern() (ast.Pattern, *Diag) {
 // from these.
 func (p *parser) parseSinglePat() (ast.Pattern, *Diag) {
 	t := p.peek()
-	// TuplePat: `(p1, p2, ...)` — arity ≥ 2.
+	// TuplePat: `(p1, p2, ...)` — arity ≥ 2; or UnitPat: `()`.
 	if t.Kind == lexer.KindPunct && t.Lexeme == "(" {
 		open := p.advance() // consume '('
 		p.skipNewlines()
+		// `()` — the unit pattern (grammar.ebnf §Pattern). Distinct from
+		// a tuple pattern; matches the unit value, binds nothing.
+		if p.at(lexer.KindPunct, ")") {
+			closeTok := p.advance() // consume ')'
+			return &ast.UnitPat{
+				Span: ast.Span{
+					StartLine: open.Line, StartCol: open.Col,
+					EndLine: closeTok.Line, EndCol: closeTok.Col + 1,
+				},
+			}, nil
+		}
 		var sub []ast.Pattern
 		for !p.at(lexer.KindPunct, ")") && !p.at(lexer.KindEOF) {
 			sp, err := p.parsePattern()

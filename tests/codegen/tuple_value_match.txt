@@ -1,0 +1,58 @@
+--- TITLE ---
+value-position tuple match — `let res = match (a, b) { (3, _) => …, _ => panic(…) }`: the boolean decision tree wrapped in a value-returning IIFE; the `_` arm lowers to `default`, the panic arm needs no trailing zero-return (§MatchIR)
+
+--- INPUT ---
+import fmt
+
+func classify(a: int, b: string): int {
+  let res = match (a, b) {
+    (3, _)     => 5,
+    (1, "bar") => 6,
+    (x, "foo") => x,
+    _          => panic("unreachable"),
+  }
+  return res
+}
+
+func main() {
+  fmt.println(classify(1, "foo"))
+  fmt.println(classify(3, "z"))
+  fmt.println(classify(1, "bar"))
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func classify(a int, b string) int {
+	var res = func() int {
+		__tide_match_1 := a
+		__tide_match_2 := b
+		switch {
+		case __tide_match_1 == 3:
+			return 5
+		case __tide_match_1 == 1 && __tide_match_2 == "bar":
+			return 6
+		case __tide_match_2 == "foo":
+			x := __tide_match_1
+			return x
+		default:
+			panic("unreachable")
+		}
+	}()
+	return res
+}
+func main() {
+	fmt.Println(classify(1, "foo"))
+	fmt.Println(classify(3, "z"))
+	fmt.Println(classify(1, "bar"))
+}
+
+--- STDOUT ---
+1
+5
+6
+
+--- EXIT ---
+0

@@ -1,0 +1,33 @@
+--- TITLE ---
+unit pattern `match () { () => … }` — value position; the unit subject lowers to a `struct{}{}` switch with an irrefutable `default` arm
+
+--- INPUT ---
+import fmt
+
+func main() {
+  let res = match () {
+    () => 2,
+  }
+  fmt.println(res)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func main() {
+	var res = func() int {
+		switch struct{}{} {
+		default:
+			return 2
+		}
+	}()
+	fmt.Println(res)
+}
+
+--- STDOUT ---
+2
+
+--- EXIT ---
+0

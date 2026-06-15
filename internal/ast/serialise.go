@@ -465,6 +465,8 @@ func write(b *strings.Builder, n Node, depth int) {
 		}
 	case *WildcardPat:
 		writeSpan(b, v.Span)
+	case *UnitPat:
+		writeSpan(b, v.Span)
 	case *IntLitPat:
 		b.WriteByte(' ')
 		b.WriteString(strconv.FormatInt(v.Value, 10))

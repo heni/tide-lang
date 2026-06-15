@@ -131,6 +131,18 @@ func (g *gen) emitTupleMatchSwitch(m *ast.MatchExpr, tup *ast.TupleLit, emitArm 
 	g.writeIndent()
 	g.b.WriteString("switch {\n")
 	for _, arm := range m.Arms {
+		// A top-level wildcard (`_ => …`) is the tuple match's catch-all
+		// → `default:` (e.g. `match (a, b) { (1, _) => …, _ => … }`).
+		if _, ok := arm.Pattern.(*ast.WildcardPat); ok {
+			g.writeIndent()
+			g.b.WriteString("default:\n")
+			g.indent++
+			if err := emitArm(arm); err != nil {
+				return err
+			}
+			g.indent--
+			continue
+		}
 		tp, ok := arm.Pattern.(*ast.TuplePat)
 		if !ok {
 			return fmt.Errorf("codegen: tuple-subject match arm pattern is %T, expected a tuple pattern", arm.Pattern)
@@ -338,7 +350,7 @@ func (g *gen) matchEmitsDefault(m *ast.MatchExpr) bool {
 	}
 	for _, arm := range m.Arms {
 		switch p := arm.Pattern.(type) {
-		case *ast.WildcardPat:
+		case *ast.WildcardPat, *ast.UnitPat:
 			return true
 		case *ast.TuplePat:
 			if g.tupleArmIsCatchAll(p, compTypes) {
@@ -386,6 +398,12 @@ func (g *gen) tupleArmIsCatchAll(tp *ast.TuplePat, compTypes []string) bool {
 func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 	if len(m.Arms) == 0 {
 		return fmt.Errorf("codegen: match expression has no arms")
+	}
+	// A tuple-subject match can't switch on a single tag — reuse the
+	// boolean decision-tree lowering, wrapping it in a value-returning
+	// IIFE (§MatchIR tuple decision-tree, value position).
+	if tup, ok := m.Subject.(*ast.TupleLit); ok {
+		return g.emitTupleMatchAsExpr(m, tup)
 	}
 	// Result type comes from the first arm that actually yields a
 	// value — diverging arms (`os.exit`, return/break/continue) have
@@ -459,9 +477,61 @@ func (g *gen) emitMatchAsExpr(m *ast.MatchExpr) error {
 		}
 		g.b.WriteByte(';')
 	}
-	g.b.WriteString(" }; var __zero ")
+	g.b.WriteString(" }")
+	// The trailing zero-value return satisfies Go's return-analysis when
+	// the switch is not self-terminating. A `default` arm (with all
+	// value-position clauses terminating via `return` / divergence) makes
+	// the switch terminating on its own, so the trailing return would be
+	// unreachable code (`go vet`); skip it then.
+	if !g.matchEmitsDefault(m) {
+		g.b.WriteString("; var __zero ")
+		g.b.WriteString(resultType)
+		g.b.WriteString("; return __zero")
+	}
+	g.b.WriteString(" }()")
+	return nil
+}
+
+// emitTupleMatchAsExpr lowers a tuple-subject match in value position:
+// the statement-form tuple decision tree (emitTupleMatchSwitch) wrapped
+// in a value-returning IIFE, with each non-diverging arm body emitted as
+// `return <body>` and diverging arms (os.exit / panic / return) as
+// statements. The trailing zero-value return satisfies Go's
+// return-analysis when no arm produced a `default` (§MatchIR).
+func (g *gen) emitTupleMatchAsExpr(m *ast.MatchExpr, tup *ast.TupleLit) error {
+	resultType, err := g.matchResultType(m)
+	if err != nil {
+		return fmt.Errorf("codegen: match-as-expression: %w", err)
+	}
+	g.b.WriteString("func() ")
 	g.b.WriteString(resultType)
-	g.b.WriteString("; return __zero }()")
+	g.b.WriteString(" {\n")
+	g.indent++
+	if err := g.emitTupleMatchSwitch(m, tup, func(arm *ast.MatchArm) error {
+		if isDivergingExpr(arm.Body) {
+			return g.emitMatchArmBody(arm.Body, arm.Span)
+		}
+		g.writeIndent()
+		g.b.WriteString("return ")
+		if err := g.emitExpr(arm.Body); err != nil {
+			return err
+		}
+		g.b.WriteByte('\n')
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !g.matchEmitsDefault(m) {
+		g.writeIndent()
+		g.b.WriteString("var __zero ")
+		g.b.WriteString(resultType)
+		g.b.WriteByte('\n')
+		g.writeIndent()
+		g.b.WriteString("return __zero\n")
+	}
+	g.indent--
+	g.writeIndent()
+	g.b.WriteString("}()")
 	return nil
 }
 
@@ -788,7 +858,10 @@ func (g *gen) classifyPattern(p ast.Pattern) (variant, literal bool) {
 // wildcard, else `case v` (or `case v1, v2, …` for an AltPat —
 // Go's comma-listed case values are exactly alternation).
 func (g *gen) emitMatchArmHeader(p ast.Pattern) error {
-	if _, ok := p.(*ast.WildcardPat); ok {
+	switch p.(type) {
+	case *ast.WildcardPat, *ast.UnitPat:
+		// Both are irrefutable — `_` matches anything, `()` matches the
+		// unit value; neither imposes a case test.
 		g.b.WriteString("default")
 		return nil
 	}

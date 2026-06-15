@@ -551,6 +551,17 @@ func (n *IdentPat) NodeSpan() Span   { return n.Span }
 func (n *IdentPat) NodeKind() string { return "IdentPat" }
 func (n *IdentPat) patternMarker()   {}
 
+// UnitPat — `()`. Matches the unit value; binds nothing. Irrefutable,
+// like WildcardPat (ast.md §Pattern, grammar.ebnf §Pattern). Distinct
+// from a TuplePat (arity ≥ 2) — `()` has no components.
+type UnitPat struct {
+	Span Span
+}
+
+func (n *UnitPat) NodeSpan() Span   { return n.Span }
+func (n *UnitPat) NodeKind() string { return "UnitPat" }
+func (n *UnitPat) patternMarker()   {}
+
 // WildcardPat — `_`. Matches anything, binds nothing.
 type WildcardPat struct {
 	Span Span

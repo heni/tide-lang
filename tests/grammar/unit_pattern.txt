@@ -1,0 +1,25 @@
+--- TITLE ---
+UnitPat — `()` unit pattern in a match arm (grammar.ebnf §Pattern); distinct from a tuple pattern (arity ≥ 2)
+
+--- INPUT ---
+func choose(): int {
+  return match () {
+    () => 2,
+  }
+}
+
+--- AST ---
+(File @1:1-5:2
+  (FuncDecl "choose" @1:1-5:2
+    (type-params)
+    (params)
+    (return
+      (PrimitiveType "int" @1:16-1:19))
+    (Block @1:20-5:2
+      (ExprStmt @2:3-4:4
+        (ReturnExpr @2:3-4:4
+          (MatchExpr @2:10-4:4
+            (UnitLit @2:16-2:18)
+            (MatchArm @3:5-3:12
+              (UnitPat @3:5-3:7)
+              (IntLitExpr 2 @3:11-3:12))))))))

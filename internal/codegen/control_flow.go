@@ -8,9 +8,9 @@ import (
 )
 
 // isDivergingExpr reports whether e never produces a value: the
-// diverging expressions (return/break/continue), an `os.exit(...)`
-// call (Never per binding-surface.md §os), or a block whose trailing
-// value diverges.
+// diverging expressions (return/break/continue), an `os.exit(...)` or
+// `panic(...)` call (Never per binding-surface.md §os / builtins.md
+// §panic), or a block whose trailing value diverges.
 func isDivergingExpr(e ast.Expr) bool {
 	switch v := e.(type) {
 	case *ast.ParenExpr:
@@ -18,6 +18,12 @@ func isDivergingExpr(e ast.Expr) bool {
 	case *ast.ReturnExpr, *ast.BreakExpr, *ast.ContinueExpr:
 		return true
 	case *ast.Call:
+		// `panic(…)` never returns — Go treats a call to the builtin
+		// panic as a terminating statement, so a value/tail-position arm
+		// must emit it as a statement, not `return panic(…)` (no value).
+		if id, ok := v.Callee.(*ast.Ident); ok && id.Name == "panic" {
+			return true
+		}
 		return isFieldCall(v.Callee, "os", "exit")
 	case *ast.Block:
 		return v.Trailing != nil && isDivergingExpr(v.Trailing)
