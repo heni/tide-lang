@@ -1691,7 +1691,7 @@ func (p *parser) parseSelectCase() (ast.SelectCase, *Diag) {
 // select case. Body is either a `{…}` block or — mirroring the braceless
 // MatchArm body — a single statement (`=> return …`, `=> x = y`,
 // `=> ch.send(v)`), wrapped in an implicit Block so the existing
-// block-body lowering applies unchanged (grammar.ebnf §SelectCase).
+// block-body lowering applies unchanged (grammar.ebnf §SelectCaseBody).
 func (p *parser) parseSelectArrowBody() (*ast.Block, *Diag) {
 	if _, err := p.expect(lexer.KindOp, "=>"); err != nil {
 		return nil, err
