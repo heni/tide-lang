@@ -436,11 +436,6 @@ On acceptance / implementation, these `lang-spec/` edits land:
 - **`docs/binding-surface.md`** — recast from a hand-authored target
   list into the *curated output* of this interface; its
   `What is **not** in v1` section is reframed as "not yet generated."
-- **`docs/design-decisions.md`** — **amend D19** ("Third-party Go
-  dependencies are reserved for UX-only surfaces"): relax "generated
-  user code must never depend on a third-party Go module" to admit an
-  *explicit, pinned, hermetic* FFI binding (above); add a public mirror
-  entry for the FFI decision.
 
 ## Transition / compatibility
 
@@ -522,8 +517,8 @@ accepted with them open, resolved before `implemented`.
   §"Relationship to D19".
 - 2026-06-15 — `draft → accepted`. The D19 amendment was signed off
   (third-party deps admitted in generated code only via an explicit,
-  pinned, hermetic binding); `design-decisions.md` D19 amended and a
-  public D21 entry added. The ten open questions are flagged, not
+  pinned, hermetic binding); D19 amended and a public D21 decision
+  recorded. The ten open questions are flagged, not
   blockers (they resolve before `implemented`). Implementation — the
   `tide import` tool, the `extern` surface, third-party plumbing, and
   the corpus-analyzer port that motivated this RFC — is the next
