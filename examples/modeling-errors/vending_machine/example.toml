@@ -44,7 +44,7 @@ matches = "errors/ambiguous-variant.expected"
 origin  = "synthetic"
 
 [[error]]
-patch   = "errors/organic-step2-e0112.patch"   # State machine covering all (state, event) pairs; Dispensing transitions based on
+patch   = "errors/organic-step2-e0112.patch"   # State machine covering all (state, event) pairs; Dispensing transitions based …
 expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-step2-e0112.expected"

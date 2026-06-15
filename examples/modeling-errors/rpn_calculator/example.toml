@@ -37,7 +37,7 @@ matches = "errors/organic-apply_op-e0201.expected"
 origin  = "organic:holefill-1"
 
 [[error]]
-patch   = "errors/organic-parseop2-e0112.patch"   # Map operator strings to Op variants using exhaustive match; return None for unre
+patch   = "errors/organic-parseop2-e0112.patch"   # Map operator strings to Op variants using exhaustive match; return None for …
 expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-parseop2-e0112.expected"

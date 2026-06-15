@@ -30,7 +30,7 @@ matches = "errors/organic-dividend2-e0112.expected"
 origin  = "organic:holefill-2"
 
 [[error]]
-patch   = "errors/organic-dividend2-e0201.patch"   # Check evenness with modulo; construct Ok/Err variants; interpolate n into error 
+patch   = "errors/organic-dividend2-e0201.patch"   # Check evenness with modulo; construct Ok/Err variants; interpolate n into …
 expect  = ["E0201"]
 stage   = "sema"
 matches = "errors/organic-dividend2-e0201.expected"

@@ -23,7 +23,7 @@ matches = "errors/try-in-bool-fn.expected"
 origin  = "synthetic"
 
 [[error]]
-patch   = "errors/organic-isvalid3-e0112.patch"   # Classic stack-based bracket matching: push openers, pop and verify closers match
+patch   = "errors/organic-isvalid3-e0112.patch"   # Classic stack-based bracket matching: push openers, pop and verify closers …
 expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-isvalid3-e0112.expected"

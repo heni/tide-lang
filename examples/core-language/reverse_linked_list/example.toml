@@ -37,7 +37,7 @@ matches = "errors/return-int-string-fn.expected"
 origin  = "synthetic"
 
 [[error]]
-patch   = "errors/organic-reverse2-e0112.patch"   # Iterative list reversal: track previous node, swap each node's next pointer, adv
+patch   = "errors/organic-reverse2-e0112.patch"   # Iterative list reversal: track previous node, swap each node's next pointer …
 expect  = ["E0112"]
 stage   = "parse"
 matches = "errors/organic-reverse2-e0112.expected"
