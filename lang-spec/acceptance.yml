@@ -175,12 +175,12 @@ features:
 
 examples:
 
-  hello.td:
+  core-language/hello/hello.td:
     - top-level-func
     - binding-fmt
 
   # ── Concurrency canon ──────────────────────────────────────
-  concurrency/pipeline.td:
+  concurrency/pipeline/pipeline.td:
     - scope-block
     - spawn-block
     - scope-context
@@ -194,7 +194,7 @@ examples:
     - unit-type
     - binding-fmt
 
-  concurrency/worker_pool.td:
+  concurrency/worker_pool/worker_pool.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -211,7 +211,7 @@ examples:
     - var-binding
     - binding-fmt
 
-  concurrency/pubsub.td:
+  concurrency/pubsub/pubsub.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -228,7 +228,7 @@ examples:
     - class-method-instance
     - binding-fmt
 
-  concurrency/rate_limited.td:
+  concurrency/rate_limited/rate_limited.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -239,7 +239,7 @@ examples:
     - binding-time
     - binding-fmt
 
-  concurrency/nested_scopes.td:
+  concurrency/nested_scopes/nested_scopes.td:
     - scope-block
     - spawn-block
     - scope-context
@@ -250,7 +250,7 @@ examples:
     - for-channel
     - binding-fmt
 
-  concurrency/select_showcase.td:
+  concurrency/select_showcase/select_showcase.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -261,7 +261,7 @@ examples:
     - binding-time
 
   # ── Services ───────────────────────────────────────────────
-  services/wc.td:
+  stdlib-binding/wc/wc.td:
     - top-level-func
     - record-construction
     - type-decl-record
@@ -270,7 +270,7 @@ examples:
     - binding-fmt
     - binding-strings
 
-  services/todo_api.td:
+  stdlib-binding/todo_api/todo_api.td:
     - top-level-func
     - class-decl
     - class-method-instance
@@ -304,7 +304,7 @@ examples:
     - binding-sync
     - binding-fmt
 
-  services/parallel_fetcher.td:
+  concurrency/parallel_fetcher/parallel_fetcher.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -325,7 +325,7 @@ examples:
     - binding-io
     - binding-fmt
 
-  services/graceful_server.td:
+  concurrency/graceful_server/graceful_server.td:
     - scope-block
     - spawn-block
     - scope-context
@@ -339,7 +339,7 @@ examples:
     - binding-sync
     - binding-fmt
 
-  services/healthcheck_server.td:
+  stdlib-binding/healthcheck_server/healthcheck_server.td:
     - top-level-func
     - record-construction
     - type-decl-record
@@ -349,7 +349,7 @@ examples:
     - binding-fmt
 
   # ── LeetCode ───────────────────────────────────────────────
-  leetcode/two_sum.td:
+  core-language/two_sum/two_sum.td:
     - top-level-func
     - for-indexed-slice
     - map-literal
@@ -361,7 +361,7 @@ examples:
     - tuple-construction
     - binding-fmt
 
-  leetcode/valid_parentheses.td:
+  core-language/valid_parentheses/valid_parentheses.td:
     - top-level-func
     - for-string
     - stack-literal
@@ -375,7 +375,7 @@ examples:
     - slice-len
     - binding-fmt
 
-  leetcode/reverse_linked_list.td:
+  core-language/reverse_linked_list/reverse_linked_list.td:
     - class-decl
     - class-method-instance
     - class-field-var
@@ -386,7 +386,7 @@ examples:
     - while-loop
     - binding-fmt
 
-  leetcode/merge_intervals.td:
+  core-language/merge_intervals/merge_intervals.td:
     - top-level-func
     - tuple-construction
     - record-construction
@@ -400,7 +400,7 @@ examples:
     - closure-short
     - binding-fmt
 
-  leetcode/invert_binary_tree.td:
+  core-language/invert_binary_tree/invert_binary_tree.td:
     - type-decl-sum
     - generics-func
     - match-expr
@@ -409,7 +409,7 @@ examples:
     - binding-strconv
 
   # ── Interview ──────────────────────────────────────────────
-  interview/vending_machine.td:
+  modeling-errors/vending_machine/vending_machine.td:
     - top-level-func
     - type-decl-sum
     - var-binding
@@ -422,7 +422,7 @@ examples:
     - binding-fmt
     - binding-strconv
 
-  interview/lru_cache.td:
+  core-language/lru_cache/lru_cache.td:
     - class-decl
     - class-generic
     - generics-class
@@ -442,7 +442,7 @@ examples:
     - refEq
     - binding-fmt
 
-  interview/config_loader.td:
+  stdlib-binding/config_loader/config_loader.td:
     - top-level-func
     - type-decl-record
     - record-construction
@@ -454,7 +454,7 @@ examples:
     - binding-json
     - binding-fmt
 
-  interview/rpn_calculator.td:
+  modeling-errors/rpn_calculator/rpn_calculator.td:
     - top-level-func
     - type-decl-sum
     - stack-literal
@@ -471,14 +471,14 @@ examples:
     - binding-fmt
     - binding-os
 
-  interview/fizzbuzz.td:
+  core-language/fizzbuzz/fizzbuzz.td:
     - top-level-func
     - for-range
     - if-stmt
     - binding-fmt
 
   # ── AoC 2025 ───────────────────────────────────────────────
-  aoc/2025/d01.td:
+  core-language/d01/d01.td:
     - top-level-func
     - for-slice
     - for-indexed-slice
@@ -492,7 +492,7 @@ examples:
     - binding-os
     - binding-fmt
 
-  aoc/2025/d02.td:
+  core-language/d02/d02.td:
     - top-level-func
     - for-slice
     - tuple-construction
@@ -504,7 +504,7 @@ examples:
     - binding-bufio
     - binding-fmt
 
-  aoc/2025/d03.td:
+  core-language/d03/d03.td:
     - top-level-func
     - for-string
     - for-slice
@@ -521,7 +521,7 @@ examples:
     - binding-strings
     - binding-fmt
 
-  aoc/2025/d04.td:
+  core-language/d04/d04.td:
     - top-level-func
     - for-slice
     - var-binding
@@ -530,14 +530,14 @@ examples:
     - binding-strings
     - binding-fmt
 
-  aoc/2025/d05.td:
+  core-language/d05/d05.td:
     - top-level-func
     - for-slice
     - if-stmt
     - binding-strings
     - binding-fmt
 
-  aoc/2025/d07.td:
+  core-language/d07/d07.td:
     - top-level-func
     - set-literal
     - set-add
@@ -549,7 +549,7 @@ examples:
     - binding-bufio
     - binding-fmt
 
-  aoc/2025/d08.td:
+  core-language/d08/d08.td:
     - top-level-func
     - type-decl-alias
     - tuple-construction
@@ -563,7 +563,7 @@ examples:
     - binding-bufio
     - binding-fmt
 
-  aoc/2025/d09.td:
+  core-language/d09/d09.td:
     - top-level-func
     - type-decl-alias
     - for-slice
@@ -573,7 +573,7 @@ examples:
     - binding-bufio
     - binding-fmt
 
-  aoc/2025/d11.td:
+  core-language/d11/d11.td:
     - top-level-func
     - type-decl-alias
     - set-literal
@@ -585,7 +585,7 @@ examples:
     - binding-fmt
 
   # ── Timus ──────────────────────────────────────────────────
-  timus/p1033.td:
+  core-language/p1033/p1033.td:
     - top-level-func
     - top-level-let
     - type-decl-sum
@@ -602,14 +602,14 @@ examples:
     - binding-fmt
     - binding-os
 
-  timus/p1133.td:
+  core-language/p1133/p1133.td:
     - top-level-func
     - tuple-construction
     - binding-mathbig
     - binding-strconv
     - binding-fmt
 
-  timus/p1242.td:
+  core-language/p1242/p1242.td:
     - top-level-func
     - map-literal
     - map-set
@@ -622,25 +622,25 @@ examples:
     - binding-bufio
     - binding-fmt
 
-  timus/p1335.td:
+  core-language/p1335/p1335.td:
     - top-level-func
     - tuple-construction
     - binding-fmt
 
-  timus/p1349.td:
+  core-language/p1349/p1349.td:
     - top-level-func
     - var-binding
     - if-stmt
     - binding-fmt
 
-  timus/p1404.td:
+  core-language/p1404/p1404.td:
     - top-level-func
     - for-string
     - var-binding
     - binding-strings
     - binding-fmt
 
-  timus/p1423.td:
+  core-language/p1423/p1423.td:
     - top-level-func
     - for-slice
     - var-binding
@@ -650,34 +650,34 @@ examples:
     - binding-strconv
     - binding-fmt
 
-  timus/p1605.td:
+  core-language/p1605/p1605.td:
     - top-level-func
     - for-string
     - var-binding
     - binding-strings
     - binding-fmt
 
-  timus/p1683.td:
+  core-language/p1683/p1683.td:
     - top-level-func
     - for-range
     - var-binding
     - if-stmt
     - binding-fmt
 
-  timus/p1786.td:
+  core-language/p1786/p1786.td:
     - top-level-func
     - var-binding
     - if-stmt
     - binding-fmt
 
-  timus/p1820.td:
+  core-language/p1820/p1820.td:
     - top-level-func
     - var-binding
     - if-stmt
     - binding-fmt
 
   # ── Borgo ports ────────────────────────────────────────────
-  borgo/concurrency.td:
+  concurrency/concurrency/concurrency.td:
     - scope-block
     - spawn-block
     - channel-make
@@ -687,12 +687,12 @@ examples:
     - binding-fmt
     - binding-time
 
-  borgo/defer_demo.td:
+  core-language/defer_demo/defer_demo.td:
     - top-level-func
     - defer-call
     - binding-fmt
 
-  borgo/errors_as_types.td:
+  modeling-errors/errors_as_types/errors_as_types.td:
     - class-decl
     - implements-clause
     - class-method-instance
@@ -703,7 +703,7 @@ examples:
     - unit-type
     - binding-fmt
 
-  borgo/interfaces.td:
+  core-language/interfaces/interfaces.td:
     - interface-decl
     - implements-clause
     - class-decl
@@ -713,7 +713,7 @@ examples:
     - record-construction
     - binding-fmt
 
-  borgo/match_on_tuples.td:
+  core-language/match_on_tuples/match_on_tuples.td:
     - top-level-func
     - tuple-construction
     - match-expr
@@ -725,7 +725,7 @@ examples:
     - binding-fmt
 
   # ── Raku stress tests ──────────────────────────────────────
-  raku/deep_destructure.td:
+  core-language/deep_destructure/deep_destructure.td:
     - type-decl-sum
     - type-decl-record
     - match-expr
@@ -736,7 +736,7 @@ examples:
     - option-type
     - binding-fmt
 
-  raku/error_chain.td:
+  modeling-errors/error_chain/error_chain.td:
     - implements-clause
     - class-decl
     - class-method-instance
@@ -751,7 +751,7 @@ examples:
     - binding-strings
     - binding-strconv
 
-  raku/set_algebra.td:
+  core-language/set_algebra/set_algebra.td:
     - top-level-func
     - set-literal
     - set-add
@@ -762,7 +762,7 @@ examples:
     - binding-fmt
 
   # ── Counterstack Pentix agent ──────────────────────────────
-  agents/counterstack/pentix_agent.td:
+  stdlib-binding/counterstack/pentix_agent.td:
     - scope-block
     - spawn-block
     - scope-context
