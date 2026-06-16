@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,6 +41,33 @@ func TestManifestRoundTrip(t *testing.T) {
 	}
 	if !found {
 		t.Error("manifest missing example.com/tidekv")
+	}
+}
+
+// TestManifestAbsentIsEmpty — a missing manifest (root "", or a dir with
+// no std/bindings.json) degrades to an empty manifest, not an error:
+// third-party binding is simply unavailable, stdlib-only still builds.
+func TestManifestAbsentIsEmpty(t *testing.T) {
+	if m, err := loadManifest(""); err != nil || len(m.ThirdParty) != 0 {
+		t.Errorf("loadManifest(\"\") = (%+v, %v); want empty, nil", m, err)
+	}
+	if m, err := loadManifest(t.TempDir()); err != nil || len(m.ThirdParty) != 0 {
+		t.Errorf("loadManifest(empty dir) = (%+v, %v); want empty, nil", m, err)
+	}
+}
+
+// TestManifestMalformedErrors — a corrupt manifest is a clear error
+// (fails closed), never a silent empty.
+func TestManifestMalformedErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "std"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "std", "bindings.json"), []byte("{ not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManifest(dir); err == nil {
+		t.Error("malformed manifest should error, not silently succeed")
 	}
 }
 

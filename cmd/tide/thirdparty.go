@@ -71,11 +71,15 @@ func loadManifest(root string) (manifest, error) {
 }
 
 // usedThirdParty returns the manifest deps whose import path the emitted
-// Go actually references (an `import "<path>"` line).
+// Go actually imports. It matches an import-block line (gofmt indents
+// each with a tab) or a single `import "<path>"`, not a bare string
+// literal of the same text in user code — a false match would only add a
+// harmless unused `require`, but the precise check avoids it.
 func usedThirdParty(goSrc string, m manifest) []thirdPartyDep {
 	var used []thirdPartyDep
 	for _, d := range m.ThirdParty {
-		if strings.Contains(goSrc, `"`+d.ImportPath+`"`) {
+		q := `"` + d.ImportPath + `"`
+		if strings.Contains(goSrc, "\t"+q) || strings.Contains(goSrc, "import "+q) {
 			used = append(used, d)
 		}
 	}
