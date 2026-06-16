@@ -719,9 +719,10 @@ func evalRuns(tide: string, tmp: string): RunEval {
   }
   jobs.close()
 
-  // Eight workers drain the (closed, fully-buffered) jobs channel; results is
-  // buffered to n so no worker blocks, and the scope joins once every job is
-  // consumed. Drained sequentially afterwards.
+  // Eight workers drain the (closed, fully-buffered) jobs channel; at most n
+  // results are produced (one per job), so the n-buffered results channel
+  // never blocks a worker. The scope joins once every job is consumed; results
+  // are drained and aggregated sequentially afterwards.
   match scope<unit, error> {
     spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
     spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
