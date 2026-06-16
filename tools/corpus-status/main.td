@@ -526,6 +526,120 @@ func chomp(s: string): string {
   return s
 }
 
+// runOutcome builds and runs one example, returning its RunRow outcome
+// ("ok" on success). This is the cache-miss path — the slow part.
+func runOutcome(tide: string, tmp: string, spec: RunSpec): RunRow {
+  let entryPath = pathJoin(spec.dir, spec.entry)
+  let outBin = pathJoin(tmp, "run.bin")
+  let b = run(tide, ["build", "-o", outBin, entryPath])
+  if b.code() != 0 {
+    return RunRow{ path: spec.dir, status: "build-fail", code: b.code() }
+  }
+  var stdinData = ""
+  if spec.stdin != "" {
+    stdinData = readFileOrEmpty(pathJoin(spec.dir, spec.stdin))
+  }
+  let r = runExample(outBin, spec.args, stdinData, spec.dir, runTimeoutMs())
+  if r.code() == 124 {
+    return RunRow{ path: spec.dir, status: "timeout", code: r.code() }
+  }
+  if r.code() != spec.expectedExit {
+    return RunRow{ path: spec.dir, status: "run-fail", code: r.code() }
+  }
+  if spec.expectedOutput != "" && chomp(r.stdout()) != chomp(readFileOrEmpty(pathJoin(spec.dir, spec.expectedOutput))) {
+    return RunRow{ path: spec.dir, status: "output-diff", code: r.code() }
+  }
+  return RunRow{ path: spec.dir, status: "ok", code: 0 }
+}
+
+// --- run cache (emitted-Go-keyed) ---
+//
+// Running an example is the slow part of the run pass; re-running one whose
+// behaviour cannot have changed is wasted time. The cache keys each outcome on
+// sha256 of the EMITTED Go (not the .td): a compiler change that alters an
+// example's codegen yields different Go — a new key — and the example re-runs
+// (regressions are caught), while unchanged Go hits the cache and skips
+// build+run. The key also folds in the invocation (args / stdin /
+// expected_output / expected_exit) so a manifest change re-runs even when the
+// Go is byte-identical. Committed (examples/run-cache.json, entries sorted by
+// key) so it is deterministic and portable (emit is deterministic across
+// machines). Only the measuring `write` path reads/rewrites it.
+
+type CacheEntry = {
+  key: string
+  status: string
+  code: int
+}
+
+type RunCache = {
+  schema_version: int
+  entries: []CacheEntry
+}
+
+func cachePath(): string {
+  return "examples/run-cache.json"
+}
+
+func lessCache(a: CacheEntry, b: CacheEntry): bool {
+  return a.key < b.key
+}
+
+func loadCache(): []CacheEntry {
+  match json.parse<RunCache>(toBytes(readFileOrEmpty(cachePath()))) {
+    Ok(c) => return c.entries,
+    Err(_) => return []CacheEntry{},
+  }
+}
+
+// cacheFind returns the entry for key, or a sentinel with status "" on a miss
+// (every real outcome status is non-empty).
+func cacheFind(entries: []CacheEntry, key: string): CacheEntry {
+  for e in entries {
+    if e.key == key {
+      return e
+    }
+  }
+  return CacheEntry{ key: "", status: "", code: 0 }
+}
+
+// runKey emits the example's Go and hashes it with the invocation; "" when
+// emit fails (the example then takes the uncached build path).
+func runKey(tide: string, spec: RunSpec): string {
+  let em = runExample(tide, ["emit", pathJoin(spec.dir, spec.entry)], "", "", runTimeoutMs())
+  if em.code() != 0 {
+    return ""
+  }
+  var inv = "args\n"
+  for a in spec.args {
+    // Fold both the arg itself and, if it names a data file under the
+    // example's dir, that file's content — else editing an argv-referenced
+    // input (e.g. wc's sample.txt) would leave the key unchanged and a stale
+    // outcome would mask the new behaviour. A non-file arg reads as "".
+    inv = inv + a + "\n" + readFileOrEmpty(pathJoin(spec.dir, a)) + "\nargend\n"
+  }
+  inv = inv + "stdin\n"
+  if spec.stdin != "" {
+    inv = inv + readFileOrEmpty(pathJoin(spec.dir, spec.stdin)) + "\n"
+  }
+  inv = inv + "expout\n"
+  if spec.expectedOutput != "" {
+    inv = inv + readFileOrEmpty(pathJoin(spec.dir, spec.expectedOutput)) + "\n"
+  }
+  inv = inv + "expexit\n" + strconv.itoa(spec.expectedExit)
+  return sha256hex(em.stdout() + "\n--invocation--\n" + inv)
+}
+
+func writeCache(entries: []CacheEntry) {
+  let c = RunCache{ schema_version: 1, entries: sort.sorted(entries, lessCache) }
+  match json.serializeIndent(c, "", "  ") {
+    Ok(b) => writeOrDie(cachePath(), strings.fromBytes(b) + "\n"),
+    Err(e) => {
+      fmt.println("corpus-status: run-cache serialise failed:", e)
+      os.exit(1)
+    },
+  }
+}
+
 func evalRuns(tide: string, tmp: string): RunEval {
   let listed = runOk("git", ["ls-files", "examples", "user_tests"])
   var manifests = []string{}
@@ -536,6 +650,8 @@ func evalRuns(tide: string, tmp: string): RunEval {
   }
   manifests = sort.sorted(manifests, lessStr)
 
+  let cache = loadCache()
+  var fresh = []CacheEntry{}
   var nOk = 0
   var nTotal = 0
   var fails = []RunRow{}
@@ -545,32 +661,30 @@ func evalRuns(tide: string, tmp: string): RunEval {
       continue
     }
     nTotal = nTotal + 1
-    let entryPath = pathJoin(spec.dir, spec.entry)
-    let outBin = pathJoin(tmp, "run.bin")
-    let b = run(tide, ["build", "-o", outBin, entryPath])
-    if b.code() != 0 {
-      fails = fails.push(RunRow{ path: spec.dir, status: "build-fail", code: b.code() })
-      continue
+    let key = runKey(tide, spec)
+    var row = RunRow{ path: spec.dir, status: "", code: 0 }
+    if key != "" {
+      let hit = cacheFind(cache, key)
+      if hit.status != "" {
+        row = RunRow{ path: spec.dir, status: hit.status, code: hit.code }
+      }
     }
-    var stdinData = ""
-    if spec.stdin != "" {
-      stdinData = readFileOrEmpty(pathJoin(spec.dir, spec.stdin))
+    if row.status == "" {
+      row = runOutcome(tide, tmp, spec)
     }
-    let r = runExample(outBin, spec.args, stdinData, spec.dir, runTimeoutMs())
-    if r.code() == 124 {
-      fails = fails.push(RunRow{ path: spec.dir, status: "timeout", code: r.code() })
-      continue
+    // A timeout is a wall-clock verdict, not a property of the emitted Go —
+    // caching it would let machine load mask a real pass/fail. Cache every
+    // other (deterministic) outcome.
+    if key != "" && row.status != "timeout" {
+      fresh = fresh.push(CacheEntry{ key: key, status: row.status, code: row.code })
     }
-    if r.code() != spec.expectedExit {
-      fails = fails.push(RunRow{ path: spec.dir, status: "run-fail", code: r.code() })
-      continue
+    if row.status == "ok" {
+      nOk = nOk + 1
+    } else {
+      fails = fails.push(row)
     }
-    if spec.expectedOutput != "" && chomp(r.stdout()) != chomp(readFileOrEmpty(pathJoin(spec.dir, spec.expectedOutput))) {
-      fails = fails.push(RunRow{ path: spec.dir, status: "output-diff", code: r.code() })
-      continue
-    }
-    nOk = nOk + 1
   }
+  writeCache(fresh)
   return RunEval{ run_ok: nOk, run_total: nTotal, fails: sort.sorted(fails, lessRunRow) }
 }
 

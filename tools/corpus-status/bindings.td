@@ -19,6 +19,10 @@ extern func runExample(name: string, args: []string, stdin: string, dir: string,
 
 extern func toBytes(s: string): []byte @go("example.com/corpusexec.Bytes")
 
+// sha256hex is the run-cache key: hex SHA-256 of an example's emitted Go plus
+// its invocation (see the run cache in main.td).
+extern func sha256hex(s: string): string @go("example.com/corpusexec.Sha256Hex")
+
 extern impl RunResult {
   out():    string @go("Out")
   stdout(): string @go("Stdout")
