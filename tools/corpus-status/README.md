@@ -21,10 +21,17 @@ the repo. It regenerates `examples/auto-status.json` + `examples/STATUS.md`.
 
 - **`build_ok`** — each example's furthest build-pipeline stage
   (parse / sema / emit / build), the JSON snapshot, and the `STATUS.md`
-  render. **Done** — byte-identical to the Python tool's output for this
-  slice.
-- **`diag_ok`** — the negative-case (`[[error]]`) metric. *Pending.*
+  render. **Done.**
+- **`diag_ok`** — the negative-case (`[[error]]`) metric: patch-apply,
+  build, and check the emitted diagnostic against the ideal. **Done** —
+  with this, `collect` (the default write path) produces a snapshot
+  byte-identical to the Python tool (`build_ok` + `diag_ok` + misses).
 - **`--check` / `--history`** subcommands. *Pending.*
+
+> `build_ok` measures only that an example *compiles* end-to-end — it does
+> not run the program or check its output (the `run-pass` `example.toml`
+> fields are unenforced metadata). A behavioural `run_ok` metric is a
+> separate, planned addition.
 
 Until the port is complete and wired into CI, `scripts/corpus_status.py`
 remains the authoritative gate.
