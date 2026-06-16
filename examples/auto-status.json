@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "totals": {
-    "total": 54,
+    "total": 55,
     "parse_fail": 7,
     "sema_fail": 2,
     "emit_fail": 1,
-    "build_ok": 44,
+    "build_ok": 45,
     "diag_ok": 77,
     "diag_total": 100
   },
@@ -217,6 +217,11 @@
     },
     {
       "path": "examples/core-language/valid_parentheses/valid_parentheses.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/ffi/config_reader/config_reader.td",
       "stage": "build",
       "blocker": ""
     },

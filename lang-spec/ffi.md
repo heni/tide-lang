@@ -187,7 +187,26 @@ is a follow-up; the comment form already prevents silent mistranslation.
 
 Stdlib bindings need no module dependency (the emitted `go.mod` stays
 require-free). Third-party bindings are admitted **only** through an
-explicit, pinned, hermetic binding declared in a binding manifest and
-resolved via a vendored `replace` (the amended third-party-dependency
-decision). The manifest and `require`/`replace` emission land with the
-third-party-plumbing PR.
+explicit, pinned, hermetic binding declared in a **binding manifest**
+(`std/bindings.json`) and resolved via a vendored `replace` (the amended
+third-party-dependency decision, D19).
+
+The manifest maps a third-party Go import path to a module, a pinned
+version, and a vendored copy under `std/vendor/`. When a generated
+program imports a manifest-listed path, the build emits a `go.mod`
+carrying a `require` for the module plus a `replace` to the **absolute
+path of the vendored copy**, so the build never touches the network —
+the hermeticity guardrail. A program that uses no third-party binding
+gets the plain require-free module. The toolchain locates the manifest
+via `$TIDE_ROOT`, else the nearest ancestor of the cwd holding
+`std/bindings.json`.
+
+The proving case is `examples/ffi/config_reader` binding the vendored
+`example.com/tidekv` module; a real third-party library
+(`github.com/BurntSushi/toml`) plugs into the same mechanism once
+vendored — its `toml.parse<T>` would mirror `json.parse<T>`, differing
+only in the underlying package and the manifest `require`. Generating
+bindings for a *non-stdlib* package (module-aware loading, which
+`go/importer` source mode does not do) is a separate follow-up — the
+plumbing here is independent of how the binding `.td` is authored
+(hand-curated, as the proving case is).

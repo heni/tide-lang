@@ -273,6 +273,13 @@ func compileSourceToTempGo(src, label string) (*compiledSource, error) {
 }
 
 func writeTempModule(goSrc string) (*compiledSource, error) {
+	// Resolve any third-party FFI bindings the program uses into a
+	// go.mod with hermetic require + replace (ffi.md §"Dependency
+	// model"); a stdlib-only program gets the plain require-free module.
+	goMod, err := thirdPartyGoMod(goSrc)
+	if err != nil {
+		return nil, err
+	}
 	dir, err := os.MkdirTemp("", "tide-build-*")
 	if err != nil {
 		return nil, fmt.Errorf("tide: mkdir temp: %w", err)
@@ -281,8 +288,7 @@ func writeTempModule(goSrc string) (*compiledSource, error) {
 		os.RemoveAll(dir)
 		return nil, fmt.Errorf("tide: write main.go: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"),
-		[]byte("module tide-output\n\ngo 1.22\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		os.RemoveAll(dir)
 		return nil, fmt.Errorf("tide: write go.mod: %w", err)
 	}
