@@ -21,6 +21,12 @@ func isEmitCode(code: string): bool {
   return code == "E0801" || code == "E0802" || code == "E0803"
 }
 
+func stageOf(code: string): string {
+  if isParseCode(code) { return "parse" }
+  if isEmitCode(code) { return "emit" }
+  return "sema"
+}
+
 // --- records ---
 
 type Row = {
@@ -157,6 +163,281 @@ func buildTide(tmp: string): string {
   return binpath
 }
 
+// --- negative cases: the "correct error messages" metric (diag_ok) ---
+//
+// Each [[error]] in an example.toml is a patch that injects a mistake plus the
+// diagnostic it must provoke. diag_ok counts the cases that reproduce their
+// expected diagnostic (code set ⊆ emitted, stage matches, message substrings
+// present). A case that fails to reproduce is a *penalty* on diag_ok — never a
+// tooling error. A patch that no longer applies, or a compiler/subprocess that
+// cannot be run, *is* a tooling error and aborts the whole run.
+
+type NegCase = {
+  dir: string
+  entry: string
+  patch: string
+  expect: []string
+  stage: string
+  matches: string
+}
+
+type EvalResult = {
+  diag_ok: int
+  diag_total: int
+  misses: []Miss
+}
+
+func containsStr(xs: []string, x: string): bool {
+  for e in xs {
+    if e == x { return true }
+  }
+  return false
+}
+
+func trimQuotes(s: string): string {
+  return strings.trimSuffix(strings.trimPrefix(s, "\""), "\"")
+}
+
+// tomlScalar extracts a TOML-lite string value (mirrors corpus_status.py
+// _toml_scalar): the part after the first `=`, the inner of a leading quoted
+// run if present, else the pre-`#` text with surrounding quotes stripped.
+func tomlScalar(line: string): string {
+  let eq = indexOf(line, "=")
+  if eq < 0 { return "" }
+  var v = strings.trimSpace(line[eq + 1:])
+  if strings.hasPrefix(v, "\"") {
+    let rest = v[1:]
+    let j = indexOf(rest, "\"")
+    if j >= 0 { return rest[:j] }
+  }
+  let h = indexOf(v, "#")
+  if h >= 0 { v = v[:h] }
+  return trimQuotes(strings.trimSpace(v))
+}
+
+// tomlCodes extracts the quoted strings of an array value (mirrors
+// _toml_codes): everything after `=` up to the first `]`, then each `"..."`.
+func tomlCodes(line: string): []string {
+  let eq = indexOf(line, "=")
+  if eq < 0 { return []string{} }
+  var v = line[eq + 1:]
+  let rb = indexOf(v, "]")
+  if rb >= 0 { v = v[:rb] }
+  var out = []string{}
+  var rest = v
+  while true {
+    let q1 = indexOf(rest, "\"")
+    if q1 < 0 { break }
+    rest = rest[q1 + 1:]
+    let q2 = indexOf(rest, "\"")
+    if q2 < 0 { break }
+    out = out.push(rest[:q2])
+    rest = rest[q2 + 1:]
+  }
+  return out
+}
+
+func readFileOrEmpty(path: string): string {
+  match os.readFile(path) {
+    Ok(data) => return strings.fromBytes(data),
+    Err(_) => return "",
+  }
+}
+
+// parseNegCases extracts the [[error]] entries of one example.toml (mirrors
+// parse_neg_cases). `entry` is the manifest's top-level entry, applied to
+// every case (resolved in a first pass so it is order-independent).
+func parseNegCases(manifest: string, text: string): []NegCase {
+  let dir = pathDir(manifest)
+  var entry = ""
+  for raw in strings.split(text, "\n") {
+    let line = strings.trimSpace(raw)
+    if strings.hasPrefix(line, "entry") {
+      entry = tomlScalar(line)
+    }
+  }
+  var cases = []NegCase{}
+  var cur = NegCase{ dir: dir, entry: entry, patch: "", expect: []string{}, stage: "", matches: "" }
+  var inCase = false
+  for raw in strings.split(text, "\n") {
+    let line = strings.trimSpace(raw)
+    if line == "[[error]]" {
+      if inCase { cases = cases.push(cur) }
+      cur = NegCase{ dir: dir, entry: entry, patch: "", expect: []string{}, stage: "", matches: "" }
+      inCase = true
+    } else if strings.hasPrefix(line, "[") {
+      if inCase { cases = cases.push(cur) }
+      inCase = false
+    } else if inCase {
+      if strings.hasPrefix(line, "patch") {
+        cur.patch = tomlScalar(line)
+      } else if strings.hasPrefix(line, "expect") {
+        cur.expect = tomlCodes(line)
+      } else if strings.hasPrefix(line, "stage") {
+        cur.stage = tomlScalar(line)
+      } else if strings.hasPrefix(line, "matches") {
+        cur.matches = tomlScalar(line)
+      }
+    }
+  }
+  if inCase { cases = cases.push(cur) }
+  return cases
+}
+
+// emittedCodes returns the E-codes appearing as `error[E…]` in compiler
+// output (mirrors the code_re findall over the combined stream).
+func emittedCodes(re: Regexp, combined: string): []string {
+  var out = []string{}
+  for m in re.findAll(combined, -1) {
+    if m.len() > 7 {
+      // strip the leading "error[" (6 chars) and the trailing "]".
+      out = out.push(m[6:m.len() - 1])
+    }
+  }
+  return out
+}
+
+func copyFile(src: string, dst: string) {
+  match os.readFile(src) {
+    Ok(data) => {
+      match writeFile(dst, data, 420) {
+        Ok(_) => fmt.print(""),
+        Err(e) => {
+          fmt.println("corpus-status: stage write failed:", dst, e)
+          os.exit(1)
+        },
+      }
+    },
+    Err(e) => {
+      fmt.println("corpus-status: stage read failed:", src, e)
+      os.exit(1)
+    },
+  }
+}
+
+func lessMiss(a: Miss, b: Miss): bool {
+  return a.case < b.case
+}
+
+// mustCompile compiles a known-good regexp, aborting on the impossible
+// failure (an opaque handle cannot be zero-constructed, so the value must
+// come from the extern call).
+func mustCompile(expr: string): Regexp {
+  match compileRegexp(expr) {
+    Ok(c) => return c,
+    Err(e) => {
+      fmt.println("corpus-status: internal regexp failed:", e)
+      os.exit(1)
+    },
+  }
+}
+
+func evalNegatives(tide: string): EvalResult {
+  let rx = mustCompile("error\\[E[0-9]+\\]")
+  let listed = runOk("git", ["ls-files", "examples"])
+  var manifests = []string{}
+  for ln in strings.split(listed, "\n") {
+    if pathBase(ln) == "example.toml" {
+      manifests = manifests.push(ln)
+    }
+  }
+  manifests = sort.sorted(manifests, lessStr)
+
+  var work = ""
+  match mkdirTemp("", "corpus-neg-") {
+    Ok(d) => work = d,
+    Err(e) => {
+      fmt.println("corpus-status: mkdirTemp failed:", e)
+      os.exit(1)
+    },
+  }
+
+  var diagOk = 0
+  var diagTotal = 0
+  var misses = []Miss{}
+  for mf in manifests {
+    let text = readFileOrEmpty(mf)
+    for c in parseNegCases(mf, text) {
+      if c.patch == "" || c.expect.len() == 0 || c.entry == "" {
+        continue
+      }
+      diagTotal = diagTotal + 1
+      let caseLabel = c.dir + "/" + c.patch
+      var tmp = ""
+      match mkdirTemp(work, "") {
+        Ok(d) => tmp = d,
+        Err(e) => {
+          fmt.println("corpus-status: mkdirTemp failed:", e)
+          os.exit(1)
+        },
+      }
+      let staged = pathJoin(tmp, c.entry)
+      copyFile(pathJoin(c.dir, c.entry), staged)
+      var patchfile = ""
+      match pathAbs(pathJoin(c.dir, c.patch)) {
+        Ok(p) => patchfile = p,
+        Err(e) => {
+          fmt.println("corpus-status: abs path failed:", e)
+          os.exit(1)
+        },
+      }
+      // Absolute -i: `patch -d tmp` resolves a relative -i against tmp.
+      let ap = run("patch", ["-p0", "-s", "-d", tmp, "-i", patchfile])
+      if ap.code() != 0 {
+        fmt.println("corpus-status: patch no longer applies", caseLabel, "— regenerate this case:")
+        fmt.println(ap.out())
+        os.exit(1)
+      }
+      let r = run(tide, ["build", "-o", pathJoin(tmp, "out.bin"), staged])
+      let combined = r.out()
+      var want = ""
+      if c.matches != "" {
+        want = strings.trimSpace(readFileOrEmpty(pathJoin(c.dir, c.matches)))
+      }
+      var got = firstDiagLine(combined)
+      if got == "" {
+        if r.code() == 0 {
+          got = "(built clean — no diagnostic)"
+        } else {
+          got = "(no diagnostic)"
+        }
+      }
+      if r.code() == 0 {
+        misses = misses.push(Miss{ case: caseLabel, want: want, got: got })
+        continue
+      }
+      let emitted = emittedCodes(rx, combined)
+      var ok = emitted.len() > 0
+      for code in c.expect {
+        if !containsStr(emitted, code) {
+          ok = false
+        }
+        if c.stage != "" && stageOf(code) != c.stage {
+          ok = false
+        }
+      }
+      if ok && want != "" {
+        for wl in strings.split(want, "\n") {
+          let wls = strings.trimSpace(wl)
+          if wls != "" && !strings.contains(combined, wls) {
+            ok = false
+          }
+        }
+      }
+      if ok {
+        diagOk = diagOk + 1
+      } else {
+        misses = misses.push(Miss{ case: caseLabel, want: want, got: got })
+      }
+    }
+  }
+  match removeAll(work) {
+    Ok(_) => fmt.print(""),
+    Err(_) => fmt.print(""),
+  }
+  return EvalResult{ diag_ok: diagOk, diag_total: diagTotal, misses: sort.sorted(misses, lessMiss) }
+}
+
 // --- collect ---
 
 func collect(): Status {
@@ -189,6 +470,7 @@ func collect(): Status {
       nparse = nparse + 1
     }
   }
+  let ev = evalNegatives(tide)
   match removeAll(tmp) {
     Ok(_) => fmt.print(""),
     Err(_) => fmt.print(""),
@@ -201,11 +483,11 @@ func collect(): Status {
       sema_fail: nsema,
       emit_fail: nemit,
       build_ok: nbuild,
-      diag_ok: 0,
-      diag_total: 0,
+      diag_ok: ev.diag_ok,
+      diag_total: ev.diag_total,
     },
     files: rows,
-    diag_misses: []Miss{},
+    diag_misses: ev.misses,
   }
 }
 
