@@ -16,6 +16,8 @@ package corpusexec
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os/exec"
 	"strings"
 	"time"
@@ -92,6 +94,14 @@ func RunExample(name string, args []string, stdin string, dir string, timeoutMs 
 	// gets from CombinedOutput); it is the diagnostic surface, while stdout is
 	// the run_ok diff surface.
 	return &Result{out: outBuf.String() + errBuf.String(), stdout: outBuf.String(), code: code}
+}
+
+// Sha256Hex returns the hex-encoded SHA-256 of s — the run-cache key over an
+// example's emitted Go (plus its invocation). Tide has no crypto binding yet;
+// this is the one-line adapter for it.
+func Sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 // Bytes converts a string to a byte slice. Tide has no `[]byte(s)`
