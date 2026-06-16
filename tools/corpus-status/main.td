@@ -690,18 +690,32 @@ type HistStatus = {
   totals: HistTotals
 }
 
-// Field order mirrors the Python --history JSONL object exactly.
-type HistoryRow = {
-  date: string
-  commit: string
-  subject: string
-  total: int
-  build_ok: int
-  diag_ok: int
-  diag_total: int
-  emit_fail: int
-  sema_fail: int
-  parse_fail: int
+// jsonStrLit renders a JSON string literal the way Python's json.dumps does
+// with ensure_ascii=False: escape `\` and `"` (and the control chars that
+// occur in this data — none, git %s is single-line), but leave `<`/`>`/`&`
+// raw. Go's json.Marshal HTML-escapes those, which would diverge from the
+// Python tool on subjects like `fmt.scan<T>` — so we build the line by hand.
+func jsonStrLit(s: string): string {
+  let a = strings.replace(s, "\\", "\\\\", -1)
+  let b = strings.replace(a, "\"", "\\\"", -1)
+  return "\"" + b + "\""
+}
+
+// historyLine renders one JSONL row with the Python tool's exact field order
+// and `", "` / `": "` separators.
+func historyLine(date: string, commit: string, subject: string, t: HistTotals): string {
+  return ("{"
+    + "\"date\": " + jsonStrLit(date)
+    + ", \"commit\": " + jsonStrLit(commit)
+    + ", \"subject\": " + jsonStrLit(subject)
+    + ", \"total\": " + strconv.itoa(t.total)
+    + ", \"build_ok\": " + strconv.itoa(t.build_ok)
+    + ", \"diag_ok\": " + strconv.itoa(t.diag_ok)
+    + ", \"diag_total\": " + strconv.itoa(t.diag_total)
+    + ", \"emit_fail\": " + strconv.itoa(t.emit_fail)
+    + ", \"sema_fail\": " + strconv.itoa(t.sema_fail)
+    + ", \"parse_fail\": " + strconv.itoa(t.parse_fail)
+    + "}")
 }
 
 func cmdHistory() {
@@ -729,26 +743,7 @@ func cmdHistory() {
     // Skip blobs from an incompatible (future/older) schema rather than
     // mis-reading them.
     if !parsed || hs.schema_version != 2 { continue }
-    let t = hs.totals
-    let row = HistoryRow{
-      date: parts[1],
-      commit: sha[:12],
-      subject: parts[2],
-      total: t.total,
-      build_ok: t.build_ok,
-      diag_ok: t.diag_ok,
-      diag_total: t.diag_total,
-      emit_fail: t.emit_fail,
-      sema_fail: t.sema_fail,
-      parse_fail: t.parse_fail,
-    }
-    // Compact JSONL (Go json.Marshal); the Python tool spaced its
-    // separators, but --history is an on-demand trend dump (never committed
-    // or gated), so the denser form carries the same data.
-    match json.serialize(row) {
-      Ok(b) => fmt.println(strings.fromBytes(b)),
-      Err(_) => fmt.print(""),
-    }
+    fmt.println(historyLine(parts[1], sha[:12], parts[2], hs.totals))
   }
 }
 

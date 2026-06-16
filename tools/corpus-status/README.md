@@ -28,8 +28,8 @@ the repo. It regenerates `examples/auto-status.json` + `examples/STATUS.md`.
   byte-identical to the Python tool (`build_ok` + `diag_ok` + misses).
 - **`--check`** (floor enforcement + snapshot/`STATUS.md` freshness) and
   **`--history`** (the trend, reconstructed from `git log` of the JSON
-  snapshot as JSONL). **Done** — `--check` output/exit-code match the
-  Python tool; `--history` carries identical data (compact JSONL).
+  snapshot as JSONL). **Done** — both byte-identical to the Python tool
+  (`--check` also matches exit codes).
 
 > `build_ok` measures only that an example *compiles* end-to-end — it does
 > not run the program or check its output (the `run-pass` `example.toml`
