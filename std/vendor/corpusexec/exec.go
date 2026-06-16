@@ -86,6 +86,9 @@ func RunExample(name string, args []string, stdin string, timeoutMs int) *Result
 			code = -1
 		}
 	}
+	// out concatenates stdout then stderr (not the real-time interleave Run
+	// gets from CombinedOutput); it is the diagnostic surface, while stdout is
+	// the run_ok diff surface.
 	return &Result{out: outBuf.String() + errBuf.String(), stdout: outBuf.String(), code: code}
 }
 

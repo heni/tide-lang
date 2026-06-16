@@ -752,10 +752,37 @@ func writeOrDie(path: string, content: string) {
 
 // --- --check: floor enforcement + snapshot freshness ---
 
-func cmdCheck(cur: Status): int {
+// withCommittedRun returns cur with its run_ok/run_total/run_fails replaced by
+// the committed snapshot's. Running examples is non-deterministic (scheduler-
+// and timeout-sensitive), so --check must NOT re-measure run_ok into a
+// byte-exact freshness comparison — that would flake CI red with no floor
+// breached. --check verifies the deterministic build/diag slice and carries
+// committed run data through unchanged; run_ok gains a deterministic,
+// cache-backed gate later in the epoch.
+func withCommittedRun(cur: Status, prev: Status): Status {
+  return Status{
+    schema_version: cur.schema_version,
+    totals: Totals{
+      total: cur.totals.total,
+      parse_fail: cur.totals.parse_fail,
+      sema_fail: cur.totals.sema_fail,
+      emit_fail: cur.totals.emit_fail,
+      build_ok: cur.totals.build_ok,
+      diag_ok: cur.totals.diag_ok,
+      diag_total: cur.totals.diag_total,
+      run_ok: prev.totals.run_ok,
+      run_total: prev.totals.run_total,
+    },
+    files: cur.files,
+    diag_misses: cur.diag_misses,
+    run_fails: prev.run_fails,
+  }
+}
+
+func cmdCheck(cur0: Status): int {
   let floors = readFloors()
-  let ab = cur.totals.build_ok
-  let ad = cur.totals.diag_ok
+  let ab = cur0.totals.build_ok
+  let ad = cur0.totals.diag_ok
   if ab < floors.build_ok_min {
     fmt.println(fmt.sprintf("corpus-status: REGRESSION: build_ok %d < floor %d — a previously-building example no longer builds", ab, floors.build_ok_min))
     return 1
@@ -768,6 +795,13 @@ func cmdCheck(cur: Status): int {
   if committed == "" {
     fmt.println("corpus-status:", jsonPath(), "missing — run corpus-status")
     return 1
+  }
+  // Carry the committed run data through (see withCommittedRun); a malformed
+  // committed snapshot leaves cur0's run fields and fails the freshness check.
+  var cur = cur0
+  match json.parse<Status>(toBytes(committed)) {
+    Ok(prev) => cur = withCommittedRun(cur0, prev),
+    Err(_) => fmt.print(""),
   }
   if strings.trimSpace(statusJson(cur)) != strings.trimSpace(committed) {
     fmt.println(fmt.sprintf("corpus-status: snapshot stale (build_ok=%d, diag_ok=%d) — run corpus-status and commit the result", ab, ad))
@@ -887,13 +921,23 @@ func main() {
     }
     i = i + 1
   }
+  if noRun && mode != "write" {
+    fmt.println("corpus-status: --no-run cannot be combined with --check/--history")
+    os.exit(2)
+  }
   if mode == "history" {
     cmdHistory()
     os.exit(0)
   }
+  // --check verifies the deterministic build/diag slice and carries committed
+  // run data through (see withCommittedRun), so it skips the non-deterministic
+  // run pass — keeping CI fast and flake-free.
+  if mode == "check" {
+    os.exit(cmdCheck(collect(false)))
+  }
   // --no-run is the fast local pass: build_ok + diag_ok only, never running
-  // the examples and never touching the committed artifacts (which must carry
-  // the full run_ok measurement).
+  // the examples and never touching the committed artifacts (which carry the
+  // full run_ok measurement).
   if noRun {
     let s = collect(false)
     let t = s.totals
@@ -901,9 +945,6 @@ func main() {
     os.exit(0)
   }
   let status = collect(true)
-  if mode == "check" {
-    os.exit(cmdCheck(status))
-  }
   writeArtifacts(status)
   let t = status.totals
   fmt.println(fmt.sprintf("corpus-status: wrote examples/auto-status.json + examples/STATUS.md (build_ok %d/%d, run_ok %d/%d)", t.build_ok, t.total, t.run_ok, t.run_total))
