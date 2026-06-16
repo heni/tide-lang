@@ -607,17 +607,29 @@ func renderMarkdown(s: Status): string {
 
 // --- write artifacts ---
 
-func writeArtifacts(s: Status) {
-  var jsonStr = ""
+func jsonPath(): string {
+  return "examples/auto-status.json"
+}
+
+func mdPath(): string {
+  return "examples/STATUS.md"
+}
+
+// statusJson renders the deterministic snapshot (json.dumps(indent=2) shape,
+// trailing newline) shared by the write and --check paths.
+func statusJson(s: Status): string {
   match json.serializeIndent(s, "", "  ") {
-    Ok(b) => jsonStr = strings.fromBytes(b) + "\n",
+    Ok(b) => return strings.fromBytes(b) + "\n",
     Err(e) => {
       fmt.println("corpus-status: JSON serialise failed:", e)
       os.exit(1)
     },
   }
-  writeOrDie("examples/auto-status.json", jsonStr)
-  writeOrDie("examples/STATUS.md", renderMarkdown(s))
+}
+
+func writeArtifacts(s: Status) {
+  writeOrDie(jsonPath(), statusJson(s))
+  writeOrDie(mdPath(), renderMarkdown(s))
 }
 
 func writeOrDie(path: string, content: string) {
@@ -627,6 +639,111 @@ func writeOrDie(path: string, content: string) {
       fmt.println("corpus-status: write", path, "failed:", e)
       os.exit(1)
     },
+  }
+}
+
+// --- --check: floor enforcement + snapshot freshness ---
+
+func cmdCheck(cur: Status): int {
+  let floors = readFloors()
+  let ab = cur.totals.build_ok
+  let ad = cur.totals.diag_ok
+  if ab < floors.build_ok_min {
+    fmt.println(fmt.sprintf("corpus-status: REGRESSION: build_ok %d < floor %d — a previously-building example no longer builds", ab, floors.build_ok_min))
+    return 1
+  }
+  if ad < floors.diag_ok_min {
+    fmt.println(fmt.sprintf("corpus-status: REGRESSION: diag_ok %d < floor %d — fewer negative cases reproduce their diagnostic. Fix the case(s), or, if a diagnostic legitimately changed, lower diag_ok_min in metric-floors.toml with a justification.", ad, floors.diag_ok_min))
+    return 1
+  }
+  let committed = readFileOrEmpty(jsonPath())
+  if committed == "" {
+    fmt.println("corpus-status:", jsonPath(), "missing — run corpus-status")
+    return 1
+  }
+  if strings.trimSpace(statusJson(cur)) != strings.trimSpace(committed) {
+    fmt.println(fmt.sprintf("corpus-status: snapshot stale (build_ok=%d, diag_ok=%d) — run corpus-status and commit the result", ab, ad))
+    return 1
+  }
+  if readFileOrEmpty(mdPath()) != renderMarkdown(cur) {
+    fmt.println("corpus-status:", mdPath(), "stale — run corpus-status and commit")
+    return 1
+  }
+  fmt.println(fmt.sprintf("corpus-status: up to date (build_ok %d/%d, diag_ok %d/%d)", ab, cur.totals.total, ad, cur.totals.diag_total))
+  return 0
+}
+
+// --- --history: the trend (JSONL) reconstructed from git ---
+
+type HistTotals = {
+  total: int
+  build_ok: int
+  diag_ok: int
+  diag_total: int
+  emit_fail: int
+  sema_fail: int
+  parse_fail: int
+}
+
+type HistStatus = {
+  schema_version: int
+  totals: HistTotals
+}
+
+// jsonStrLit renders a JSON string literal the way Python's json.dumps does
+// with ensure_ascii=False: escape `\` and `"` (and the control chars that
+// occur in this data — none, git %s is single-line), but leave `<`/`>`/`&`
+// raw. Go's json.Marshal HTML-escapes those, which would diverge from the
+// Python tool on subjects like `fmt.scan<T>` — so we build the line by hand.
+func jsonStrLit(s: string): string {
+  let a = strings.replace(s, "\\", "\\\\", -1)
+  let b = strings.replace(a, "\"", "\\\"", -1)
+  return "\"" + b + "\""
+}
+
+// historyLine renders one JSONL row with the Python tool's exact field order
+// and `", "` / `": "` separators.
+func historyLine(date: string, commit: string, subject: string, t: HistTotals): string {
+  return ("{"
+    + "\"date\": " + jsonStrLit(date)
+    + ", \"commit\": " + jsonStrLit(commit)
+    + ", \"subject\": " + jsonStrLit(subject)
+    + ", \"total\": " + strconv.itoa(t.total)
+    + ", \"build_ok\": " + strconv.itoa(t.build_ok)
+    + ", \"diag_ok\": " + strconv.itoa(t.diag_ok)
+    + ", \"diag_total\": " + strconv.itoa(t.diag_total)
+    + ", \"emit_fail\": " + strconv.itoa(t.emit_fail)
+    + ", \"sema_fail\": " + strconv.itoa(t.sema_fail)
+    + ", \"parse_fail\": " + strconv.itoa(t.parse_fail)
+    + "}")
+}
+
+func cmdHistory() {
+  let log = runOk("git", ["log", "--reverse", "--format=%H%x09%cI%x09%s", "--", jsonPath()])
+  for ln in strings.split(log, "\n") {
+    let line = strings.trimSpace(ln)
+    if line == "" { continue }
+    let parts = splitN(line, "\t", 3)
+    if parts.len() < 3 { continue }
+    let sha = parts[0]
+    let blob = run("git", ["show", sha + ":" + jsonPath()])
+    if blob.code() != 0 { continue }
+    var hs = HistStatus{
+      schema_version: 0,
+      totals: HistTotals{ total: 0, build_ok: 0, diag_ok: 0, diag_total: 0, emit_fail: 0, sema_fail: 0, parse_fail: 0 },
+    }
+    var parsed = false
+    match json.parse<HistStatus>(toBytes(blob.out())) {
+      Ok(s) => {
+        hs = s
+        parsed = true
+      },
+      Err(_) => parsed = false,
+    }
+    // Skip blobs from an incompatible (future/older) schema rather than
+    // mis-reading them.
+    if !parsed || hs.schema_version != 2 { continue }
+    fmt.println(historyLine(parts[1], sha[:12], parts[2], hs.totals))
   }
 }
 
@@ -640,7 +757,26 @@ func main() {
       os.exit(1)
     },
   }
+  let args = os.args
+  var mode = "write"
+  if args.len() > 1 {
+    if args[1] == "--check" {
+      mode = "check"
+    } else if args[1] == "--history" {
+      mode = "history"
+    } else {
+      fmt.println("usage: corpus-status [--check|--history]")
+      os.exit(2)
+    }
+  }
+  if mode == "history" {
+    cmdHistory()
+    os.exit(0)
+  }
   let status = collect()
+  if mode == "check" {
+    os.exit(cmdCheck(status))
+  }
   writeArtifacts(status)
   let t = status.totals
   fmt.println(fmt.sprintf("corpus-status: wrote examples/auto-status.json + examples/STATUS.md (%d/%d build)", t.build_ok, t.total))
