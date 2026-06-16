@@ -527,10 +527,10 @@ func chomp(s: string): string {
 }
 
 // runOutcome builds and runs one example, returning its RunRow outcome
-// ("ok" on success). This is the cache-miss path — the slow part.
-func runOutcome(tide: string, tmp: string, spec: RunSpec): RunRow {
+// ("ok" on success). This is the cache-miss path — the slow part. outBin must
+// be unique per concurrent caller (the worker pool passes a per-job path).
+func runOutcome(tide: string, outBin: string, spec: RunSpec): RunRow {
   let entryPath = pathJoin(spec.dir, spec.entry)
-  let outBin = pathJoin(tmp, "run.bin")
   let b = run(tide, ["build", "-o", outBin, entryPath])
   if b.code() != 0 {
     return RunRow{ path: spec.dir, status: "build-fail", code: b.code() }
@@ -640,6 +640,56 @@ func writeCache(entries: []CacheEntry) {
   }
 }
 
+// --- parallel run pass ---
+//
+// Running examples is subprocess-bound and independent per example, so a fixed
+// pool of workers (dogfooding Tide's own structured concurrency) processes
+// them concurrently. Determinism is preserved: outcomes are order-independent
+// and the fails/cache lists are sorted before use, so the snapshot is
+// identical regardless of scheduling.
+
+type WorkItem = {
+  spec: RunSpec
+  outBin: string
+}
+
+// WorkResult carries one example's outcome plus its cache key — empty when the
+// outcome must not be cached (emit failed, or a non-deterministic timeout).
+type WorkResult = {
+  row: RunRow
+  key: string
+}
+
+// classifyRun is the per-example body: emit+hash, consult the cache, and on a
+// miss build+run. outBin is unique per job so concurrent builds never collide.
+func classifyRun(tide: string, cache: []CacheEntry, outBin: string, spec: RunSpec): WorkResult {
+  let key = runKey(tide, spec)
+  var row = RunRow{ path: spec.dir, status: "", code: 0 }
+  if key != "" {
+    let hit = cacheFind(cache, key)
+    if hit.status != "" {
+      row = RunRow{ path: spec.dir, status: hit.status, code: hit.code }
+    }
+  }
+  if row.status == "" {
+    row = runOutcome(tide, outBin, spec)
+  }
+  // A timeout is a wall-clock verdict, not a property of the emitted Go —
+  // caching it would let machine load mask a real pass/fail. Drop its key so
+  // it is never persisted; every other outcome is deterministic and cached.
+  var cacheKey = key
+  if row.status == "timeout" {
+    cacheKey = ""
+  }
+  return WorkResult{ row: row, key: cacheKey }
+}
+
+func runWorker(tide: string, cache: []CacheEntry, jobs: RecvChan<WorkItem>, results: SendChan<WorkResult>) {
+  for job in jobs {
+    results.send(classifyRun(tide, cache, job.outBin, job.spec))
+  }
+}
+
 func evalRuns(tide: string, tmp: string): RunEval {
   let listed = runOk("git", ["ls-files", "examples", "user_tests"])
   var manifests = []string{}
@@ -650,42 +700,62 @@ func evalRuns(tide: string, tmp: string): RunEval {
   }
   manifests = sort.sorted(manifests, lessStr)
 
-  let cache = loadCache()
-  var fresh = []CacheEntry{}
-  var nOk = 0
-  var nTotal = 0
-  var fails = []RunRow{}
+  var specs = []RunSpec{}
   for mf in manifests {
     let spec = parseRunSpec(mf, readFileOrEmpty(mf))
-    if spec.expects != "run-pass" || spec.entry == "" {
-      continue
+    if spec.expects == "run-pass" && spec.entry != "" {
+      specs = specs.push(spec)
     }
-    nTotal = nTotal + 1
-    let key = runKey(tide, spec)
-    var row = RunRow{ path: spec.dir, status: "", code: 0 }
-    if key != "" {
-      let hit = cacheFind(cache, key)
-      if hit.status != "" {
-        row = RunRow{ path: spec.dir, status: hit.status, code: hit.code }
-      }
-    }
-    if row.status == "" {
-      row = runOutcome(tide, tmp, spec)
-    }
-    // A timeout is a wall-clock verdict, not a property of the emitted Go —
-    // caching it would let machine load mask a real pass/fail. Cache every
-    // other (deterministic) outcome.
-    if key != "" && row.status != "timeout" {
-      fresh = fresh.push(CacheEntry{ key: key, status: row.status, code: row.code })
-    }
-    if row.status == "ok" {
+  }
+
+  let cache = loadCache()
+  let n = specs.len()
+  let jobs = makeChannel<WorkItem>(n)
+  let results = makeChannel<WorkResult>(n)
+  var i = 0
+  for spec in specs {
+    jobs.send(WorkItem{ spec: spec, outBin: pathJoin(tmp, "run-" + strconv.itoa(i) + ".bin") })
+    i = i + 1
+  }
+  jobs.close()
+
+  // Eight workers drain the (closed, fully-buffered) jobs channel; at most n
+  // results are produced (one per job), so the n-buffered results channel
+  // never blocks a worker. The scope joins once every job is consumed; results
+  // are drained and aggregated sequentially afterwards.
+  match scope<unit, error> {
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+    spawn { runWorker(tide, cache, jobs, results); return Ok(()) }
+  } {
+    Ok(_) => {},
+    Err(e) => {
+      fmt.println("corpus-status: run pass failed:", e)
+      os.exit(1)
+    },
+  }
+
+  var nOk = 0
+  var fails = []RunRow{}
+  var fresh = []CacheEntry{}
+  for _ in 0..n {
+    let res = results.recv()
+    if res.row.status == "ok" {
       nOk = nOk + 1
     } else {
-      fails = fails.push(row)
+      fails = fails.push(res.row)
+    }
+    if res.key != "" {
+      fresh = fresh.push(CacheEntry{ key: res.key, status: res.row.status, code: res.row.code })
     }
   }
   writeCache(fresh)
-  return RunEval{ run_ok: nOk, run_total: nTotal, fails: sort.sorted(fails, lessRunRow) }
+  return RunEval{ run_ok: nOk, run_total: n, fails: sort.sorted(fails, lessRunRow) }
 }
 
 // --- collect ---
