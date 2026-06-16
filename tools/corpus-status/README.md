@@ -35,8 +35,7 @@ the repo. It regenerates `examples/auto-status.json` + `examples/STATUS.md`.
   sidecar when present). Examples declare their invocation in `example.toml`
   (`args` / `stdin` / `expected_output` / `expected_exit`, all relative to
   the example's own directory); `no-run` examples are excluded. A per-example
-  timeout guards against a non-terminating example. **In progress** (epoch
-  RUN-OK).
+  timeout guards against a non-terminating example. **In progress.**
 
 ### `--no-run` and the run cache
 
