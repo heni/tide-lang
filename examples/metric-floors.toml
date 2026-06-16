@@ -14,7 +14,12 @@
 #   diag_ok_min  — relaxable, but ONLY in a commit that justifies why a
 #     diagnostic legitimately regressed (e.g. a compiler refactor reworded a
 #     message). Otherwise raise it as coverage grows.
+#   run_ok_min   — STRICT ratchet, like build_ok: a run-pass example that
+#     stops running (wrong output, crash, hang) is a real behavioural
+#     regression. Only ever raised. --check re-derives run_ok via the run
+#     cache, so the gate is fast and deterministic.
 
 build_ok_min = 46   # current build_ok; strict ratchet
 diag_ok_min  = 70   # headroom below current diag_ok (77) so an
                     # individual imprecise message is a penalty, not a red
+run_ok_min   = 26   # current run_ok; strict ratchet

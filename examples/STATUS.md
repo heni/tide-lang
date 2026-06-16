@@ -2,11 +2,11 @@
 
 Generated from `examples/auto-status.json` by the `corpus-status` tool (`tools/corpus-status`) — do not edit by hand. Build and run the tool to refresh.
 
-Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `metric-floors.toml`:
+Three tracked metrics, each with a CI-enforced floor in `metric-floors.toml`:
 
 - **build_ok — 46 / 56 examples build end-to-end** (floor 46).
 - **diag_ok — 77 / 100 negative cases produce their expected diagnostic** (floor 70).
-- **run_ok — 26 / 51 run-pass examples build and run as specified** (behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).
+- **run_ok — 26 / 51 run-pass examples build and run as specified** (floor 26; behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).
 
 | Stage reached | Count |
 |---|---|

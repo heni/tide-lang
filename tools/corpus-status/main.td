@@ -690,7 +690,11 @@ func runWorker(tide: string, cache: []CacheEntry, jobs: RecvChan<WorkItem>, resu
   }
 }
 
-func evalRuns(tide: string, tmp: string): RunEval {
+// evalRuns measures run_ok, cache-accelerated. persistCache writes the
+// refreshed cache (the `write` path); --check passes false so it stays
+// read-only — it still re-runs cache-missed examples, just doesn't rewrite
+// the committed cache file.
+func evalRuns(tide: string, tmp: string, persistCache: bool): RunEval {
   let listed = runOk("git", ["ls-files", "examples", "user_tests"])
   var manifests = []string{}
   for ln in strings.split(listed, "\n") {
@@ -754,13 +758,15 @@ func evalRuns(tide: string, tmp: string): RunEval {
       fresh = fresh.push(CacheEntry{ key: res.key, status: res.row.status, code: res.row.code })
     }
   }
-  writeCache(fresh)
+  if persistCache {
+    writeCache(fresh)
+  }
   return RunEval{ run_ok: nOk, run_total: n, fails: sort.sorted(fails, lessRunRow) }
 }
 
 // --- collect ---
 
-func collect(measureRun: bool): Status {
+func collect(measureRun: bool, persistCache: bool): Status {
   var tmp = ""
   match mkdirTemp("", "corpus-status-") {
     Ok(d) => tmp = d,
@@ -793,7 +799,7 @@ func collect(measureRun: bool): Status {
   let ev = evalNegatives(tide)
   var rv = RunEval{ run_ok: 0, run_total: 0, fails: []RunRow{} }
   if measureRun {
-    rv = evalRuns(tide, tmp)
+    rv = evalRuns(tide, tmp, persistCache)
   }
   match removeAll(tmp) {
     Ok(_) => fmt.print(""),
@@ -823,6 +829,7 @@ func collect(measureRun: bool): Status {
 type Floors = {
   build_ok_min: int
   diag_ok_min: int
+  run_ok_min: int
 }
 
 func parseFloorLine(line: string, key: string): int {
@@ -858,17 +865,20 @@ func readFloors(): Floors {
   }
   var bmin = -1
   var dmin = -1
+  var rmin = -1
   for line in strings.split(text, "\n") {
     let b = parseFloorLine(line, "build_ok_min")
     if b >= 0 { bmin = b }
     let d = parseFloorLine(line, "diag_ok_min")
     if d >= 0 { dmin = d }
+    let r = parseFloorLine(line, "run_ok_min")
+    if r >= 0 { rmin = r }
   }
-  if bmin < 0 || dmin < 0 {
+  if bmin < 0 || dmin < 0 || rmin < 0 {
     fmt.println("corpus-status: examples/metric-floors.toml missing or malformed floor keys")
     os.exit(1)
   }
-  return Floors{ build_ok_min: bmin, diag_ok_min: dmin }
+  return Floors{ build_ok_min: bmin, diag_ok_min: dmin, run_ok_min: rmin }
 }
 
 // --- markdown render ---
@@ -897,10 +907,10 @@ func renderMarkdown(s: Status): string {
   var out = ""
   out = out + "# Example conformance status\n\n"
   out = out + "Generated from `examples/auto-status.json` by the `corpus-status` tool (`tools/corpus-status`) — do not edit by hand. Build and run the tool to refresh.\n\n"
-  out = out + "Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `metric-floors.toml`:\n\n"
+  out = out + "Three tracked metrics, each with a CI-enforced floor in `metric-floors.toml`:\n\n"
   out = out + fmt.sprintf("- **build_ok — %d / %d examples build end-to-end** (floor %d).\n", t.build_ok, t.total, floors.build_ok_min)
   out = out + fmt.sprintf("- **diag_ok — %d / %d negative cases produce their expected diagnostic** (floor %d).\n", t.diag_ok, t.diag_total, floors.diag_ok_min)
-  out = out + fmt.sprintf("- **run_ok — %d / %d run-pass examples build and run as specified** (behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).\n\n", t.run_ok, t.run_total)
+  out = out + fmt.sprintf("- **run_ok — %d / %d run-pass examples build and run as specified** (floor %d; behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).\n\n", t.run_ok, t.run_total, floors.run_ok_min)
   out = out + "| Stage reached | Count |\n"
   out = out + "|---|---|\n"
   out = out + fmt.sprintf("| ✅ build (full pipeline) | %d |\n", t.build_ok)
@@ -977,38 +987,18 @@ func writeOrDie(path: string, content: string) {
 }
 
 // --- --check: floor enforcement + snapshot freshness ---
-
-// withCommittedRun returns cur with its run_ok/run_total/run_fails replaced by
-// the committed snapshot's. Running examples is non-deterministic (scheduler-
-// and timeout-sensitive), so --check must NOT re-measure run_ok into a
-// byte-exact freshness comparison — that would flake CI red with no floor
-// breached. --check verifies the deterministic build/diag slice and carries
-// committed run data through unchanged; run_ok gains a deterministic,
-// cache-backed gate later in the epoch.
-func withCommittedRun(cur: Status, prev: Status): Status {
-  return Status{
-    schema_version: cur.schema_version,
-    totals: Totals{
-      total: cur.totals.total,
-      parse_fail: cur.totals.parse_fail,
-      sema_fail: cur.totals.sema_fail,
-      emit_fail: cur.totals.emit_fail,
-      build_ok: cur.totals.build_ok,
-      diag_ok: cur.totals.diag_ok,
-      diag_total: cur.totals.diag_total,
-      run_ok: prev.totals.run_ok,
-      run_total: prev.totals.run_total,
-    },
-    files: cur.files,
-    diag_misses: cur.diag_misses,
-    run_fails: prev.run_fails,
-  }
-}
-
-func cmdCheck(cur0: Status): int {
+//
+// --check re-derives all three metrics, run_ok included: the run cache makes
+// the run pass fast (unchanged examples hit) and deterministic (cached
+// outcomes are recorded, not re-measured), so re-running it no longer flakes —
+// a cache miss means the emitted Go genuinely changed and the example must
+// re-run anyway (that is how a behavioural regression is caught). cur already
+// carries the freshly measured run_ok (collect(true, …)).
+func cmdCheck(cur: Status): int {
   let floors = readFloors()
-  let ab = cur0.totals.build_ok
-  let ad = cur0.totals.diag_ok
+  let ab = cur.totals.build_ok
+  let ad = cur.totals.diag_ok
+  let ar = cur.totals.run_ok
   if ab < floors.build_ok_min {
     fmt.println(fmt.sprintf("corpus-status: REGRESSION: build_ok %d < floor %d — a previously-building example no longer builds", ab, floors.build_ok_min))
     return 1
@@ -1017,27 +1007,24 @@ func cmdCheck(cur0: Status): int {
     fmt.println(fmt.sprintf("corpus-status: REGRESSION: diag_ok %d < floor %d — fewer negative cases reproduce their diagnostic. Fix the case(s), or, if a diagnostic legitimately changed, lower diag_ok_min in metric-floors.toml with a justification.", ad, floors.diag_ok_min))
     return 1
   }
+  if ar < floors.run_ok_min {
+    fmt.println(fmt.sprintf("corpus-status: REGRESSION: run_ok %d < floor %d — a run-pass example no longer runs as specified (wrong output, crash, or hang)", ar, floors.run_ok_min))
+    return 1
+  }
   let committed = readFileOrEmpty(jsonPath())
   if committed == "" {
     fmt.println("corpus-status:", jsonPath(), "missing — run corpus-status")
     return 1
   }
-  // Carry the committed run data through (see withCommittedRun); a malformed
-  // committed snapshot leaves cur0's run fields and fails the freshness check.
-  var cur = cur0
-  match json.parse<Status>(toBytes(committed)) {
-    Ok(prev) => cur = withCommittedRun(cur0, prev),
-    Err(_) => fmt.print(""),
-  }
   if strings.trimSpace(statusJson(cur)) != strings.trimSpace(committed) {
-    fmt.println(fmt.sprintf("corpus-status: snapshot stale (build_ok=%d, diag_ok=%d) — run corpus-status and commit the result", ab, ad))
+    fmt.println(fmt.sprintf("corpus-status: snapshot stale (build_ok=%d, diag_ok=%d, run_ok=%d) — run corpus-status and commit the result", ab, ad, ar))
     return 1
   }
   if readFileOrEmpty(mdPath()) != renderMarkdown(cur) {
     fmt.println("corpus-status:", mdPath(), "stale — run corpus-status and commit")
     return 1
   }
-  fmt.println(fmt.sprintf("corpus-status: up to date (build_ok %d/%d, diag_ok %d/%d, run_ok %d/%d)", ab, cur.totals.total, ad, cur.totals.diag_total, cur.totals.run_ok, cur.totals.run_total))
+  fmt.println(fmt.sprintf("corpus-status: up to date (build_ok %d/%d, diag_ok %d/%d, run_ok %d/%d)", ab, cur.totals.total, ad, cur.totals.diag_total, ar, cur.totals.run_total))
   return 0
 }
 
@@ -1155,22 +1142,22 @@ func main() {
     cmdHistory()
     os.exit(0)
   }
-  // --check verifies the deterministic build/diag slice and carries committed
-  // run data through (see withCommittedRun), so it skips the non-deterministic
-  // run pass — keeping CI fast and flake-free.
+  // --check re-derives run_ok too (cache-accelerated, deterministic) and
+  // enforces all three floors; it must not rewrite the committed cache, so
+  // persistCache is false.
   if mode == "check" {
-    os.exit(cmdCheck(collect(false)))
+    os.exit(cmdCheck(collect(true, false)))
   }
   // --no-run is the fast local pass: build_ok + diag_ok only, never running
   // the examples and never touching the committed artifacts (which carry the
   // full run_ok measurement).
   if noRun {
-    let s = collect(false)
+    let s = collect(false, false)
     let t = s.totals
     fmt.println(fmt.sprintf("corpus-status: --no-run (run_ok skipped): build_ok %d/%d, diag_ok %d/%d", t.build_ok, t.total, t.diag_ok, t.diag_total))
     os.exit(0)
   }
-  let status = collect(true)
+  let status = collect(true, true)
   writeArtifacts(status)
   let t = status.totals
   fmt.println(fmt.sprintf("corpus-status: wrote examples/auto-status.json + examples/STATUS.md (build_ok %d/%d, run_ok %d/%d)", t.build_ok, t.total, t.run_ok, t.run_total))
