@@ -161,14 +161,19 @@ signature, exactly like an ordinary call/field access — the rules are
 type level: `extern func atoi(s: string): Result<int, error>` simply
 *is* a function returning `Result<int, error>` to the type checker. The
 lift from Go's `(int, error)` into that `Result` is a **lowering** rule
-(`lowering-go.md` §ForeignCall), applied at codegen.
+(`lowering-go.md` §ForeignCall), applied at codegen. A referent that
+returns a **bare `error`** (no value) curates as `Result<unit, error>`
+and lowers through the `tideResultUnit` wrapper — the value-free
+degenerate case of the same error lift.
 
-The mechanical Go→Tide type map the **generator** uses, and the two
+The mechanical Go→Tide type map the **generator** uses, and the
 automatic boundary lifts it applies when emitting the curated file —
-`(T, error) → Result<T, error>` and comma-ok `(T, bool) → Option<T>` —
+`(T, error) → Result<T, error>` (with bare `error → Result<unit,
+error>` as its value-free case) and comma-ok `(T, bool) → Option<T>` —
 are specified in `../docs/rfcs/0005-go-ffi.md` §"Type translation". The
 invariant: the only automatic `Option`/`Result`-producing lifts are
-those two; a nil-able `*T` is an **adapter** lift, never automatic.
+the error lift and the comma-ok lift; a nil-able `*T` is an **adapter**
+lift, never automatic.
 
 ## The generator — `tide import`
 

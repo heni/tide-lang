@@ -894,11 +894,18 @@ declarations themselves emit no Go (they are signature metadata).
   Tide name). Field access `r.x` lowers to `r.GoField`; a `var` field
   is assignable (`r.GoField = v`).
 - **Boundary lift.** A binding whose curated return is `Result<U,
-  error>` wraps its Go `(U, error)` referent in the shared
-  `tideResultOf` helper — `tideResultOf(<ref>.Sym(ā))` — identical to
-  the stdlib `resultWrap` shape above. (Comma-ok `(U, bool) →
-  Option<U>` is a generator-side lift; its codegen wrapper is a later
-  slice.)
+  error>` wraps its Go referent at the boundary, keyed on `U`:
+  - `U ≠ unit` — the Go referent returns `(U, error)`; wrap in the
+    shared `tideResultOf` helper — `tideResultOf(<ref>.Sym(ā))` —
+    identical to the stdlib `resultWrap` shape above.
+  - `U = unit` — the Go referent returns a **bare `error`** (no value,
+    e.g. `os.Chdir`, `os.WriteFile`, `(*exec.Cmd).Run`); wrap in the
+    `tideResultUnit` helper — `tideResultUnit(<ref>.Sym(ā))` — which
+    folds the lone `error` into `Result<unit, error>` (`unit` →
+    Go `struct{}`).
+
+  (Comma-ok `(U, bool) → Option<U>` is a generator-side lift; its
+  codegen wrapper is a later slice.)
 - **Imports.** The Go import path each used binding names via `@go` is
   added to the import block directly (it comes from `@go`, not the
   `.td` imports). References use the path's base name; a Go package is

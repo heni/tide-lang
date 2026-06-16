@@ -84,12 +84,63 @@ func goRefMember(ref *ast.GoRef, tideName string) string {
 	return ref.Raw
 }
 
-// externReturnsResult reports whether a return annotation is a
-// `Result<…>` — the shape whose Go `(T, error)` referent is folded
-// through tideResultOf at the boundary.
-func externReturnsResult(rt ast.TypeExpr) bool {
+// externResultKind classifies an extern return annotation for the
+// boundary lift (lowering-go.md §ForeignCall):
+//
+//	resultNone  — not a Result; the Go call lowers bare.
+//	resultValue — Result<T, E> over a Go `(T, error)`; wrap tideResultOf.
+//	resultUnit  — Result<unit, error> over a Go bare `error`; wrap
+//	              tideResultUnit (the success value is `unit` → struct{}).
+type externResultKind int
+
+const (
+	resultNone externResultKind = iota
+	resultValue
+	resultUnit
+)
+
+// externResultKindOf inspects a return annotation. A `Result<unit, …>`
+// names a Go referent that returns a bare `error` (no value), so it
+// needs the unit-wrapper rather than the two-value tideResultOf.
+func externResultKindOf(rt ast.TypeExpr) externResultKind {
 	nt, ok := rt.(*ast.NamedType)
-	return ok && len(nt.QName) == 1 && nt.QName[0] == "Result"
+	if !ok || len(nt.QName) != 1 || nt.QName[0] != "Result" {
+		return resultNone
+	}
+	if len(nt.Args) >= 1 {
+		if p, ok := nt.Args[0].(*ast.PrimitiveType); ok && p.Name == "unit" {
+			return resultUnit
+		}
+	}
+	return resultValue
+}
+
+// markExternLift records the helper a lift of the given kind needs, so
+// the predeclared-helper pass emits it. Both lifts force the Result sum.
+func (g *gen) markExternLift(kind externResultKind) {
+	switch kind {
+	case resultValue:
+		g.usesResultOf = true
+		g.usesResult = true
+	case resultUnit:
+		g.usesResultUnit = true
+		g.usesResult = true
+	}
+}
+
+// externLiftOpen writes the opening wrapper call for a lift kind (and
+// records the helper), returning whether a closing paren is owed.
+func (g *gen) externLiftOpen(kind externResultKind) bool {
+	g.markExternLift(kind)
+	switch kind {
+	case resultValue:
+		g.b.WriteString("tideResultOf(")
+	case resultUnit:
+		g.b.WriteString("tideResultUnit(")
+	default:
+		return false
+	}
+	return true
 }
 
 // externHandleName returns the opaque-handle type name of recv (via its
@@ -145,12 +196,7 @@ func (g *gen) emitExternFuncCall(efd *ast.ExternFuncDecl, c *ast.Call) error {
 	if pkg == "" {
 		return fmt.Errorf("codegen: extern func %s has no @go package", efd.Name)
 	}
-	lift := externReturnsResult(efd.ReturnType)
-	if lift {
-		g.usesResultOf = true
-		g.usesResult = true
-		g.b.WriteString("tideResultOf(")
-	}
+	lift := g.externLiftOpen(externResultKindOf(efd.ReturnType))
 	g.b.WriteString(goPkgRef(pkg))
 	g.b.WriteByte('.')
 	g.b.WriteString(sym)
@@ -167,12 +213,7 @@ func (g *gen) emitExternFuncCall(efd *ast.ExternFuncDecl, c *ast.Call) error {
 // `[tideResultOf(]recv.GoName(args)[)]`.
 func (g *gen) emitExternMethodCall(m *ast.ExternMethod, f *ast.Field, c *ast.Call) error {
 	goName := goRefMember(m.Go, m.Name)
-	lift := externReturnsResult(m.ReturnType)
-	if lift {
-		g.usesResultOf = true
-		g.usesResult = true
-		g.b.WriteString("tideResultOf(")
-	}
+	lift := g.externLiftOpen(externResultKindOf(m.ReturnType))
 	if err := g.emitExpr(f.Receiver); err != nil {
 		return err
 	}

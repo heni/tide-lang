@@ -1,0 +1,56 @@
+--- TITLE ---
+Go-FFI bare-`error` lift: extern returning Result<unit, error> → tideResultUnit
+
+--- INPUT ---
+import fmt
+
+extern func setenv(key: string, value: string): Result<unit, error> @go("os.Setenv")
+
+func main() {
+  match setenv("TIDE_FIXTURE", "1") {
+    Ok(_)  => fmt.println("ok"),
+    Err(_) => fmt.println("err"),
+  }
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+type Result[T any, E any] struct {
+	Tag uint8
+	V   T
+	E   E
+}
+
+func ResultOk[T any, E any](value T) Result[T, E] {
+	return Result[T, E]{Tag: 0, V: value}
+}
+func ResultErr[T any, E any](err E) Result[T, E] {
+	return Result[T, E]{Tag: 1, E: err}
+}
+func tideResultUnit(err error) Result[struct{}, error] {
+	if err != nil {
+		return ResultErr[struct{}, error](err)
+	}
+	return ResultOk[struct{}, error](struct{}{})
+}
+func main() {
+	__tide_match_1 := tideResultUnit(os.Setenv("TIDE_FIXTURE", "1"))
+	switch __tide_match_1.Tag {
+	case 0:
+		fmt.Println("ok")
+	case 1:
+		fmt.Println("err")
+	}
+}
+
+--- STDOUT ---
+ok
+
+--- EXIT ---
+0

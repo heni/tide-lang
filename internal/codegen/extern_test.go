@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/heni/tide-lang/internal/ast"
@@ -57,5 +58,60 @@ func TestGoRefMember(t *testing.T) {
 	}
 	if got := goRefMember(nil, "matchString"); got != "MatchString" {
 		t.Errorf("default member = %q; want MatchString", got)
+	}
+}
+
+// externResultKindOf drives the boundary lift (lowering-go.md
+// §ForeignCall): a Go `(T, error)` referent (Tide `Result<T, error>`)
+// lifts via tideResultOf; a bare-`error` referent (Tide
+// `Result<unit, error>`) via tideResultUnit; anything else lowers bare.
+func TestExternResultKindOf(t *testing.T) {
+	result := func(args ...ast.TypeExpr) *ast.NamedType {
+		return &ast.NamedType{QName: []string{"Result"}, Args: args}
+	}
+	prim := func(n string) *ast.PrimitiveType { return &ast.PrimitiveType{Name: n} }
+	cases := []struct {
+		name string
+		rt   ast.TypeExpr
+		want externResultKind
+	}{
+		{"value", result(prim("int"), prim("error")), resultValue},
+		{"unit", result(prim("unit"), prim("error")), resultUnit},
+		{"bare-result", result(), resultValue}, // no args → value (defensive)
+		{"non-result-named", &ast.NamedType{QName: []string{"Option"}}, resultNone},
+		{"primitive", prim("bool"), resultNone},
+	}
+	for _, c := range cases {
+		if got := externResultKindOf(c.rt); got != c.want {
+			t.Errorf("%s: externResultKindOf = %d; want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// The method site of the unit lift (emitExternMethodCall) shares the
+// classifier with the func site but is a distinct code path; assert a
+// handle method returning Result<unit, error> lowers via tideResultUnit.
+func TestExternMethodUnitLift(t *testing.T) {
+	src := `import fmt
+
+extern type Buffer @go("bytes")
+
+extern func newBuffer(s: string): Buffer @go("bytes.NewBufferString")
+
+extern impl Buffer {
+  writeByte(c: byte): Result<unit, error> @go("WriteByte")
+}
+
+func main() {
+  let b = newBuffer("")
+  match b.writeByte(65) {
+    Ok(_)  => fmt.println("ok"),
+    Err(_) => fmt.println("err"),
+  }
+}
+`
+	got := emitString(t, src)
+	if !strings.Contains(got, "tideResultUnit(b.WriteByte(") {
+		t.Errorf("method unit lift not lowered via tideResultUnit:\n%s", got)
 	}
 }

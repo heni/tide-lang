@@ -200,6 +200,7 @@ The generator maps each Go type to a Tide type. The total rule:
 | `func(A,B) R` | `(A,B) => R` | params/result translated |
 | `...T` (variadic) | `...T` | |
 | `error` | `error` | predeclared |
+| **bare `error`** (sole return) | **`Result<unit, error>`** | boundary lift, below |
 | **`(T, error)`** | **`Result<T, error>`** | boundary lift, below |
 | **`(T, bool)`** (comma-ok) | **`Option<T>`** | boundary lift, below |
 | `*T` (named) | opaque handle `T` | raw stays a handle; nil→`Option` is an adapter lift, never automatic (below) |
@@ -211,7 +212,10 @@ The generator maps each Go type to a Tide type. The total rule:
 (ReScript's `@return(nullable)` / PureScript's `toMaybe` lesson):
 
 - `(T, error)` → `Result<T, error>` — reuses the existing
-  `resultWrap` lowering (`tideResultOf`).
+  `resultWrap` lowering (`tideResultOf`). A referent whose *sole*
+  return is `error` (no value) is the value-free case: bare `error` →
+  `Result<unit, error>`, lowered via `tideResultUnit` (`unit` →
+  `struct{}`).
 - `(T, bool)` comma-ok → `Option<T>` — but a Go function legitimately
   returning a `bool` is **ambiguous** with comma-ok. The generator's
   guess (2nd-return-is-`bool` ⇒ Option) is a *default the human can

@@ -341,6 +341,10 @@ type gen struct {
 	usesScan2    bool
 	usesScan3    bool
 	usesResultOf bool
+	// usesResultUnit — an extern referent returning a bare Go `error`
+	// (Tide `Result<unit, error>`) is lifted via the tideResultUnit
+	// helper (lowering-go.md §ForeignCall).
+	usesResultUnit bool
 	// usesJSON — any json.* binding is used, so Go's encoding/json is
 	// imported and (with usesOption) the Option ⇄ null/value JSON
 	// methods are emitted. usesJSONParse additionally forces the
@@ -553,6 +557,7 @@ func (g *gen) writeHeader(f *ast.File) {
 	g.writePredeclaredScan2()
 	g.writePredeclaredScan3()
 	g.writePredeclaredResultOf()
+	g.writePredeclaredResultUnit()
 	g.writePredeclaredJSONParse()
 	g.writeOptionJSONMethods()
 	g.writePredeclaredSortSorted()
@@ -683,6 +688,25 @@ func (g *gen) writePredeclaredResultOf() {
 		return ResultErr[T, error](err)
 	}
 	return ResultOk[T, error](v)
+}
+`)
+}
+
+// writePredeclaredResultUnit emits the tideResultUnit helper backing
+// the bare-`error` → Result<unit, error> boundary lift for extern
+// referents that return only an `error` (`os.Chdir`, `os.WriteFile`,
+// …). `unit` lowers to Go's zero-byte struct{} (lowering-go.md
+// §ForeignCall). Requires the predeclared Result sum (usesResult,
+// forced alongside usesResultUnit). Conditional on usage.
+func (g *gen) writePredeclaredResultUnit() {
+	if !g.usesResultUnit {
+		return
+	}
+	g.b.WriteString(`func tideResultUnit(err error) Result[struct{}, error] {
+	if err != nil {
+		return ResultErr[struct{}, error](err)
+	}
+	return ResultOk[struct{}, error](struct{}{})
 }
 `)
 }
@@ -1209,16 +1233,12 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 					if pkg, _ := goRefPkgSym(efd.Go, efd.Name); pkg != "" {
 						g.externPkgs[pkg] = true
 					}
-					if externReturnsResult(efd.ReturnType) {
-						g.usesResultOf = true
-						g.usesResult = true
-					}
+					g.markExternLift(externResultKindOf(efd.ReturnType))
 				}
 			}
 			if f, ok := v.Callee.(*ast.Field); ok {
-				if m, isExtern := g.externMethodOf(f); isExtern && externReturnsResult(m.ReturnType) {
-					g.usesResultOf = true
-					g.usesResult = true
+				if m, isExtern := g.externMethodOf(f); isExtern {
+					g.markExternLift(externResultKindOf(m.ReturnType))
 				}
 			}
 			walk(v.Callee)
