@@ -61,7 +61,7 @@ severity column.
 | E0110 | E | Malformed escape sequence | `grammar.ebnf` EscapeChar | Use one of the v1 escapes: `\n \t \r \\ \" \' \0 \xNN \uNNNN`. |
 | E0111 | E | Malformed rune literal | `grammar.ebnf` RuneLit | A rune literal must contain exactly one character or escape sequence between single quotes. |
 | E0112 | E | Unexpected token | `grammar.ebnf` syntactic part | The parser was looking for a different shape; check the surrounding construct. |
-| E0113 | E | Duplicate top-level declaration | `name-resolution.md` §File scope | Two file-scope `func`, `class`, `type`, or `interface` declarations share a name. Rename one or fold them together. |
+| E0113 | E | Duplicate top-level declaration | `name-resolution.md` §Scopes (package scope) | Two top-level `func`, `class`, `type`, or `interface` declarations in the package share a name (within one file or across two files of the same directory). Rename one or fold them together. |
 | E0114 | E | Cyclic type alias | `type-system.md` §Alias resolution | The alias chain loops back on itself (`type A = B; type B = A`). Break the cycle by inlining one side or introducing a fresh nominal type. |
 | E0115 | E | A variadic parameter must be the last parameter | `grammar.ebnf` §Param / `ffi.md` §Variadic | Move the `...T` parameter to the end of the list — only the final parameter may be variadic. |
 

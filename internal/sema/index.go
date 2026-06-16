@@ -17,17 +17,10 @@ func (c *checker) newPackageScope() *Scope {
 	return newScope(pre)
 }
 
-// indexDeclarations — Barrier A. See docs/internals/sema.md §4.
-// Returns the file scope (parented by the predeclared scope).
-func (c *checker) indexDeclarations(f *ast.File) *Scope {
-	file := c.newPackageScope()
-	c.indexFile(f, file)
-	return file
-}
-
 // indexFile registers one file's imports + top-level declarations into
-// the (possibly shared) package scope. Duplicate top-level names —
-// within a file or across files of the same package — are E0113.
+// the (possibly shared) package scope — Barrier A, see
+// docs/internals/sema.md §4. Duplicate top-level names — within a file
+// or across files of the same package — are E0113.
 func (c *checker) indexFile(f *ast.File, file *Scope) {
 	for _, im := range f.Imports {
 		if im.Path == "" {

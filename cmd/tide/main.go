@@ -62,7 +62,7 @@ func cmdEmit(args []string) int {
 	fs.SetOutput(os.Stderr)
 	noLine := fs.Bool("no-line", false, "strip //line directives from the lowered Go (for human reading)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: tide emit [-no-line] <file.td>")
+		fmt.Fprintln(os.Stderr, "usage: tide emit [-no-line] <file.td | dir>")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -115,7 +115,7 @@ func cmdBuild(args []string) int {
 	fs.SetOutput(os.Stderr)
 	out := fs.String("o", "", "output binary path (default: ./<basename>)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: tide build [-o <path>] <file.td>")
+		fmt.Fprintln(os.Stderr, "usage: tide build [-o <path>] <file.td | dir>")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -310,7 +310,7 @@ func cmdRun(args []string) int {
 	fs := flag.NewFlagSet("tide run", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: tide run <file.td>")
+		fmt.Fprintln(os.Stderr, "usage: tide run <file.td | dir>")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

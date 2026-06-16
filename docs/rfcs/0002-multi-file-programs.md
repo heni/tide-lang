@@ -63,8 +63,17 @@ Build-unit selection mirrors Go:
   produce a binary.
 
 If a directory has more than one `func main()` across its files,
-or has none and is the build entry, it's an **E0114 No (or
-multiple) main functions in package** error.
+or has none and is the build entry, it's an error.
+
+> **Implementation note (package=directory increment).** The code
+> `E0114` this RFC originally proposed was later allocated to
+> "Cyclic type alias", so the build-entry main check does not reuse
+> it. A *duplicate* `func main` is already caught by the shared
+> package scope as **E0113** (duplicate top-level declaration). A
+> *missing* main is reported by the build/run driver as a
+> Tide-phrased error (`tide: no \`func main\` in package <dir>`) —
+> no leaked Go-toolchain diagnostic. A dedicated diagnostic code can
+> be assigned later if the message needs `.td` coordinates.
 
 ### Cross-package imports
 
