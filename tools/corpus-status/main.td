@@ -716,7 +716,7 @@ func renderMarkdown(s: Status): string {
   out = out + "Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `metric-floors.toml`:\n\n"
   out = out + fmt.sprintf("- **build_ok — %d / %d examples build end-to-end** (floor %d).\n", t.build_ok, t.total, floors.build_ok_min)
   out = out + fmt.sprintf("- **diag_ok — %d / %d negative cases produce their expected diagnostic** (floor %d).\n", t.diag_ok, t.diag_total, floors.diag_ok_min)
-  out = out + fmt.sprintf("- **run_ok — %d / %d run-pass examples build and exit 0 when run** (behavioural; `no-run` examples excluded).\n\n", t.run_ok, t.run_total)
+  out = out + fmt.sprintf("- **run_ok — %d / %d run-pass examples build and run as specified** (behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).\n\n", t.run_ok, t.run_total)
   out = out + "| Stage reached | Count |\n"
   out = out + "|---|---|\n"
   out = out + fmt.sprintf("| ✅ build (full pipeline) | %d |\n", t.build_ok)

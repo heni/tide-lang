@@ -6,7 +6,7 @@ Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `met
 
 - **build_ok — 46 / 56 examples build end-to-end** (floor 46).
 - **diag_ok — 77 / 100 negative cases produce their expected diagnostic** (floor 70).
-- **run_ok — 26 / 51 run-pass examples build and exit 0 when run** (behavioural; `no-run` examples excluded).
+- **run_ok — 26 / 51 run-pass examples build and run as specified** (behavioural: exit code, and stdout vs an `expected_output` sidecar when present; `no-run` examples excluded).
 
 | Stage reached | Count |
 |---|---|
