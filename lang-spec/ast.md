@@ -189,7 +189,8 @@ implementation should preserve that order.
 |---|---|---|---|
 | `span` | `Span` | yes | |
 | `name` | `string` | yes | `"_"` allowed (discard parameter) |
-| `decl_type` | `Option<TypeExpr>` | optional in short-closure shape; required elsewhere | |
+| `decl_type` | `Option<TypeExpr>` | optional in short-closure shape; required elsewhere | for a variadic parameter this is the **element** type `T` (the parameter is in scope as `[]T`) |
+| `variadic` | `bool` | yes | `name: ...T` — only the final parameter may be variadic (E0115). See `ffi.md` §Variadic. |
 
 ## Foreign bindings — Go FFI (`ffi.md`)
 
@@ -341,6 +342,7 @@ Expr =
   | ClosureLit      { params: []Param, return_type: Option<TypeExpr>, body: Block }
   | UnitLit
   | Call            { callee: Expr, type_args: []TypeExpr, args: []Expr }
+  | SpreadArg       { inner: Expr }                          // `...e`; only the final call arg (ffi.md §Variadic)
   | Index           { receiver: Expr, index: Expr }
   | Slice           { receiver: Expr, low: Option<Expr>, high: Option<Expr> }
   | Field           { receiver: Expr, name: string }

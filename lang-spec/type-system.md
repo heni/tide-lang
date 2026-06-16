@@ -721,6 +721,20 @@ only place where the pattern shape influences `IterElem`.
                   Γ ⊢ arg_i : T_i[A → τ]
                ──────────────────────────────────────────────
                   Γ ⊢ f<τ_1, ..., τ_k>(arg_1, ..., arg_n) : R[A → τ]
+
+(T-Variadic)   Γ ⊢ f : func(P_1, ..., P_n, ...T): R       [last param `...T`]
+                  for each i ≤ n: Γ ⊢ arg_i : P_i
+                  for each tail j: Γ ⊢ t_j : T              [m ≥ 0; m = 0 ⇒ empty tail]
+               ─────────────────────────────────────────────────────────
+                  Γ ⊢ f(arg_1, ..., arg_n, t_1, ..., t_m) : R
+               (fewer than n fixed arguments ⇒ E0202; a tail t_j ≠ T ⇒ E0201)
+
+(T-Spread)     Γ ⊢ f : func(P_1, ..., P_n, ...T): R       [last param `...T`]
+                  for each i ≤ n: Γ ⊢ arg_i : P_i      Γ ⊢ e : []T
+               ─────────────────────────────────────────────────────────
+                  Γ ⊢ f(arg_1, ..., arg_n, ...e) : R
+               (`...e` is legal only as the final argument of a variadic
+                callee ⇒ E0213 otherwise; e ≠ []T ⇒ E0201)
 ```
 
 Type-parameter inference (`f(arg)` without explicit `<τ>`) uses

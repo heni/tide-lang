@@ -231,10 +231,15 @@ func (n *FuncDecl) declMarker()      {}
 
 // Param is one parameter of a FuncDecl. DeclType is required at
 // FuncDecl position (closures may omit it; not parsed in PR-F1).
+// Variadic marks a `name: ...T` parameter (grammar.ebnf §Param,
+// ffi.md §Variadic): DeclType holds the *element* type T, and the
+// parameter is in scope as a slice `[]T`. Only the final parameter
+// may be variadic (E0115).
 type Param struct {
 	Span     Span
 	Name     string // "_" allowed
 	DeclType TypeExpr
+	Variadic bool
 }
 
 func (n *Param) NodeSpan() Span   { return n.Span }
@@ -896,6 +901,20 @@ type Call struct {
 func (n *Call) NodeSpan() Span   { return n.Span }
 func (n *Call) NodeKind() string { return "Call" }
 func (n *Call) exprMarker()      {}
+
+// SpreadArg is a `...e` call argument (grammar.ebnf §Arg): it spreads
+// the slice Inner into a variadic parameter, lowering to Go's `e...`.
+// Only the final argument of a call may be a spread; sema requires the
+// callee's last parameter to be variadic and Inner to be `[]T` of the
+// matching element type (E0213).
+type SpreadArg struct {
+	Span  Span
+	Inner Expr
+}
+
+func (n *SpreadArg) NodeSpan() Span   { return n.Span }
+func (n *SpreadArg) NodeKind() string { return "SpreadArg" }
+func (n *SpreadArg) exprMarker()      {}
 
 // Field is member access: receiver.name.
 type Field struct {

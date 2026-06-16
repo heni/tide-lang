@@ -61,7 +61,7 @@ func (c *checker) instantiate(fn *Func, call *ast.Call, args []Type) *Func {
 	for i, p := range fn.Params {
 		params[i] = substitute(p, subst)
 	}
-	return &Func{Params: params, Return: substitute(fn.Return, subst)}
+	return &Func{Params: params, Return: substitute(fn.Return, subst), Variadic: fn.Variadic}
 }
 
 // unifyArg binds the generic parameters appearing in `param`
@@ -117,7 +117,7 @@ func substitute(t Type, subst map[string]Type) Type {
 		for i, p := range x.Params {
 			ps[i] = substitute(p, subst)
 		}
-		return &Func{Params: ps, Return: substitute(x.Return, subst), TypeParams: x.TypeParams}
+		return &Func{Params: ps, Return: substitute(x.Return, subst), TypeParams: x.TypeParams, Variadic: x.Variadic}
 	default:
 		return t
 	}

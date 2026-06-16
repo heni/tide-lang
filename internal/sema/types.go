@@ -50,11 +50,14 @@ func isOpaqueHandle(t Type) bool {
 }
 
 // Func — a function / method signature. TypeParams lists generic
-// parameter names (empty for monomorphic functions).
+// parameter names (empty for monomorphic functions). Variadic marks
+// a trailing `...T` parameter: when set, the final entry of Params is
+// the slice type `[]T` it accepts (ffi.md §Variadic).
 type Func struct {
 	Params     []Type
 	Return     Type
 	TypeParams []string
+	Variadic   bool
 }
 
 func (*Func) typeMarker() {}

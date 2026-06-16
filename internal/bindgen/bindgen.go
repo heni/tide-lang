@@ -177,13 +177,24 @@ func (g *generator) renderMethod(m *types.Func) string {
 // renderParams renders a parameter list, or a non-empty reason string
 // when a parameter type (or variadic) is untranslatable.
 func (g *generator) renderParams(sig *types.Signature) (string, string) {
-	if sig.Variadic() {
-		return "", "variadic parameter (...T) — Tide has no variadic yet"
-	}
 	tup := sig.Params()
 	var parts []string
 	for i := 0; i < tup.Len(); i++ {
 		p := tup.At(i)
+		// The final parameter of a variadic Go signature has type `[]T`;
+		// bind it as Tide's variadic `...T` (ffi.md §Variadic).
+		if sig.Variadic() && i == tup.Len()-1 {
+			st, ok := p.Type().(*types.Slice)
+			if !ok {
+				return "", "variadic final parameter is not a slice"
+			}
+			tt, ok, reason := g.translate(st.Elem())
+			if !ok {
+				return "", fmt.Sprintf("param %s: %s", paramName(p, i), reason)
+			}
+			parts = append(parts, fmt.Sprintf("%s: ...%s", paramName(p, i), tt))
+			continue
+		}
 		tt, ok, reason := g.translate(p.Type())
 		if !ok {
 			return "", fmt.Sprintf("param %s: %s", paramName(p, i), reason)

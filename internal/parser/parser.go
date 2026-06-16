@@ -1120,6 +1120,14 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 		if _, err := p.expect(lexer.KindPunct, ":"); err != nil {
 			return nil, err
 		}
+		// A leading `...` marks a variadic parameter — its DeclType is
+		// the element type T (the parameter is in scope as `[]T`).
+		// grammar.ebnf §Param; ffi.md §Variadic.
+		variadic := false
+		if p.at(lexer.KindOp, "...") {
+			p.advance()
+			variadic = true
+		}
 		ty, err := p.parseTypeExpr()
 		if err != nil {
 			return nil, err
@@ -1131,10 +1139,17 @@ func (p *parser) parseParamList() ([]*ast.Param, *Diag) {
 			},
 			Name:     nameTok.Lexeme,
 			DeclType: ty,
+			Variadic: variadic,
 		})
 		p.skipNewlines()
 		if !p.at(lexer.KindPunct, ",") {
 			break
+		}
+		// A variadic parameter must be last (E0115): a `,` after one
+		// means a further parameter follows.
+		if variadic {
+			t := p.peek()
+			return nil, p.diag("E0115", "A variadic parameter must be the last parameter", t.Line, t.Col)
 		}
 		p.advance() // consume ','
 	}
@@ -2744,6 +2759,26 @@ func (p *parser) parseCallSuffix(callee ast.Expr, typeArgs []ast.TypeExpr) (*ast
 	p.skipNewlines()
 	if !p.at(lexer.KindPunct, ")") {
 		for {
+			// A leading `...` spreads a slice into a variadic parameter
+			// (grammar.ebnf §Arg). A spread is only legal as the final
+			// argument, so we break the loop after parsing one — a
+			// following `,` then surfaces as E0112 at the closing `)`.
+			if p.at(lexer.KindOp, "...") {
+				dots := p.advance()
+				inner, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				c.Args = append(c.Args, &ast.SpreadArg{
+					Span: ast.Span{
+						StartLine: dots.Line, StartCol: dots.Col,
+						EndLine: inner.NodeSpan().EndLine, EndCol: inner.NodeSpan().EndCol,
+					},
+					Inner: inner,
+				})
+				p.skipNewlines()
+				break
+			}
 			arg, err := p.parseExpr()
 			if err != nil {
 				return nil, err

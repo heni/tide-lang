@@ -182,7 +182,7 @@ func (c *checker) resolveMethod(cd *ast.ClassDecl, m *ast.Method, classScope, me
 	for _, p := range m.Params {
 		c.checkReservedName(p.Name, p.Span)
 		c.resolveTypeExpr(p.DeclType, classScope)
-		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.typeFromExpr(p.DeclType)}
+		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.paramSymType(p)}
 		bodyScope.declare(psym)
 		c.info.Def[p] = psym
 	}
@@ -204,7 +204,7 @@ func (c *checker) resolveFuncDecl(fn *ast.FuncDecl, parent *Scope) {
 	for _, p := range fn.Params {
 		c.checkReservedName(p.Name, p.Span)
 		c.resolveTypeExpr(p.DeclType, fnScope)
-		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.typeFromExpr(p.DeclType)}
+		psym := &Symbol{Name: p.Name, Kind: SymLocal, Decl: p, Type: c.paramSymType(p)}
 		fnScope.declare(psym)
 		c.info.Def[p] = psym
 	}

@@ -1521,6 +1521,9 @@ func (g *gen) emitMethod(className string, classTypeParams []string, m *ast.Meth
 		}
 		g.b.WriteString(goIdent(p.Name))
 		g.b.WriteByte(' ')
+		if p.Variadic {
+			g.b.WriteString("...")
+		}
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
 		}
@@ -1588,6 +1591,11 @@ func (g *gen) emitFuncDecl(fn *ast.FuncDecl) error {
 		}
 		g.b.WriteString(goIdent(p.Name))
 		g.b.WriteByte(' ')
+		// A variadic `...T` parameter carries its element type in
+		// DeclType; lower to Go's `...T` (ffi.md §Variadic).
+		if p.Variadic {
+			g.b.WriteString("...")
+		}
 		if err := g.emitTypeExpr(p.DeclType); err != nil {
 			return err
 		}
@@ -2619,6 +2627,13 @@ func (g *gen) emitExpr(e ast.Expr) error {
 		return g.emitField(v)
 	case *ast.Call:
 		return g.emitCall(v)
+	case *ast.SpreadArg:
+		// `...xs` lowers to Go's trailing `xs...` spread (ffi.md §Variadic).
+		if err := g.emitExpr(v.Inner); err != nil {
+			return err
+		}
+		g.b.WriteString("...")
+		return nil
 	case *ast.Binary:
 		if err := g.emitExpr(v.Left); err != nil {
 			return err

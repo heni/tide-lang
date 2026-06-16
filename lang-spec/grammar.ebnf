@@ -321,7 +321,11 @@ InterfaceMember = Ident "(" ParamList? ")" ReturnAnnot? Newline+ ;
 
 FuncDecl     = "func" Ident TypeParams? "(" ParamList? ")" ReturnAnnot? Block ;
 ParamList    = Param ( "," Param )* ;
-Param        = ( Ident | "_" ) ":" TypeExpr ;
+Param        = ( Ident | "_" ) ":" "..."? TypeExpr ;
+                          // a leading "..." marks a variadic parameter:
+                          // TypeExpr is the element type T, the parameter
+                          // is in scope as `[]T`. Only the final Param may
+                          // be variadic (E0115). See ffi.md §Variadic.
 ReturnAnnot  = ":" Newline? TypeExpr ;   // type may wrap to the next line
 
 // =============================================================
@@ -483,7 +487,13 @@ TupleFieldSuffix = "." IntLit ;
 // The parser re-splits a `digits "." digits` FloatLit that follows a
 // `.` suffix back into two TupleFieldSuffix indices. Any other float
 // form (exponent, etc.) is not a tuple-index chain and stays an error.
-ArgList          = Expr ( "," Newline? Expr )* ;
+ArgList          = Arg ( "," Newline? Arg )* ;
+Arg              = "..."? Expr ;
+                          // a leading "..." spreads a slice into a
+                          // variadic parameter (lowers to Go's `e...`).
+                          // Only the final Arg may be a spread, and the
+                          // callee's last parameter must be variadic
+                          // (E0213). See ffi.md §Variadic.
 
 PrimaryExpr  = Literal
              | ThisExpr                              // explicit class receiver

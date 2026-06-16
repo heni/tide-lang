@@ -30,6 +30,8 @@ func (c *checker) resolveExpr(e ast.Expr, scope *Scope) {
 		for _, a := range v.Args {
 			c.resolveExpr(a, scope)
 		}
+	case *ast.SpreadArg:
+		c.resolveExpr(v.Inner, scope)
 	case *ast.Field:
 		// Only the receiver is resolved here; v.Name (the field
 		// or method spelling) is dispatched by codegen against

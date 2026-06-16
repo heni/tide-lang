@@ -207,6 +207,9 @@ func write(b *strings.Builder, n Node, depth int) {
 	case *Param:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)
+		if v.Variadic {
+			b.WriteString(" variadic")
+		}
 		writeSpan(b, v.Span)
 		b.WriteByte('\n')
 		write(b, v.DeclType, depth+1)
@@ -756,6 +759,10 @@ func write(b *strings.Builder, n Node, depth int) {
 			b.WriteByte('\n')
 			write(b, a, depth+1)
 		}
+	case *SpreadArg:
+		writeSpan(b, v.Span)
+		b.WriteByte('\n')
+		write(b, v.Inner, depth+1)
 	case *Field:
 		b.WriteByte(' ')
 		writeQuoted(b, v.Name)

@@ -365,9 +365,14 @@ Top-level functions use the `func` keyword. Methods inside a `class` or an
 - Closure literal: `func(a: T, b: U): R { body }` — same shape, anonymous.
 - Short closure: `(a, b) => a < b` — when parameter types are inferable
   from context (e.g. a comparator argument).
-- Variadic: `func print(args: ...Any)`. At the call site, individual
-  arguments — including concrete values *and* interface values — widen
-  to `Any`.
+- Variadic: a trailing `name: ...T` parameter accepts zero or more
+  arguments of element type `T`, and is in scope as the slice `[]T`.
+  Only the final parameter may be variadic. A call passes the tail
+  inline (`sum(label, 1, 2, 3)`) or spreads an existing slice with
+  `...` (`sum(label, ...xs)` where `xs: []int`). The binding boundary's
+  `...Any` form (e.g. a Go variadic formatter) is the same feature with
+  `T = Any`, the escape type that admits both concrete and interface
+  values.
 - Parameters may use the discard pattern `_` (e.g. `func cb(_: int,
   name: string)`). Useful when implementing an interface that demands
   a parameter the body does not need.

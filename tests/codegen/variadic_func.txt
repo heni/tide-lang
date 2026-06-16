@@ -1,0 +1,49 @@
+--- TITLE ---
+variadic function — `...T` parameter, inline + empty + spread call sites
+
+--- INPUT ---
+import fmt
+
+func sum(label: string, nums: ...int): int {
+  var total = 0
+  for n in nums {
+    total = total + n
+  }
+  fmt.println(label, total)
+  return total
+}
+
+func main() {
+  let _ = sum("direct", 1, 2, 3)
+  let _ = sum("none")
+  let xs = [10, 20, 30]
+  let _ = sum("spread", ...xs)
+}
+
+--- GO ---
+package main
+
+import "fmt"
+
+func sum(label string, nums ...int) int {
+	var total = 0
+	for _, n := range nums {
+		total = total + n
+	}
+	fmt.Println(label, total)
+	return total
+}
+func main() {
+	var _ = sum("direct", 1, 2, 3)
+	var _ = sum("none")
+	var xs = []int{10, 20, 30}
+	var _ = sum("spread", xs...)
+}
+
+--- STDOUT ---
+direct 6
+none 0
+spread 60
+
+--- EXIT ---
+0

@@ -38,6 +38,11 @@ func (c *checker) inferExpr(e ast.Expr) Type {
 		t = c.inferIdent(v)
 	case *ast.Call:
 		t = c.inferCall(v)
+	case *ast.SpreadArg:
+		// A spread `...xs` has the type of the slice it forwards; its
+		// validity (variadic target, element type) is checked by the
+		// enclosing call (checkSpreadTarget / checkArgTypes).
+		t = c.inferExpr(v.Inner)
 	case *ast.Field:
 		t = c.inferField(v)
 	case *ast.Binary:
@@ -350,6 +355,7 @@ func (c *checker) inferCall(call *ast.Call) Type {
 		args[i] = c.inferExpr(a)
 	}
 	c.checkCallArity(call)
+	c.checkSpreadTarget(call)
 
 	ret := Type(&Unknown{})
 	if id, ok := call.Callee.(*ast.Ident); ok {
@@ -360,7 +366,7 @@ func (c *checker) inferCall(call *ast.Call) Type {
 					if len(fn.TypeParams) > 0 {
 						fn = c.instantiate(fn, call, args)
 					}
-					c.checkArgTypes(fn.Params, args, call.Args, sym.Name)
+					c.checkArgTypes(fn, args, call.Args, sym.Name)
 					ret = fn.Return
 				}
 			case SymExternType:
@@ -397,7 +403,7 @@ func (c *checker) inferCall(call *ast.Call) Type {
 			// Method call `recv.m(args)`. inferField already typed
 			// the callee as the method's Func when the receiver is
 			// a class.
-			c.checkArgTypes(fn.Params, args, call.Args, f.Name)
+			c.checkArgTypes(fn, args, call.Args, f.Name)
 			ret = fn.Return
 		}
 	}
@@ -511,24 +517,60 @@ func (c *checker) checkConstructor(sym *Symbol, args []Type, argNodes []ast.Expr
 	for i, f := range cd.Fields {
 		params[i] = c.typeFromExpr(f.DeclType)
 	}
-	c.checkArgTypes(params, args, argNodes, cd.Name)
+	c.checkArgTypes(&Func{Params: params}, args, argNodes, cd.Name)
 	return &Named{N: cd.Name, Decl: cd}
 }
 
 // checkArgTypes fires E0201 per positional argument whose type
 // disagrees with the parameter. Length mismatches are E0202's
 // job; this only compares the overlapping prefix.
-func (c *checker) checkArgTypes(params, args []Type, nodes []ast.Expr, callee string) {
-	n := len(params)
-	if len(args) < n {
-		n = len(args)
+func (c *checker) checkArgTypes(fn *Func, args []Type, nodes []ast.Expr, callee string) {
+	params := fn.Params
+	argMismatch := func(i int, want Type) {
+		c.report("E0201",
+			"Type mismatch — argument "+strconv.Itoa(i+1)+" to "+callee+
+				" expects "+want.String()+", got "+args[i].String(),
+			nodes[i].NodeSpan())
 	}
-	for i := 0; i < n; i++ {
+	if !fn.Variadic {
+		n := len(params)
+		if len(args) < n {
+			n = len(args)
+		}
+		for i := 0; i < n; i++ {
+			if !c.fits(params[i], nodes[i], args[i]) {
+				argMismatch(i, params[i])
+			}
+		}
+		return
+	}
+	// Variadic callee: the final parameter is the slice `[]T` it
+	// accepts (ffi.md §Variadic). Fixed parameters check positionally;
+	// the trailing arguments each check against the element type T,
+	// unless one spread argument `...xs` supplies the whole `[]T`.
+	nfixed := len(params) - 1
+	for i := 0; i < nfixed && i < len(args); i++ {
 		if !c.fits(params[i], nodes[i], args[i]) {
-			c.report("E0201",
-				"Type mismatch — argument "+strconv.Itoa(i+1)+" to "+callee+
-					" expects "+params[i].String()+", got "+args[i].String(),
-				nodes[i].NodeSpan())
+			argMismatch(i, params[i])
+		}
+	}
+	var elem Type = &Unknown{}
+	if s, ok := params[nfixed].(*Slice); ok {
+		elem = s.Elem
+	}
+	for i := nfixed; i < len(args); i++ {
+		if sp, ok := nodes[i].(*ast.SpreadArg); ok {
+			// `...xs` forwards a slice: it must fit the `[]T` parameter.
+			if !c.fits(params[nfixed], sp.Inner, args[i]) {
+				c.report("E0201",
+					"Type mismatch — spread argument to "+callee+
+						" expects "+params[nfixed].String()+", got "+args[i].String(),
+					nodes[i].NodeSpan())
+			}
+			continue
+		}
+		if !c.fits(elem, nodes[i], args[i]) {
+			argMismatch(i, elem)
 		}
 	}
 }
@@ -1012,6 +1054,14 @@ func (c *checker) checkCallArity(call *ast.Call) {
 	if !ok || sym == nil {
 		return
 	}
+	// A spread `...xs` contributes an unknown number of elements, so the
+	// literal argument count can't be matched against the arity here —
+	// validity is checked by checkSpreadTarget / checkArgTypes instead.
+	for _, a := range call.Args {
+		if _, ok := a.(*ast.SpreadArg); ok {
+			return
+		}
+	}
 	switch sym.Kind {
 	case SymFunc:
 		fn, ok := sym.Decl.(*ast.FuncDecl)
@@ -1020,6 +1070,19 @@ func (c *checker) checkCallArity(call *ast.Call) {
 		}
 		want := len(fn.Params)
 		got := len(call.Args)
+		if want > 0 && fn.Params[want-1].Variadic {
+			// A variadic call needs at least the fixed parameters; the
+			// trailing `...T` accepts zero or more (or one spread).
+			nfixed := want - 1
+			if got < nfixed {
+				c.report("E0202",
+					"Wrong arity in call to "+fn.Name+
+						": expects at least "+strconv.Itoa(nfixed)+" "+pluralArgs(nfixed)+
+						", got "+strconv.Itoa(got),
+					call.Span)
+			}
+			return
+		}
 		if want != got {
 			c.report("E0202",
 				"Wrong arity in call to "+fn.Name+
@@ -1042,4 +1105,41 @@ func (c *checker) checkCallArity(call *ast.Call) {
 				call.Span)
 		}
 	}
+}
+
+// checkSpreadTarget enforces that a spread argument `...xs` only
+// appears in a call to a variadic function/method (E0213). The parser
+// already guarantees a spread is the final argument.
+func (c *checker) checkSpreadTarget(call *ast.Call) {
+	var spread *ast.SpreadArg
+	for _, a := range call.Args {
+		if sp, ok := a.(*ast.SpreadArg); ok {
+			spread = sp
+		}
+	}
+	if spread == nil {
+		return
+	}
+	if fn := c.calleeFunc(call); fn == nil || !fn.Variadic {
+		c.report("E0213", "Spread argument `...` requires a variadic parameter", spread.Span)
+	}
+}
+
+// calleeFunc returns the resolved Func signature of a call's callee
+// (an Ident-bound function/method or a typed Field method), or nil
+// when the callee is not a Tide-typed function.
+func (c *checker) calleeFunc(call *ast.Call) *Func {
+	switch callee := call.Callee.(type) {
+	case *ast.Ident:
+		if sym := c.info.Symbol[callee]; sym != nil {
+			if fn, ok := sym.Type.(*Func); ok {
+				return fn
+			}
+		}
+	case *ast.Field:
+		if fn, ok := c.info.Type[callee].(*Func); ok {
+			return fn
+		}
+	}
+	return nil
 }

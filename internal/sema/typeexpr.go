@@ -169,20 +169,42 @@ func (c *checker) namedTypeToType(v *ast.NamedType, seen map[string]bool) Type {
 // funcSigType builds the canonical Func type of a top-level
 // function declaration from its annotations (Barrier B).
 func (c *checker) funcSigType(fn *ast.FuncDecl) *Func {
-	params := make([]Type, len(fn.Params))
-	for i, p := range fn.Params {
-		params[i] = c.typeFromExpr(p.DeclType)
-	}
-	return &Func{Params: params, Return: c.typeFromExpr(fn.ReturnType), TypeParams: fn.TypeParams}
+	params, variadic := c.paramTypes(fn.Params)
+	return &Func{Params: params, Return: c.typeFromExpr(fn.ReturnType), TypeParams: fn.TypeParams, Variadic: variadic}
 }
 
 // methodSigType builds the canonical Func type of a class method.
 func (c *checker) methodSigType(m *ast.Method) *Func {
-	params := make([]Type, len(m.Params))
-	for i, p := range m.Params {
-		params[i] = c.typeFromExpr(p.DeclType)
+	params, variadic := c.paramTypes(m.Params)
+	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType), Variadic: variadic}
+}
+
+// paramSymType is the in-scope type of a parameter symbol: its
+// declared type, or `[]T` for a variadic `...T` parameter.
+func (c *checker) paramSymType(p *ast.Param) Type {
+	t := c.typeFromExpr(p.DeclType)
+	if p.Variadic {
+		return &Slice{Elem: t}
 	}
-	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType)}
+	return t
+}
+
+// paramTypes builds the canonical parameter Type list, wrapping a
+// trailing variadic parameter's element type in a Slice (a `...T`
+// parameter is in scope and called as `[]T`; ffi.md §Variadic). The
+// second result reports whether the list ends in a variadic parameter.
+func (c *checker) paramTypes(params []*ast.Param) ([]Type, bool) {
+	out := make([]Type, len(params))
+	variadic := false
+	for i, p := range params {
+		t := c.typeFromExpr(p.DeclType)
+		if p.Variadic {
+			t = &Slice{Elem: t}
+			variadic = true
+		}
+		out[i] = t
+	}
+	return out, variadic
 }
 
 // externFuncSigType builds the Func type of an extern function from
@@ -190,20 +212,14 @@ func (c *checker) methodSigType(m *ast.Method) *Func {
 // (e.g. `Result<T, error>`) directly, so no boundary-lift logic is
 // needed here; that lift is a codegen concern (lowering-go.md §ForeignCall).
 func (c *checker) externFuncSigType(fn *ast.ExternFuncDecl) *Func {
-	params := make([]Type, len(fn.Params))
-	for i, p := range fn.Params {
-		params[i] = c.typeFromExpr(p.DeclType)
-	}
-	return &Func{Params: params, Return: c.typeFromExpr(fn.ReturnType), TypeParams: fn.TypeParams}
+	params, variadic := c.paramTypes(fn.Params)
+	return &Func{Params: params, Return: c.typeFromExpr(fn.ReturnType), TypeParams: fn.TypeParams, Variadic: variadic}
 }
 
 // externMethodSigType builds the Func type of an extern-impl method.
 func (c *checker) externMethodSigType(m *ast.ExternMethod) *Func {
-	params := make([]Type, len(m.Params))
-	for i, p := range m.Params {
-		params[i] = c.typeFromExpr(p.DeclType)
-	}
-	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType)}
+	params, variadic := c.paramTypes(m.Params)
+	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType), Variadic: variadic}
 }
 
 // satisfiesInterface reports whether `got` nominally conforms to the
@@ -266,11 +282,8 @@ func (c *checker) namesInterface(t ast.TypeExpr, name string) bool {
 }
 
 func (c *checker) interfaceMethodType(m *ast.InterfaceMethodSig) *Func {
-	params := make([]Type, len(m.Params))
-	for i, p := range m.Params {
-		params[i] = c.typeFromExpr(p.DeclType)
-	}
-	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType)}
+	params, variadic := c.paramTypes(m.Params)
+	return &Func{Params: params, Return: c.typeFromExpr(m.ReturnType), Variadic: variadic}
 }
 
 // symValueType is the type of a Symbol when it is *used as a

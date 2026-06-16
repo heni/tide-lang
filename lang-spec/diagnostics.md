@@ -63,6 +63,7 @@ severity column.
 | E0112 | E | Unexpected token | `grammar.ebnf` syntactic part | The parser was looking for a different shape; check the surrounding construct. |
 | E0113 | E | Duplicate top-level declaration | `name-resolution.md` §File scope | Two file-scope `func`, `class`, `type`, or `interface` declarations share a name. Rename one or fold them together. |
 | E0114 | E | Cyclic type alias | `type-system.md` §Alias resolution | The alias chain loops back on itself (`type A = B; type B = A`). Break the cycle by inlining one side or introducing a fresh nominal type. |
+| E0115 | E | A variadic parameter must be the last parameter | `grammar.ebnf` §Param / `ffi.md` §Variadic | Move the `...T` parameter to the end of the list — only the final parameter may be variadic. |
 
 ### E02xx — Type system
 
@@ -80,6 +81,7 @@ severity column.
 | E0210 | E | `Dynamic` narrowing requires `reflect.unbox` | `type-system.md` T-Dyn-NoNarrow / `builtins.md` §reflect | Recover a concrete type with `match reflect.unbox<T>(d) { Ok(t) => ..., Err(_) => ... }`. There is no implicit `Dynamic → T` cast. |
 | E0211 | E | `Dynamic` in inferred type-parameter position | `type-system.md` §Dynamic (generic flow side condition) | Unification would set a user type parameter to `Dynamic` — rewrite the call so `T` is a concrete type, and pass the dynamic value through `reflect.box` / `reflect.unbox` explicitly. |
 | E0212 | E | `Any` and `Dynamic` cannot be implicitly converted | `type-system.md` §Dynamic (cross-reference) / `builtins.md` §Special types | These are deliberately separate types — to go from one to the other, narrow to a concrete `T` first and then re-box. |
+| E0213 | E | Spread argument `...` requires a variadic parameter | `type-system.md` T-Spread / `ffi.md` §Variadic | Use `...e` only as the final argument of a call whose last parameter is `...T`; otherwise pass the slice's elements individually. |
 
 ### E03xx — Pattern matching
 

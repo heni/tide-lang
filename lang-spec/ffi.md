@@ -95,6 +95,42 @@ Grammar: `grammar.ebnf` §"Foreign-binding". AST: `ast.md` §"Foreign
 bindings". Lexical surface: `keywords.md` (`extern` hard keyword;
 `impl`/`go` contextual; `@` attribute head).
 
+## Variadic parameters and spread
+
+A trailing parameter spelled `name: ...T` is **variadic**: the call site
+supplies zero or more arguments of element type `T`, and inside the body
+`name` has type `[]T`. Only the **final** parameter of a function,
+method, or `extern func`/`extern impl` method may be variadic; a `...T`
+followed by another parameter is **E0115**. This is an ordinary language
+feature — it benefits plain Tide functions — but it is the binding-layer
+unblocker that lets Go variadics (`exec.Command(name string, arg
+...string)`) bind faithfully rather than bail.
+
+A call passes the variadic tail two ways:
+
+- **Inline** — `f(a, x, y, z)` collects `x, y, z` as the `[]T` tail.
+  Each tail argument is checked against `T` (a mismatch is **E0201**).
+- **Spread** — `f(a, ...xs)` forwards an existing slice `xs: []T`. A
+  spread is written `...e` and is only legal as the **final** argument of
+  a call whose callee's last parameter is variadic; otherwise **E0213**.
+  The spread expression must fit the `[]T` parameter (else **E0201**).
+
+Typing (T-Variadic / T-Spread): for `f: (P₁, …, Pₙ, ...T) → R`, a call
+`f(a₁, …, aₙ, t₁, …, tₘ)` requires each `aᵢ : Pᵢ` and each `tⱼ : T`,
+yielding `R`; with `m = 0` the tail is empty. A spread `f(a₁, …, aₙ,
+...e)` requires `e : []T`. The fixed-arity shortfall (`< n` arguments) is
+**E0202** ("expects at least n").
+
+Lowering (`lowering-go.md` is unaffected — the shapes are Go-native): a
+variadic parameter lowers to Go's `name ...T`; an inline tail lowers
+argument-for-argument; a spread `...e` lowers to Go's `e...`. An
+`extern func`/method emits no Go signature, so a variadic binding is
+purely a call-site concern: `command("echo", ...args)` lowers to
+`exec.Command("echo", args...)`.
+
+Grammar: `grammar.ebnf` §Param / §Arg. AST: `ast.md` §Param
+(`variadic`) / §SpreadArg.
+
 ## Verify the declaration, do not trust it
 
 Because Tide emits Go and then compiles it, the **Go type checker
@@ -175,8 +211,7 @@ by hand until those lifts land.
 A symbol whose signature uses only translatable types is bindable; one
 that uses an untranslatable type (`unsafe.Pointer`, `uintptr`,
 `complex*`, arity-≥3 non-error returns, anonymous interfaces, `func`
-types, cross-package named types, variadics — until Tide grows them) is
-**not** emitted as a
+types, cross-package named types) is **not** emitted as a
 binding: the generator currently renders it as a `// UNBINDABLE` comment
 naming the real reason, so one untranslatable symbol does not sterilise
 the rest of the package. The RFC's stronger **poison declaration** (a
