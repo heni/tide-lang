@@ -23,6 +23,62 @@ func writePkg(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+// TestCrossPackageManifestRun — a project with a tide.toml: the entry
+// file imports a user package (`myproj/utils`), whose directory's .td
+// files are pulled into the build and run (RFC-0002 §Resolution).
+func TestCrossPackageManifestRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "utils"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "tide.toml", "[project]\nname = \"myproj\"\n")
+	writeFile(t, dir, "main.td", "import fmt\nimport myproj/utils\nfunc main() { fmt.println(shout(\"x\")) }\n")
+	writeFile(t, filepath.Join(dir, "utils"), "strs.td", "import strings\nfunc shout(s: string): string { return strings.toUpper(s) }\n")
+	stdout, stderr, exit := runTide(t, "run", filepath.Join(dir, "main.td"))
+	if exit != 0 {
+		t.Fatalf("cross-package run exited %d (stderr: %s)", exit, stderr)
+	}
+	if stdout != "X\n" {
+		t.Errorf("stdout = %q; want \"X\\n\"", stdout)
+	}
+}
+
+// TestUnknownImportPath — an import that is neither a local user package
+// nor a stdlib namespace is E0117.
+func TestUnknownImportPath(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "tide.toml", "[project]\nname = \"p\"\n")
+	writeFile(t, dir, "main.td", "import totally/unknown\nfunc main() {}\n")
+	_, stderr, exit := runTide(t, "run", dir)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit for an unknown import")
+	}
+	if !strings.Contains(stderr, "E0117") {
+		t.Errorf("stderr = %q; want E0117", stderr)
+	}
+}
+
+// TestCyclicPackageImport — a user-package import cycle is E0116.
+func TestCyclicPackageImport(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"a", "b"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, dir, "tide.toml", "[project]\nname = \"c\"\n")
+	writeFile(t, dir, "main.td", "import c/a\nfunc main() {}\n")
+	writeFile(t, filepath.Join(dir, "a"), "a.td", "import c/b\nfunc fa() {}\n")
+	writeFile(t, filepath.Join(dir, "b"), "b.td", "import c/a\nfunc fb() {}\n")
+	_, stderr, exit := runTide(t, "run", dir)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit for a cyclic import")
+	}
+	if !strings.Contains(stderr, "E0116") {
+		t.Errorf("stderr = %q; want E0116", stderr)
+	}
+}
+
 // TestPackageMultiFileRun — three files share one scope: main calls a
 // function from each sibling file, with imports unioned across files.
 func TestPackageMultiFileRun(t *testing.T) {

@@ -236,6 +236,28 @@ though the top-level declarations they sit beside are package-wide
 (Decl visibility across the whole package is covered in
 §Forward references below.)
 
+## Cross-package imports
+
+A project that spans more than one package adds a `tide.toml` manifest
+(`manifest.md`) and imports its own packages by path: `import
+myproj/utils`. Resolution (manifest-relative directory lookup, the
+stdlib fallback, the failure codes **E0116** / **E0117**) is specified in
+`manifest.md` §Resolution. The **local binding identifier** is the
+import path's last segment — after `import myproj/svc/store`, names are
+referenced `store.OrderID`.
+
+**Visibility (planned).** Across packages, a top-level declaration's
+**initial letter** decides export: upper-case (`Parse`, `MaxRetries`) is
+visible to importers as `pkg.Parse`; lower-case / underscore
+(`parseInternal`, `_helper`) is package-private. Referencing a
+non-exported member of an imported package is **E0103 Unknown name**
+(from the importer's view it does not exist). Within a package every
+top-level name is visible regardless of case (§Scopes item 4). This
+capitalization-exports rule and per-package isolation are the contract;
+the first multi-directory increment merges resolved packages into one
+build unit (visibility not yet enforced, references resolved
+package-locally), with full per-package isolation following.
+
 ## Forward references
 
 - **Top-level declarations:** all visible everywhere in the

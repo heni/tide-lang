@@ -602,6 +602,11 @@ func isStdlibNamespaceName(name string) bool {
 	return false
 }
 
+// IsStdlibNamespace reports whether name is a recognized stdlib binding
+// namespace (the v0.x hardcoded registry). Exported for the package
+// resolver's import classification (RFC-0002 §Resolution, step 2).
+func IsStdlibNamespace(name string) bool { return isStdlibNamespaceName(name) }
+
 // isConversionBinding reports whether the stdlib binding pkg.method
 // lowers to a Go type conversion (not a pkg.* call), so it needs no
 // import. Derived from the stdlibConversion registry — the same source

@@ -64,6 +64,8 @@ severity column.
 | E0113 | E | Duplicate top-level declaration | `name-resolution.md` §Scopes (package scope) | Two top-level `func`, `class`, `type`, or `interface` declarations in the package share a name (within one file or across two files of the same directory). Rename one or fold them together. |
 | E0114 | E | Cyclic type alias | `type-system.md` §Alias resolution | The alias chain loops back on itself (`type A = B; type B = A`). Break the cycle by inlining one side or introducing a fresh nominal type. |
 | E0115 | E | A variadic parameter must be the last parameter | `grammar.ebnf` §Param / `ffi.md` §Variadic | Move the `...T` parameter to the end of the list — only the final parameter may be variadic. |
+| E0116 | E | Cyclic package import | `manifest.md` §Resolution / `name-resolution.md` §Cross-package imports | The user-package import graph contains a cycle (`a` imports `b` imports `a`). Break it by extracting the shared code into a third package (the graph must be acyclic — D20). |
+| E0117 | E | Unknown import path | `manifest.md` §Resolution / `name-resolution.md` §Cross-package imports | The import is neither a local user package (a directory under the project name) nor a known stdlib / `[bindings]` namespace. Fix the path, create the package directory, or add the Go package to `[bindings] extra`. |
 
 ### E02xx — Type system
 

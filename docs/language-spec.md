@@ -48,6 +48,15 @@ An import brings a Go (bound) or Tide package into scope under its package
 name. Members are accessed package-qualified: `fmt.println`, `json.parse`.
 All imports must appear at the top of the file, before any declarations.
 
+A **package** is a directory of `.td` files sharing one top-level scope;
+a single file is a one-file package. A project spanning more than one
+package adds a `tide.toml` manifest naming the project root, after which
+`import myproj/utils` resolves to a sibling directory and its names bind
+under the last path segment (`utils.…`). Without a manifest a program is
+a single package resolved against the stdlib bindings — no config needed.
+A user-package import graph must be acyclic. See `tide.toml` in the
+formal spec for the resolution rules.
+
 ## Types
 
 Primitives: `string`, `bool`, `int`, `int8..int64`, `uint..uint64`,

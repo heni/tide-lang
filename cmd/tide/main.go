@@ -197,11 +197,40 @@ func emitGoSource(path string) (string, error) {
 // still point at Tide source coordinates. `emit` does not require a
 // `func main` (it lowers any package for inspection); build / run do.
 func emitGoSourceOpts(path string, stripLine bool) (string, error) {
-	files, err := gatherSources(path)
+	files, userImports, err := buildUnit(path)
 	if err != nil {
 		return "", err
 	}
-	return compilePackage(files, stripLine, false)
+	return compilePackage(files, userImports, stripLine, false)
+}
+
+// buildUnit resolves a build target into its full source-file set. It
+// walks up for a tide.toml; with one, `import myproj/pkg` pulls the
+// imported user package's .td files into the build (RFC-0002
+// §Resolution). Without a manifest the target is a lone package. Returns
+// the file set and the set of user-package import paths (which codegen
+// strips — they are satisfied by merged sources, not a Go import).
+func buildUnit(path string) ([]string, map[string]bool, error) {
+	files, err := gatherSources(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	anchor := path
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		anchor = filepath.Dir(path)
+	}
+	m, err := findProjectManifest(anchor)
+	if err != nil {
+		return nil, nil, err
+	}
+	if m == nil {
+		return files, nil, nil
+	}
+	res, err := resolvePackages(files, m)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.files, res.userImports, nil
 }
 
 // compilePackage lexes / parses / sema-checks / lowers a whole package
@@ -209,7 +238,7 @@ func emitGoSourceOpts(path string, stripLine bool) (string, error) {
 // each file's real path; //line labels are suppressed when stripLine is
 // set. requireMain enforces exactly one `func main` across the package
 // (RFC-0002) — on for build / run, off for emit.
-func compilePackage(paths []string, stripLine, requireMain bool) (string, error) {
+func compilePackage(paths []string, userImports map[string]bool, stripLine, requireMain bool) (string, error) {
 	trees := make([]*ast.File, len(paths))
 	labels := make([]string, len(paths))
 	for i, p := range paths {
@@ -229,6 +258,19 @@ func compilePackage(paths []string, stripLine, requireMain bool) (string, error)
 		tree, perr := parser.ParseFile(toks, label)
 		if perr != nil {
 			return "", perr
+		}
+		// A user-package import is satisfied by merging that package's
+		// sources into this build, not by a Go import — drop it so
+		// codegen does not emit a dangling Go `import` (RFC-0002
+		// §Resolution). Stdlib imports are kept.
+		if len(userImports) > 0 {
+			kept := tree.Imports[:0]
+			for _, im := range tree.Imports {
+				if !userImports[im.Path] {
+					kept = append(kept, im)
+				}
+			}
+			tree.Imports = kept
 		}
 		trees[i] = tree
 	}
@@ -353,11 +395,11 @@ type compiledSource struct {
 // temp dir. The caller must RemoveAll the returned dir. Unlike emit, a
 // runnable build requires exactly one `func main` (RFC-0002).
 func compileToTempGo(path string) (*compiledSource, error) {
-	files, err := gatherSources(path)
+	files, userImports, err := buildUnit(path)
 	if err != nil {
 		return nil, err
 	}
-	goSrc, err := compilePackage(files, false, true)
+	goSrc, err := compilePackage(files, userImports, false, true)
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ On disagreement these files win, per D17.
 | `desugaring.md` | Tide AST → simpler IR (match arms, scope+spawn, try) | ✓ |
 | `lowering-go.md` | IR → Go encoding, runtime helpers, `//line` placement | ✓ |
 | `diagnostics.md` | Numbered error-code catalog (`E0103 Unknown name`, …) | ✓ |
+| `manifest.md` | `tide.toml` project-manifest schema + package-resolution algorithm (RFC-0002) | ✓ |
 | `acceptance.yml` | Per-example feature manifest (label → covered constructs) | ✓ |
 
 ## Authority and coverage

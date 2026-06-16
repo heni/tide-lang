@@ -108,7 +108,7 @@ When the resolver sees `import P`:
      prefix and look up the remaining path as a directory
      **relative to the manifest's directory**. If the
      directory exists, this is the resolved package — stop
-     here. If the directory does NOT exist, **emit E0115**
+     here. If the directory does NOT exist, **emit E0117**
      (do not fall through to stdlib).
    - If `P` does NOT start with the manifest's `name`, skip
      local lookup entirely and proceed to stdlib.
@@ -120,7 +120,14 @@ When the resolver sees `import P`:
    `io`, `log`, `net`, `math/big`). Extensions go through
    bindgen (forthcoming).
 3. **Failure.** Neither local nor stdlib — emit
-   **E0115 Unknown import path**.
+   **E0117 Unknown import path**.
+
+> **Implementation note (codes).** The codes this RFC originally
+> proposed (`E0113`/`E0114`/`E0115`) were all later allocated to
+> unrelated diagnostics. The implemented codes are **E0116 Cyclic
+> package import** and **E0117 Unknown import path**; the no/multiple
+> `func main` case is a Tide-phrased driver error (see the §"Package =
+> directory" note). References below predate the reassignment.
 
 If a project has no `tide.toml`, step 1 is skipped — the file
 behaves as a **single-package, stdlib-only** program. This is
@@ -296,11 +303,12 @@ not at `/tmp/tide-build-X/svc/store/store.go`.
   the multi-package example; cross-link to this RFC.
 - `lang-spec/manifest.md` — new file specifying the
   `tide.toml` schema and the resolver algorithm.
-- `lang-spec/diagnostics.md` — add **E0113 Cyclic package
-  import** (Go-level cycle rejected by the toolchain; we
-  surface it as a Tide diagnostic),
-  **E0114 No / multiple `main` functions in package**,
-  **E0115 Unknown import path**.
+- `lang-spec/diagnostics.md` — add **E0116 Cyclic package
+  import** (the user-package import graph is rejected if cyclic;
+  D20) and **E0117 Unknown import path**. (The no/multiple `main`
+  case is a Tide-phrased driver error, not a coded diagnostic — see
+  the §"Package = directory" note. Codes reassigned from the RFC's
+  original E0113/E0114/E0115, now taken.)
 - `internal/parser` — no grammar change; resolver code lands
   with the multi-file build (see implementation plan).
 - `internal/codegen` — emit one Go package per Tide package;
@@ -325,7 +333,7 @@ found by the resolver walk.
   "RFC-bypass for purely additive registry entries", but flag.
 - **Cyclic imports between user packages.** Go forbids them at
   the toolchain level; we inherit the rejection. Tide surfaces
-  it as **E0113 Cyclic package import** (see paired edits).
+  it as **E0116 Cyclic package import** (see paired edits).
 - **Import aliasing.** `import myproj/utils as u` — useful
   when two packages share a last segment
   (`a/util` and `b/util` would collide). Not in v0.x; first
