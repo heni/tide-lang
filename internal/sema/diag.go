@@ -23,9 +23,14 @@ func (d *Diag) Error() string {
 	return fmt.Sprintf("%s:%d:%d: error[%s]: %s", d.File, d.Line, d.Col, d.Code, d.Message)
 }
 
-// sortDiags by (line, col, code). See docs/internals/sema.md §8 #4.
+// sortDiags by (file, line, col, code). See docs/internals/sema.md §8
+// #4. File is the primary key so a multi-file package (RFC-0002) reports
+// each file's diagnostics together; it is a no-op for a single file.
 func sortDiags(ds []*Diag) {
 	sort.SliceStable(ds, func(i, j int) bool {
+		if ds[i].File != ds[j].File {
+			return ds[i].File < ds[j].File
+		}
 		if ds[i].Line != ds[j].Line {
 			return ds[i].Line < ds[j].Line
 		}

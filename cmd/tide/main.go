@@ -16,8 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/heni/tide-lang/internal/ast"
 	"github.com/heni/tide-lang/internal/bindgen"
 	"github.com/heni/tide-lang/internal/codegen"
 	"github.com/heni/tide-lang/internal/lexer"
@@ -151,7 +153,37 @@ func cmdBuild(args []string) int {
 	return 0
 }
 
-// emitGoSource lexes / parses / lowers the file and returns the
+// gatherSources resolves a build target to its set of `.td` source
+// files. A file path yields itself; a directory yields every `.td` file
+// in it (non-recursive), sorted for deterministic output — the whole
+// directory is one package (RFC-0002 §"Package = directory").
+func gatherSources(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("tide: cannot stat %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("tide: cannot read directory %s: %w", path, err)
+	}
+	var files []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".td") {
+			continue
+		}
+		files = append(files, filepath.Join(path, e.Name()))
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("tide: no .td files in %s", path)
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+// emitGoSource lexes / parses / lowers the build target and returns the
 // generated Go source string. Used by cmdEmit and (indirectly via
 // compileToTempGo) by build / run.
 func emitGoSource(path string) (string, error) {
@@ -162,17 +194,83 @@ func emitGoSource(path string) (string, error) {
 // when true, the //line directives mapping back to the .td source
 // are suppressed (useful for reading the lowered Go directly).
 // Build / run keep them on so panic traces and `go vet` errors
-// still point at Tide source coordinates.
+// still point at Tide source coordinates. `emit` does not require a
+// `func main` (it lowers any package for inspection); build / run do.
 func emitGoSourceOpts(path string, stripLine bool) (string, error) {
-	srcBytes, err := os.ReadFile(path)
+	files, err := gatherSources(path)
 	if err != nil {
-		return "", fmt.Errorf("tide: cannot read %s: %w", path, err)
+		return "", err
 	}
-	label := path
-	if stripLine {
-		label = ""
+	return compilePackage(files, stripLine, false)
+}
+
+// compilePackage lexes / parses / sema-checks / lowers a whole package
+// (one or more `.td` files sharing a Go `package main`). Diagnostics use
+// each file's real path; //line labels are suppressed when stripLine is
+// set. requireMain enforces exactly one `func main` across the package
+// (RFC-0002) — on for build / run, off for emit.
+func compilePackage(paths []string, stripLine, requireMain bool) (string, error) {
+	trees := make([]*ast.File, len(paths))
+	labels := make([]string, len(paths))
+	for i, p := range paths {
+		srcBytes, err := os.ReadFile(p)
+		if err != nil {
+			return "", fmt.Errorf("tide: cannot read %s: %w", p, err)
+		}
+		label := p
+		if stripLine {
+			label = ""
+		}
+		labels[i] = label
+		toks, lerr := lexer.LexFile(string(srcBytes), label)
+		if lerr != nil {
+			return "", lerr
+		}
+		tree, perr := parser.ParseFile(toks, label)
+		if perr != nil {
+			return "", perr
+		}
+		trees[i] = tree
 	}
-	return emitGoFromText(string(srcBytes), label)
+	info, diags := sema.CheckFiles(trees, labels)
+	if len(diags) > 0 {
+		for _, d := range diags {
+			fmt.Fprintln(os.Stderr, d.Error())
+		}
+		return "", fmt.Errorf("tide: sema failed")
+	}
+	if requireMain {
+		if err := checkPackageMain(trees, paths); err != nil {
+			return "", err
+		}
+	}
+	goSrc, err := codegen.EmitFilesWithInfo(trees, labels, info)
+	if err != nil {
+		return "", fmt.Errorf("tide: %s", err)
+	}
+	return goSrc, nil
+}
+
+// checkPackageMain enforces RFC-0002's build-entry rule: a package built
+// to a binary must have exactly one `func main`. Reported in Tide terms
+// (D10) rather than leaking the Go toolchain's "no main"/"redeclared"
+// error from the merged output.
+func checkPackageMain(trees []*ast.File, paths []string) error {
+	count := 0
+	for _, t := range trees {
+		for _, d := range t.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Name == "main" {
+				count++
+			}
+		}
+	}
+	switch {
+	case count == 0:
+		return fmt.Errorf("tide: no `func main` in package %s", filepath.Dir(paths[0]))
+	case count > 1:
+		return fmt.Errorf("tide: package %s has %d `func main` declarations — exactly one is required", filepath.Dir(paths[0]), count)
+	}
+	return nil
 }
 
 // emitGoFromText runs the lexer / parser / codegen pipeline over
@@ -250,11 +348,16 @@ type compiledSource struct {
 	dir string // caller is responsible for RemoveAll
 }
 
-// compileToTempGo lexes / parses / lowers the given .td file and
-// writes main.go + go.mod into a fresh temp dir. The caller must
-// RemoveAll the returned dir.
+// compileToTempGo lexes / parses / lowers the given build target (a
+// file or a package directory) and writes main.go + go.mod into a fresh
+// temp dir. The caller must RemoveAll the returned dir. Unlike emit, a
+// runnable build requires exactly one `func main` (RFC-0002).
 func compileToTempGo(path string) (*compiledSource, error) {
-	goSrc, err := emitGoSource(path)
+	files, err := gatherSources(path)
+	if err != nil {
+		return nil, err
+	}
+	goSrc, err := compilePackage(files, false, true)
 	if err != nil {
 		return nil, err
 	}

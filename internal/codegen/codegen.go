@@ -26,6 +26,38 @@ func Emit(f *ast.File, file string) (string, error) {
 
 // EmitWithInfo is Emit with a pre-computed sema side-table.
 func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
+	return EmitFilesWithInfo([]*ast.File{f}, []string{file}, info)
+}
+
+// EmitFilesWithInfo lowers a whole package — every `.td` file in a
+// directory shares one Go `package main` (RFC-0002 §"Package =
+// directory"). The files are merged into one compile unit: the union of
+// their imports plus the concatenation of their declarations. Each decl
+// remembers its own source path so the //line directives attribute it
+// to the right `.td` file. `paths[i]` is the //line path for files[i]
+// ("" suppresses directives for that file).
+func EmitFilesWithInfo(files []*ast.File, paths []string, info *sema.Info) (string, error) {
+	merged := &ast.File{}
+	declFile := map[ast.Decl]string{}
+	seenImport := map[string]bool{}
+	firstFile := ""
+	for i, src := range files {
+		if i == 0 {
+			firstFile = paths[i]
+		}
+		for _, im := range src.Imports {
+			if !seenImport[im.Path] {
+				seenImport[im.Path] = true
+				merged.Imports = append(merged.Imports, im)
+			}
+		}
+		for _, d := range src.Decls {
+			merged.Decls = append(merged.Decls, d)
+			declFile[d] = paths[i]
+		}
+	}
+	f := merged
+	file := firstFile
 	g := &gen{
 		file:          file,
 		info:          info,
@@ -201,6 +233,14 @@ func EmitWithInfo(f *ast.File, file string, info *sema.Info) (string, error) {
 	}
 	g.writeHeader(f)
 	for _, d := range f.Decls {
+		// Attribute this decl's //line directives to its own source
+		// file (multi-file package, RFC-0002). Reset the emitted-line
+		// memo so a same-numbered line in a different file still emits
+		// a fresh directive.
+		if g.file != declFile[d] {
+			g.file = declFile[d]
+			g.emittedLine = 0
+		}
 		switch v := d.(type) {
 		case *ast.FuncDecl:
 			if err := g.emitFuncDecl(v); err != nil {

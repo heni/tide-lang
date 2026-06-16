@@ -24,9 +24,17 @@ them inside-out — the closest match wins.
    names of the enclosing `ClassDecl`. The receiver `this` is
    bound here; `ScopeRef` (`scope`) is *not* a class-scope name
    — it's a control-flow construct (see §Special names).
-4. **File scope.** Top-level `TopLevelLet` constants, `FuncDecl`,
-   `TypeDecl`, `ClassDecl`, `InterfaceDecl`, and imported
-   package aliases from `Import` declarations in the same file.
+4. **Package scope.** Top-level `TopLevelLet` constants, `FuncDecl`,
+   `TypeDecl`, `ClassDecl`, `InterfaceDecl` of **every `.td` file in
+   the package** (a package is a directory of `.td` files — RFC-0002
+   §"Package = directory"), plus the imported package aliases from
+   `Import` declarations. A single-file program is the degenerate
+   one-file package. All top-level names share this one flat scope, so
+   a declaration in one file is visible (unqualified) from any sibling
+   file with no `import` needed; a top-level name declared twice in the
+   package — within one file or across two — is **E0113**. Imports stay
+   per-file (each file lists the package aliases it uses), but the
+   resolved top-level names are package-wide.
 5. **Predeclared (built-in) scope.** Identifiers shipped by the
    language itself — the primitive type names, the generic
    containers (`Option`, `Result`, `Map`, `Set`, `Stack`,
@@ -42,7 +50,7 @@ them inside-out — the closest match wins.
 For each unqualified `Ident` AST node, lookup proceeds:
 
 ```
-for scope in (local, function/method, class, file, predeclared):
+for scope in (local, function/method, class, package, predeclared):
     # class scope is only present when resolving inside an
     # instance method body; skipped in functions, static
     # methods, and at the top level.

@@ -8,16 +8,37 @@ import (
 // plus any diagnostics, ordered by source position.
 // See docs/internals/sema.md.
 func Check(f *ast.File, file string) (*Info, []*Diag) {
+	return CheckFiles([]*ast.File{f}, []string{file})
+}
+
+// CheckFiles runs sema over a whole package — every `.td` file in a
+// directory shares one top-level scope (RFC-0002 §"Package =
+// directory"). The phases run file-by-file over the shared scope, with
+// the per-file path tracked so each diagnostic carries its own source
+// file. `paths[i]` is the source path of `files[i]`.
+func CheckFiles(files []*ast.File, paths []string) (*Info, []*Diag) {
 	c := &checker{
-		file:          file,
 		info:          newInfo(),
 		closureExpect: map[*ast.ClosureLit]*Func{},
 		externImpls:   map[string]*ast.ExternImplDecl{},
 	}
-	scope := c.indexDeclarations(f)
-	c.resolveFile(f, scope)
-	c.constructShapes(f, scope)
-	c.checkBodies(f)
+	scope := c.newPackageScope()
+	for i, f := range files {
+		c.file = paths[i]
+		c.indexFile(f, scope)
+	}
+	for i, f := range files {
+		c.file = paths[i]
+		c.resolveFile(f, scope)
+	}
+	for i, f := range files {
+		c.file = paths[i]
+		c.constructShapes(f, scope)
+	}
+	for i, f := range files {
+		c.file = paths[i]
+		c.checkBodies(f)
+	}
 	sortDiags(c.diags)
 	return c.info, c.diags
 }

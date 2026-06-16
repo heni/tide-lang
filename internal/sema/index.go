@@ -6,21 +6,37 @@ import (
 	"github.com/heni/tide-lang/internal/ast"
 )
 
-// indexDeclarations — Barrier A. See docs/internals/sema.md §4.
-// Returns the file scope (parented by the predeclared scope).
-func (c *checker) indexDeclarations(f *ast.File) *Scope {
+// newPackageScope builds the package's top-level scope (parented by
+// the predeclared scope). Every `.td` file in the package shares it
+// (RFC-0002 §"Package = directory").
+func (c *checker) newPackageScope() *Scope {
 	pre := newScope(nil)
 	for name, sym := range predeclaredSymbols() {
 		pre.names[name] = sym
 	}
-	file := newScope(pre)
+	return newScope(pre)
+}
 
+// indexDeclarations — Barrier A. See docs/internals/sema.md §4.
+// Returns the file scope (parented by the predeclared scope).
+func (c *checker) indexDeclarations(f *ast.File) *Scope {
+	file := c.newPackageScope()
+	c.indexFile(f, file)
+	return file
+}
+
+// indexFile registers one file's imports + top-level declarations into
+// the (possibly shared) package scope. Duplicate top-level names —
+// within a file or across files of the same package — are E0113.
+func (c *checker) indexFile(f *ast.File, file *Scope) {
 	for _, im := range f.Imports {
 		if im.Path == "" {
 			continue
 		}
 		head := strings.SplitN(im.Path, "/", 2)[0]
-		if pre.lookup(head) == nil {
+		// Only a predeclared (builtin) module name binds a namespace
+		// symbol; the predeclared scope is the package scope's parent.
+		if file.parent.lookup(head) == nil {
 			continue
 		}
 		file.declare(&Symbol{Name: head, Kind: SymBuiltinModule, Type: &Unknown{}})
@@ -108,7 +124,6 @@ func (c *checker) indexDeclarations(f *ast.File) *Scope {
 			c.externImpls[v.Type] = v
 		}
 	}
-	return file
 }
 
 func (c *checker) checkReservedName(name string, span ast.Span) {
