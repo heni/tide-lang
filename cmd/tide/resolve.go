@@ -66,6 +66,12 @@ func resolvePackages(entry []string, m *projectManifest) (*resolved, error) {
 					// resolved by the binding registry; nothing to gather.
 				case importUser:
 					r.userImports[p] = true
+					// A package importing itself (e.g. bare `import
+					// myproj` from the project root, or a file re-importing
+					// its own package) is a no-op, not a cycle.
+					if absTarget, _ := filepath.Abs(target); absTarget == abs {
+						continue
+					}
 					sub, err := gatherSources(target)
 					if err != nil {
 						return fmt.Errorf("tide: error[E0117]: unknown import path %q (no package directory at %s)", p, target)
