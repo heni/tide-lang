@@ -70,6 +70,20 @@ func TestGenerateRegexpHandle(t *testing.T) {
 	}
 }
 
+// TestGenerateVariadic — a variadic Go signature (`exec.Command(name
+// string, arg ...string)`) renders its final parameter as Tide's `...T`
+// instead of bailing (the D23 unblocker; ffi.md §Variadic).
+func TestGenerateVariadic(t *testing.T) {
+	src := gen(t, "os/exec")
+	want := `extern func command(name: string, arg: ...string): Cmd @go("os/exec.Command")`
+	if !strings.Contains(src, want) {
+		t.Errorf("os/exec bindings missing variadic %q\n--- got ---\n%s", want, src)
+	}
+	if strings.Contains(src, "Tide has no variadic") {
+		t.Errorf("os/exec still emits the pre-D23 variadic bail marker\n--- got ---\n%s", src)
+	}
+}
+
 // TestGeneratedRoundTrips — the generated bindings must be valid Tide:
 // they parse and type-check with no diagnostics (the generator never
 // emits something the compiler rejects; unbindable symbols are comments).

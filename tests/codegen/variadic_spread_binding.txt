@@ -1,0 +1,37 @@
+--- TITLE ---
+spread of a binding call — `...strings.fields(s)` keeps the import registered
+
+--- INPUT ---
+import fmt
+import strings
+
+func count(parts: ...string): int {
+  return parts.len()
+}
+
+func main() {
+  let n = count(...strings.fields("a b c"))
+  fmt.println(n)
+}
+
+--- GO ---
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func count(parts ...string) int {
+	return len(parts)
+}
+func main() {
+	var n = count(strings.Fields("a b c")...)
+	fmt.Println(n)
+}
+
+--- STDOUT ---
+3
+
+--- EXIT ---
+0

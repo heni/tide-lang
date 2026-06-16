@@ -1188,6 +1188,11 @@ func (g *gen) detectPredeclaredUsage(f *ast.File) {
 			for _, a := range v.Args {
 				walk(a)
 			}
+		case *ast.SpreadArg:
+			// A spread arg `...e` carries its expression in Inner; the
+			// pre-walk must descend so an import/helper used only inside
+			// the spread is registered (else the emitted Go drops it).
+			walk(v.Inner)
 		case *ast.Field:
 			// A `pkg.method` reference marks the Go package used —
 			// unless the (pkg, method) pair lowers to a Go conversion
