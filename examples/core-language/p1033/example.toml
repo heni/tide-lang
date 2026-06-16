@@ -7,6 +7,8 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "p1033.td"
+stdin           = "input.txt"
+expected_output = "expected-output.txt"
 
 [[error]]
 patch   = "errors/annot-mismatch.patch"   # walls annotated string but assigned an int

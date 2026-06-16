@@ -7,6 +7,8 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "wc.td"
+args            = ["sample.txt"]
+expected_output = "expected-output.txt"
 
 [[error]]
 patch   = "errors/missing-comma.patch"   # missing comma between arguments

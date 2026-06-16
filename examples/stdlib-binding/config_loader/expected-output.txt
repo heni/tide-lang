@@ -1,0 +1,4 @@
+server: localhost: 8080
+log: info
+log file: app.log
+tags: 3 entries

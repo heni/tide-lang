@@ -7,6 +7,8 @@ since    = "0.1"
 status   = "running"
 expects  = "run-pass"
 entry    = "rpn_calculator.td"
+args            = ["3 4 + 2 *"]
+expected_output = "expected-output.txt"
 
 [[error]]
 patch   = "errors/drop-mul-arm.patch"   # apply's match over Op drops the Mul arm

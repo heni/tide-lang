@@ -453,11 +453,15 @@ func evalNegatives(tide: string): EvalResult {
 
 // --- run_ok: the behavioural metric (run each run-pass example) ---
 //
-// run_ok counts run-pass examples whose entry builds AND, when run, exits 0
-// (exit-only for now; an expected-stdout sidecar diff lands with the
-// invocation spec). `no-run` examples (servers / blocking demos) are excluded
-// from the denominator. A per-example wall-clock timeout (ms) guards the
-// harness against a non-terminating example — see corpusexec.TimeoutCode.
+// run_ok counts run-pass examples whose entry builds AND, when run with their
+// invocation spec, exit as expected (default 0) — and, when an
+// `expected_output` sidecar is present, whose stdout matches it. The
+// invocation spec is the example.toml fields `args` (argv), `stdin` (a file
+// piped to stdin), `expected_output` (a stdout sidecar), and `expected_exit`
+// (default 0); every path is relative to the example's own directory, where
+// the binary runs. `no-run` examples (servers / blocking demos) are excluded
+// from the denominator. A per-example wall-clock timeout guards the harness
+// against a non-terminating example — see corpusexec.TimeoutCode.
 
 func runTimeoutMs(): int {
   return 10000
@@ -467,6 +471,10 @@ type RunSpec = {
   dir: string
   entry: string
   expects: string
+  args: []string
+  stdin: string
+  expectedOutput: string
+  expectedExit: int
 }
 
 type RunEval = {
@@ -479,19 +487,43 @@ type RunEval = {
 func parseRunSpec(manifest: string, text: string): RunSpec {
   var entry = ""
   var expects = ""
+  var args = []string{}
+  var stdin = ""
+  var expectedOutput = ""
+  var expectedExit = 0
   for raw in strings.split(text, "\n") {
     let line = strings.trimSpace(raw)
     if strings.hasPrefix(line, "entry") {
       entry = tomlScalar(line)
     } else if strings.hasPrefix(line, "expects") {
       expects = tomlScalar(line)
+    } else if strings.hasPrefix(line, "args") {
+      args = tomlCodes(line)
+    } else if strings.hasPrefix(line, "stdin") {
+      stdin = tomlScalar(line)
+    } else if strings.hasPrefix(line, "expected_output") {
+      expectedOutput = tomlScalar(line)
+    } else if strings.hasPrefix(line, "expected_exit") {
+      match atoiSafe(tomlScalar(line)) {
+        Ok(n) => expectedExit = n,
+        Err(_) => expectedExit = 0,
+      }
     }
   }
-  return RunSpec{ dir: pathDir(manifest), entry: entry, expects: expects }
+  return RunSpec{ dir: pathDir(manifest), entry: entry, expects: expects, args: args, stdin: stdin, expectedOutput: expectedOutput, expectedExit: expectedExit }
 }
 
 func lessRunRow(a: RunRow, b: RunRow): bool {
   return a.path < b.path
+}
+
+// chomp drops a single trailing newline so a hand-edited sidecar (editors add
+// a final newline) compares equal to the program's stdout.
+func chomp(s: string): string {
+  if strings.hasSuffix(s, "\n") {
+    return s[:s.len() - 1]
+  }
+  return s
 }
 
 func evalRuns(tide: string, tmp: string): RunEval {
@@ -520,14 +552,24 @@ func evalRuns(tide: string, tmp: string): RunEval {
       fails = fails.push(RunRow{ path: spec.dir, status: "build-fail", code: b.code() })
       continue
     }
-    let r = runExample(outBin, []string{}, "", runTimeoutMs())
-    if r.code() == 0 {
-      nOk = nOk + 1
-    } else if r.code() == 124 {
-      fails = fails.push(RunRow{ path: spec.dir, status: "timeout", code: r.code() })
-    } else {
-      fails = fails.push(RunRow{ path: spec.dir, status: "run-fail", code: r.code() })
+    var stdinData = ""
+    if spec.stdin != "" {
+      stdinData = readFileOrEmpty(pathJoin(spec.dir, spec.stdin))
     }
+    let r = runExample(outBin, spec.args, stdinData, spec.dir, runTimeoutMs())
+    if r.code() == 124 {
+      fails = fails.push(RunRow{ path: spec.dir, status: "timeout", code: r.code() })
+      continue
+    }
+    if r.code() != spec.expectedExit {
+      fails = fails.push(RunRow{ path: spec.dir, status: "run-fail", code: r.code() })
+      continue
+    }
+    if spec.expectedOutput != "" && chomp(r.stdout()) != chomp(readFileOrEmpty(pathJoin(spec.dir, spec.expectedOutput))) {
+      fails = fails.push(RunRow{ path: spec.dir, status: "output-diff", code: r.code() })
+      continue
+    }
+    nOk = nOk + 1
   }
   return RunEval{ run_ok: nOk, run_total: nTotal, fails: sort.sorted(fails, lessRunRow) }
 }

@@ -8,7 +8,7 @@
     "build_ok": 46,
     "diag_ok": 77,
     "diag_total": 100,
-    "run_ok": 22,
+    "run_ok": 26,
     "run_total": 51
   },
   "files": [
@@ -482,11 +482,6 @@
       "code": 1
     },
     {
-      "path": "examples/core-language/p1033",
-      "status": "run-fail",
-      "code": 1
-    },
-    {
       "path": "examples/core-language/p1133",
       "status": "build-fail",
       "code": 1
@@ -537,24 +532,9 @@
       "code": 1
     },
     {
-      "path": "examples/modeling-errors/rpn_calculator",
-      "status": "run-fail",
-      "code": 2
-    },
-    {
-      "path": "examples/stdlib-binding/config_loader",
-      "status": "run-fail",
-      "code": 2
-    },
-    {
       "path": "examples/stdlib-binding/counterstack",
       "status": "build-fail",
       "code": 1
-    },
-    {
-      "path": "examples/stdlib-binding/wc",
-      "status": "run-fail",
-      "code": 2
     }
   ]
 }

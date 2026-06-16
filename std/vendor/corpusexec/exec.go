@@ -53,13 +53,14 @@ func Run(name string, args []string) *Result {
 	return &Result{out: string(b), code: code}
 }
 
-// RunExample executes a built example binary for the run_ok metric: it feeds
-// stdin, enforces a wall-clock timeout (timeoutMs; <= 0 means none), and
-// captures stdout and stderr separately so the caller can diff stdout while
-// still surfacing stderr in the combined output. The exit code is the
-// process's on a normal exit, TimeoutCode on a deadline kill, and -1 when the
-// process could not be started.
-func RunExample(name string, args []string, stdin string, timeoutMs int) *Result {
+// RunExample executes a built example binary for the run_ok metric: it runs
+// in working directory dir (so an example's argv/stdin file paths resolve
+// relative to its own directory), feeds stdin, enforces a wall-clock timeout
+// (timeoutMs; <= 0 means none), and captures stdout and stderr separately so
+// the caller can diff stdout while still surfacing stderr in the combined
+// output. The exit code is the process's on a normal exit, TimeoutCode on a
+// deadline kill, and -1 when the process could not be started.
+func RunExample(name string, args []string, stdin string, dir string, timeoutMs int) *Result {
 	ctx := context.Background()
 	cancel := context.CancelFunc(func() {})
 	if timeoutMs > 0 {
@@ -68,6 +69,7 @@ func RunExample(name string, args []string, stdin string, timeoutMs int) *Result
 	defer cancel()
 
 	c := exec.CommandContext(ctx, name, args...)
+	c.Dir = dir
 	if stdin != "" {
 		c.Stdin = strings.NewReader(stdin)
 	}

@@ -6,7 +6,7 @@ Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `met
 
 - **build_ok — 46 / 56 examples build end-to-end** (floor 46).
 - **diag_ok — 77 / 100 negative cases produce their expected diagnostic** (floor 70).
-- **run_ok — 22 / 51 run-pass examples build and exit 0 when run** (behavioural; `no-run` examples excluded).
+- **run_ok — 26 / 51 run-pass examples build and exit 0 when run** (behavioural; `no-run` examples excluded).
 
 | Stage reached | Count |
 |---|---|
@@ -112,7 +112,7 @@ Negative cases whose `.expected` records the **ideal** user-facing diagnostic th
 
 Run-pass examples that do not yet reach run_ok — they fail to build (an existing build_ok gap), exit non-zero (often awaiting argv/stdin), or time out. Closing a row means making the example run, not relaxing the check.
 
-**29 of 51 run-pass examples fall short of run_ok.**
+**25 of 51 run-pass examples fall short of run_ok.**
 
 | Example | Status | Exit |
 |---|---|---|
@@ -130,7 +130,6 @@ Run-pass examples that do not yet reach run_ok — they fail to build (an existi
 | `examples/core-language/d09` | run-fail | 2 |
 | `examples/core-language/d11` | run-fail | 2 |
 | `examples/core-language/lru_cache` | build-fail | 1 |
-| `examples/core-language/p1033` | run-fail | 1 |
 | `examples/core-language/p1133` | build-fail | 1 |
 | `examples/core-language/p1242` | run-fail | 1 |
 | `examples/core-language/p1335` | run-fail | 1 |
@@ -141,7 +140,4 @@ Run-pass examples that do not yet reach run_ok — they fail to build (an existi
 | `examples/core-language/p1683` | run-fail | 1 |
 | `examples/core-language/p1786` | run-fail | 1 |
 | `examples/core-language/p1820` | run-fail | 1 |
-| `examples/modeling-errors/rpn_calculator` | run-fail | 2 |
-| `examples/stdlib-binding/config_loader` | run-fail | 2 |
 | `examples/stdlib-binding/counterstack` | build-fail | 1 |
-| `examples/stdlib-binding/wc` | run-fail | 2 |
