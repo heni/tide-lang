@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "totals": {
-    "total": 55,
+    "total": 56,
     "parse_fail": 7,
     "sema_fail": 2,
     "emit_fail": 1,
-    "build_ok": 45,
+    "build_ok": 46,
     "diag_ok": 77,
     "diag_total": 100
   },
@@ -222,6 +222,11 @@
     },
     {
       "path": "examples/ffi/config_reader/config_reader.td",
+      "stage": "build",
+      "blocker": ""
+    },
+    {
+      "path": "examples/ffi/sum_numbers/sum_numbers.td",
       "stage": "build",
       "blocker": ""
     },

@@ -1,0 +1,9 @@
+description = "Sum every integer in a string via a Go regexp handle + strconv.Atoi (Result lift)"
+source   = "ffi sum_numbers"
+category = "ffi"
+showcase = true
+forces   = []
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "sum_numbers.td"

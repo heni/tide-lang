@@ -14,6 +14,6 @@
 #     diagnostic legitimately regressed (e.g. a compiler refactor reworded a
 #     message). Otherwise raise it as coverage grows.
 
-build_ok_min = 45   # current build_ok; strict ratchet
+build_ok_min = 46   # current build_ok; strict ratchet
 diag_ok_min  = 70   # headroom below current diag_ok (77) so an
                     # individual imprecise message is a penalty, not a red
