@@ -1,0 +1,11 @@
+{
+  "_comment": "Binding manifest (ffi.md §Dependency model). Maps a third-party Go import path to a pinned, hermetically-vendored module. Generated Go that references an importPath below gets a `require` + `replace` to its vendored copy in the emitted go.mod, so the build never touches the network. Stdlib bindings need no entry.",
+  "thirdParty": [
+    {
+      "importPath": "example.com/tidekv",
+      "module": "example.com/tidekv",
+      "version": "v0.0.0",
+      "vendor": "std/vendor/tidekv"
+    }
+  ]
+}

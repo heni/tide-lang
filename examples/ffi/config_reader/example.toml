@@ -1,0 +1,9 @@
+description = "Bind a third-party Go module (vendored) through the FFI and read a config"
+source   = "ffi config_reader"
+category = "ffi"
+showcase = true
+forces   = []
+since    = "0.1"
+status   = "running"
+expects  = "run-pass"
+entry    = "config_reader.td"
