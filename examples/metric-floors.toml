@@ -16,8 +16,9 @@
 #     message). Otherwise raise it as coverage grows.
 #   run_ok_min   — STRICT ratchet, like build_ok: a run-pass example that
 #     stops running (wrong output, crash, hang) is a real behavioural
-#     regression. Only ever raised. --check re-derives run_ok via the run
-#     cache, so the gate is fast and deterministic.
+#     regression. Only ever raised. --check re-derives run_ok, cache-
+#     accelerated (unchanged examples hit; only changed ones re-run), so the
+#     gate is fast and deterministic.
 
 build_ok_min = 46   # current build_ok; strict ratchet
 diag_ok_min  = 70   # headroom below current diag_ok (77) so an
