@@ -29,13 +29,25 @@ the repo. It regenerates `examples/auto-status.json` + `examples/STATUS.md`.
   byte-identical to the Python tool (`build_ok` + `diag_ok` + misses).
 - **`--check`** (floor enforcement + snapshot/`STATUS.md` freshness) and
   **`--history`** (the trend, reconstructed from `git log` of the JSON
-  snapshot as JSONL). **Done** — both byte-identical to the Python tool
-  (`--check` also matches exit codes).
+  snapshot as JSONL). **Done.**
+- **`run_ok`** — the behavioural metric: actually *run* each `run-pass`
+  example and check its exit code (and stdout against an `expected_output`
+  sidecar when present). Examples declare their invocation in `example.toml`
+  (`args` / `stdin` / `expected_output` / `expected_exit`, all relative to
+  the example's own directory); `no-run` examples are excluded. A per-example
+  timeout guards against a non-terminating example. **In progress** (epoch
+  RUN-OK).
 
-> `build_ok` measures only that an example *compiles* end-to-end — it does
-> not run the program or check its output (the `run-pass` `example.toml`
-> fields are unenforced metadata). A behavioural `run_ok` metric is a
-> separate, planned addition.
+### `--no-run` and the run cache
+
+`--no-run` skips the (slow) run pass entirely — the fast `build_ok`/`diag_ok`
+inspection. The run pass is backed by a cache (`examples/run-cache.json`)
+keyed on **sha256 of each example's emitted Go** plus its invocation: a
+compiler change that alters an example's codegen re-runs it (regressions are
+caught), while unchanged Go is skipped. The cache is committed and portable
+(emit is deterministic across machines); **expect it to churn in any PR that
+changes codegen** for run-pass examples — that is the cost of a CI-shared,
+correctness-preserving cache.
 
 This tool is the authoritative gate: CI builds it with `tide` and runs
 `--check` on every PR and push to `main`.

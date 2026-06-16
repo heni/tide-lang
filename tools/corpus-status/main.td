@@ -611,7 +611,11 @@ func runKey(tide: string, spec: RunSpec): string {
   }
   var inv = "args\n"
   for a in spec.args {
-    inv = inv + a + "\n"
+    // Fold both the arg itself and, if it names a data file under the
+    // example's dir, that file's content — else editing an argv-referenced
+    // input (e.g. wc's sample.txt) would leave the key unchanged and a stale
+    // outcome would mask the new behaviour. A non-file arg reads as "".
+    inv = inv + a + "\n" + readFileOrEmpty(pathJoin(spec.dir, a)) + "\nargend\n"
   }
   inv = inv + "stdin\n"
   if spec.stdin != "" {
@@ -668,7 +672,10 @@ func evalRuns(tide: string, tmp: string): RunEval {
     if row.status == "" {
       row = runOutcome(tide, tmp, spec)
     }
-    if key != "" {
+    // A timeout is a wall-clock verdict, not a property of the emitted Go —
+    // caching it would let machine load mask a real pass/fail. Cache every
+    // other (deterministic) outcome.
+    if key != "" && row.status != "timeout" {
       fresh = fresh.push(CacheEntry{ key: key, status: row.status, code: row.code })
     }
     if row.status == "ok" {
