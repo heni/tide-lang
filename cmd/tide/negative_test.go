@@ -7,8 +7,9 @@ package main
 // moved; regenerate the case) or a compiler panic on the input. It does NOT
 // hard-fail on an imprecise/non-reproduced diagnostic: whether each case
 // reproduces its expected code/stage/message is the *soft* `diag_ok` metric
-// ("correct error messages"), counted by scripts/corpus_status.py and gated
-// against a relaxable floor in examples/metric-floors.toml — a single
+// ("correct error messages"), counted by the corpus-status tool
+// (tools/corpus-status) and gated against a relaxable floor in
+// examples/metric-floors.toml — a single
 // imprecise message is a penalty on that number, never a red here. (That split
 // is deliberate: a non-deterministic message must not flake CI red.)
 
@@ -33,7 +34,8 @@ type negCase struct {
 
 var codeRe = regexp.MustCompile(`error\[(E\d+)\]`)
 
-// stageOf mirrors the classification in scripts/corpus_status.py.
+// stageOf mirrors the classification in the corpus-status tool
+// (tools/corpus-status).
 var parseCodes = map[string]bool{
 	"E0101": true, "E0102": true, "E0107": true, "E0109": true, "E0110": true, "E0111": true, "E0112": true,
 }
@@ -178,8 +180,8 @@ func runNegativeCase(t *testing.T, c negCase) {
 	}
 
 	// SOFT (the diag_ok metric): whether this case reproduces its expected
-	// code/stage/message is logged, not failed — corpus_status.py counts it
-	// and gates the aggregate against the relaxable floor. Logged so a local
+	// code/stage/message is logged, not failed — the corpus-status tool counts
+	// it and gates the aggregate against the relaxable floor. Logged so a local
 	// `go test -v` still surfaces which case stopped reproducing.
 	if exit == 0 {
 		t.Logf("diag miss %s/%s: patched program built cleanly (no diagnostic)", c.name, c.patch)

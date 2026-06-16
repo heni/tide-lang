@@ -109,7 +109,7 @@ mistakes yield legible Tide diagnostics. See RFC-0004 for the mechanism.
 
 ## Conformance status
 
-`STATUS.md` (generated from `auto-status.json` by `scripts/corpus_status.py`)
-tracks how far each example gets through the pipeline. The metric we grow is
-`build_ok` — the number of examples that compile end-to-end; it never
-regresses.
+`STATUS.md` (generated from `auto-status.json` by the `corpus-status` tool in
+`tools/corpus-status`) tracks how far each example gets through the pipeline.
+The metric we grow is `build_ok` — the number of examples that compile
+end-to-end; it never regresses.

@@ -45,14 +45,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # corpus_status.py shells out to `go build`, so a toolchain is
-          # needed even though this job never calls `go` directly.
           go-version-file: go.mod
           cache: true
+      # The corpus-status tool is itself written in Tide, so tide compiles it
+      # first; it then shells out to `go build` (and git/patch) to measure the
+      # corpus.
+      - name: build tide
+        run: go build -o tide ./cmd/tide
+      - name: build corpus-status tool
+        run: ./tide build -o corpus-status tools/corpus-status
       # Fails if the committed snapshot is stale or build_ok regressed.
       # Generation stays a local author step; CI is the independent check.
       - name: corpus-status ratchet
-        run: python3 scripts/corpus_status.py --check
+        run: ./corpus-status --check
       - name: publish STATUS.md to job summary
         if: always()
         run: |

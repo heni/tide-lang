@@ -1,6 +1,7 @@
 # CI-enforced floors for the corpus metrics.
 #
-# Checked by `scripts/corpus_status.py --check` (run in CI). CI is RED when:
+# Checked by the corpus-status tool (`tools/corpus-status --check`, run in
+# CI). CI is RED when:
 #   * a measured metric drops below its floor here, or
 #   * the measurement tooling itself fails (a patch won't apply, the
 #     compiler crashes, a manifest can't be parsed).

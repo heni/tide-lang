@@ -1,8 +1,9 @@
 # corpus-status — the conformance scoreboard, in Tide
 
-A Tide port of `scripts/corpus_status.py` (the corpus build/diagnostic
-scoreboard). Self-host/dogfood milestone: the tool that measures the corpus
-is itself written in the language, built and run by the compiler.
+The corpus build/diagnostic scoreboard, written in Tide. Self-host/dogfood
+milestone: the tool that measures the corpus is itself written in the
+language, built and run by the compiler. (It began as a port of an interim
+Python script, now retired.)
 
 Lives outside the measured corpus globs (`examples/`, `user_tests/`) so the
 tool never scores itself.
@@ -36,8 +37,8 @@ the repo. It regenerates `examples/auto-status.json` + `examples/STATUS.md`.
 > fields are unenforced metadata). A behavioural `run_ok` metric is a
 > separate, planned addition.
 
-Until the port is complete and wired into CI, `scripts/corpus_status.py`
-remains the authoritative gate.
+This tool is the authoritative gate: CI builds it with `tide` and runs
+`--check` on every PR and push to `main`.
 
 ## Layout
 

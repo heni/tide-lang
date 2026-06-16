@@ -1,5 +1,6 @@
 # Build outputs
 /tide
+/corpus-status
 /hello
 /bin/
 *.exe
