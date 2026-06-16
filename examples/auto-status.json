@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "totals": {
     "total": 56,
     "parse_fail": 7,
@@ -7,7 +7,9 @@
     "emit_fail": 1,
     "build_ok": 46,
     "diag_ok": 77,
-    "diag_total": 100
+    "diag_total": 100,
+    "run_ok": 22,
+    "run_total": 51
   },
   "files": [
     {
@@ -406,6 +408,153 @@
       "case": "examples/stdlib-binding/wc/errors/missing-comma.patch",
       "want": "error[E0112]: expected `)`",
       "got": "error[E0112]: expected Punct \")\", got StringLit \"\\\"\\\\n\\\"\""
+    }
+  ],
+  "run_fails": [
+    {
+      "path": "examples/concurrency/nested_scopes",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/concurrency/pubsub",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/concurrency/rate_limited",
+      "status": "timeout",
+      "code": 124
+    },
+    {
+      "path": "examples/concurrency/worker_pool",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/d01",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d02",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d03",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d04",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d05",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d07",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d08",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d09",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/d11",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/core-language/lru_cache",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1033",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1133",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1242",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1335",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1349",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1404",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1423",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1605",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1683",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1786",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/core-language/p1820",
+      "status": "run-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/modeling-errors/rpn_calculator",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/stdlib-binding/config_loader",
+      "status": "run-fail",
+      "code": 2
+    },
+    {
+      "path": "examples/stdlib-binding/counterstack",
+      "status": "build-fail",
+      "code": 1
+    },
+    {
+      "path": "examples/stdlib-binding/wc",
+      "status": "run-fail",
+      "code": 2
     }
   ]
 }

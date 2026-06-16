@@ -2,10 +2,11 @@
 
 Generated from `examples/auto-status.json` by the `corpus-status` tool (`tools/corpus-status`) — do not edit by hand. Build and run the tool to refresh.
 
-Two tracked metrics, each with a CI-enforced floor in `metric-floors.toml`:
+Three tracked metrics; build_ok / diag_ok each carry a CI-enforced floor in `metric-floors.toml`:
 
 - **build_ok — 46 / 56 examples build end-to-end** (floor 46).
 - **diag_ok — 77 / 100 negative cases produce their expected diagnostic** (floor 70).
+- **run_ok — 22 / 51 run-pass examples build and exit 0 when run** (behavioural; `no-run` examples excluded).
 
 | Stage reached | Count |
 |---|---|
@@ -106,3 +107,41 @@ Negative cases whose `.expected` records the **ideal** user-facing diagnostic th
 | `examples/modeling-errors/vending_machine/errors/organic-step2-e0112.patch` | error[E0112]: expected `)` | error[E0112]: expected Punct ")", got Punct ":" |
 | `examples/stdlib-binding/config_loader/errors/missing-comma.patch` | error[E0112]: expected `)` | error[E0112]: expected Punct ")", got Ident "cfg" |
 | `examples/stdlib-binding/wc/errors/missing-comma.patch` | error[E0112]: expected `)` | error[E0112]: expected Punct ")", got StringLit "\"\\n\"" |
+
+## Run failures
+
+Run-pass examples that do not yet reach run_ok — they fail to build (an existing build_ok gap), exit non-zero (often awaiting argv/stdin), or time out. Closing a row means making the example run, not relaxing the check.
+
+**29 of 51 run-pass examples fall short of run_ok.**
+
+| Example | Status | Exit |
+|---|---|---|
+| `examples/concurrency/nested_scopes` | build-fail | 1 |
+| `examples/concurrency/pubsub` | build-fail | 1 |
+| `examples/concurrency/rate_limited` | timeout | 124 |
+| `examples/concurrency/worker_pool` | build-fail | 1 |
+| `examples/core-language/d01` | run-fail | 2 |
+| `examples/core-language/d02` | run-fail | 2 |
+| `examples/core-language/d03` | run-fail | 2 |
+| `examples/core-language/d04` | run-fail | 2 |
+| `examples/core-language/d05` | run-fail | 2 |
+| `examples/core-language/d07` | run-fail | 2 |
+| `examples/core-language/d08` | run-fail | 2 |
+| `examples/core-language/d09` | run-fail | 2 |
+| `examples/core-language/d11` | run-fail | 2 |
+| `examples/core-language/lru_cache` | build-fail | 1 |
+| `examples/core-language/p1033` | run-fail | 1 |
+| `examples/core-language/p1133` | build-fail | 1 |
+| `examples/core-language/p1242` | run-fail | 1 |
+| `examples/core-language/p1335` | run-fail | 1 |
+| `examples/core-language/p1349` | run-fail | 1 |
+| `examples/core-language/p1404` | run-fail | 1 |
+| `examples/core-language/p1423` | run-fail | 1 |
+| `examples/core-language/p1605` | run-fail | 1 |
+| `examples/core-language/p1683` | run-fail | 1 |
+| `examples/core-language/p1786` | run-fail | 1 |
+| `examples/core-language/p1820` | run-fail | 1 |
+| `examples/modeling-errors/rpn_calculator` | run-fail | 2 |
+| `examples/stdlib-binding/config_loader` | run-fail | 2 |
+| `examples/stdlib-binding/counterstack` | build-fail | 1 |
+| `examples/stdlib-binding/wc` | run-fail | 2 |

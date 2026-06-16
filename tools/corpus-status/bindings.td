@@ -10,11 +10,17 @@ extern type RunResult @go("example.com/corpusexec")
 
 extern func run(name: string, args: []string): RunResult @go("example.com/corpusexec.Run")
 
+// runExample runs a built example for the run_ok metric: feeds stdin, enforces
+// a wall-clock timeout (ms; <= 0 = none), and captures stdout separately from
+// stderr (see RunResult.stdout). code is TimeoutCode (124) on a deadline kill.
+extern func runExample(name: string, args: []string, stdin: string, timeoutMs: int): RunResult @go("example.com/corpusexec.RunExample")
+
 extern func toBytes(s: string): []byte @go("example.com/corpusexec.Bytes")
 
 extern impl RunResult {
-  out():  string @go("Out")
-  code(): int    @go("Code")
+  out():    string @go("Out")
+  stdout(): string @go("Stdout")
+  code():   int    @go("Code")
 }
 
 // --- Filesystem (os.readFile, os.args, os.exit, os.getenv are built-in) ---
