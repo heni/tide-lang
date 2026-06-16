@@ -23,8 +23,6 @@ extern func writeFile(name: string, data: []byte, perm: int): Result<unit, error
 
 extern func mkdirTemp(dir: string, pattern: string): Result<string, error> @go("os.MkdirTemp")
 
-extern func mkdirAll(path: string, perm: int): Result<unit, error> @go("os.MkdirAll")
-
 extern func removeAll(path: string): Result<unit, error> @go("os.RemoveAll")
 
 extern func chdir(dir: string): Result<unit, error> @go("os.Chdir")
@@ -33,25 +31,8 @@ extern func chdir(dir: string): Result<unit, error> @go("os.Chdir")
 
 extern func pathJoin(elems: ...string): string @go("path/filepath.Join")
 
-extern func pathDir(path: string): string @go("path/filepath.Dir")
-
-extern func pathBase(path: string): string @go("path/filepath.Base")
-
-extern func pathAbs(path: string): Result<string, error> @go("path/filepath.Abs")
-
 // --- strings helpers absent from the built-in `strings` table ---
 
 extern func indexOf(s: string, sub: string): int @go("strings.Index")
 
 extern func splitN(s: string, sep: string, n: int): []string @go("strings.SplitN")
-
-// --- Regexp ---
-
-extern type Regexp @go("regexp")
-
-extern func compileRegexp(expr: string): Result<Regexp, error> @go("regexp.Compile")
-
-extern impl Regexp {
-  findSubmatch(s: string): []string @go("FindStringSubmatch")
-  findAll(s: string, n: int): []string @go("FindAllString")
-}
