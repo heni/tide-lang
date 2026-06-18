@@ -1,3 +1,12 @@
+> ## This project has moved
+>
+> **Tide is now ARIL** — development continues at
+> **https://github.com/aril-lang/aril**
+>
+> This repository is kept as a historical archive of the pre-rename history.
+
+---
+
 # Tide
 
 **Familiar TypeScript-style syntax, free of JavaScript's legacy, on the Go
